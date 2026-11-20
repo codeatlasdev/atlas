@@ -69,8 +69,9 @@ describe("sitemap membership", () => {
 	test("a fallback pt-BR docs page is out (English body, canonical to English)", () => {
 		expect(inSitemap("/pt-br/docs/cli/", translated)).toBe(false);
 	});
-	test("Astro's redirect fallbacks for the other pt-BR pages are out", () => {
-		for (const p of ["/pt-br/", "/pt-br/download/", "/pt-br/changelog/", "/pt-br/docs/"]) expect(inSitemap(p, translated)).toBe(false);
+	test("the pt-BR twins of the localized pages are in; the /pt-br/docs/ redirect and unknown pages are out", () => {
+		for (const p of ["/pt-br/", "/pt-br/download/", "/pt-br/changelog/", "/pt-br/privacy/", "/pt-br/code-signing-policy/"]) expect(inSitemap(p, translated)).toBe(true);
+		for (const p of ["/pt-br/docs/", "/pt-br/404/", "/pt-br/download/extra/"]) expect(inSitemap(p, translated)).toBe(false);
 	});
 	test("a nested path under a translated slug is not the translated page", () => {
 		expect(inSitemap("/pt-br/docs/getting-started/extra/", translated)).toBe(false);

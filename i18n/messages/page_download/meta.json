@@ -1,0 +1,122 @@
+{
+	"page_download_apple_silicon": "Mac chip family (M1 and later), shown beside the size of the macOS download. Apple's own term, not translated.",
+	"page_download_badge_available": "Badge on a download card for a platform that ships today.",
+	"page_download_chan_download": "Button of a channel card: downloads the macOS .dmg of that channel. {label} is the channel name.",
+	"page_download_chan_meta": "Small line of a channel card; the SHA-256 checksum follows it. {size} is the file size with its unit.",
+	"page_download_chan_none": "Empty state of a channel card. {label} is the channel name.",
+	"page_download_channel_alpha_audience": "Who the Alpha channel is for. Word for word audience of channels.json.",
+	"page_download_channel_alpha_promise": "One-sentence promise of the Alpha channel. Word for word the promise of crates/atlas-core/data/channels.json (a site test fails when they drift).",
+	"page_download_channel_alpha_risk": "Risk badge of the Alpha channel card. Word for word risk_label of channels.json.",
+	"page_download_channel_alpha_switch_to": "What switching to the Alpha channel means. Word for word switch_to of channels.json.",
+	"page_download_channel_beta_audience": "Who the Beta channel is for. Word for word audience of channels.json.",
+	"page_download_channel_beta_promise": "One-sentence promise of the Beta channel. Word for word the promise of crates/atlas-core/data/channels.json (a site test fails when they drift).",
+	"page_download_channel_beta_risk": "Risk badge of the Beta channel card. Word for word risk_label of channels.json.",
+	"page_download_channel_beta_switch_to": "What switching to the Beta channel means. Word for word switch_to of channels.json.",
+	"page_download_channel_stable_audience": "Who the Stable channel is for. Word for word audience of channels.json.",
+	"page_download_channel_stable_promise": "One-sentence promise of the Stable channel. Word for word the promise of crates/atlas-core/data/channels.json (a site test fails when they drift).",
+	"page_download_channel_stable_risk": "Risk badge of the Stable channel card. Word for word risk_label of channels.json.",
+	"page_download_channel_stable_switch_to": "What switching to the Stable channel means. Word for word switch_to of channels.json.",
+	"page_download_channel_stage_alpha_note": "Note shown while Atlas is in alpha. Word for word stage_note of channels.json.",
+	"page_download_channels_text": "Intro of the Other channels section; {channel} (id) selects which channel the primary downloads are, {label} is its name, {macos} and {windows} are platform names passed by the page. Stable is the default after general availability; today the default is Alpha.",
+	"page_download_channels_title": "Heading of the section with the Beta and Stable cards.",
+	"page_download_cli_next_linux": "Line under the install command on the Linux card; the link goes to the Linux packages section of the installation docs.",
+	"page_download_cli_next_mac": "Line under the install command on the macOS card; the link goes to the installation docs.",
+	"page_download_cli_next_windows": {
+		"description": "Line under the install command on the Windows card; the link goes to the Windows section of the installation docs.",
+		"platform": "windows"
+	},
+	"page_download_cli_title": "Heading above the install command on the macOS and Linux cards.",
+	"page_download_cli_title_powershell": "Heading above the install command on the Windows card.",
+	"page_download_description": "Meta description of the download page (search results, link previews). {macos} and {windows} are the platform names, passed by the page.",
+	"page_download_fact_date_latest": "Text of the release date row while the date is not known.",
+	"page_download_fact_latest": "Link text of the version row while the version number is not known: points to the latest release.",
+	"page_download_fact_license": "Label of the license row in the release facts.",
+	"page_download_fact_license_value": "The two licenses Atlas is offered under, as written in the release facts.",
+	"page_download_fact_notes": "Label of the row with the links to the release notes.",
+	"page_download_fact_release_page": "Link to the GitHub page of the release, in the release facts.",
+	"page_download_fact_released": "Label of the release date row in the release facts.",
+	"page_download_fact_version": "Label of the version row in the release facts.",
+	"page_download_h1": "Main heading of the download page.",
+	"page_download_lead": "Subtitle under the main heading of the download page. atlas is the command name, in code style.",
+	"page_download_lin_button": "Button of the Linux card: opens the release page, where the packages are.",
+	"page_download_lin_meta": "Small line beside the Linux button: an Arch Linux package exists as well.",
+	"page_download_lin_sub": "Subtitle of the Linux card: architecture and the distributions it covers.",
+	"page_download_links_get": "Short label of the download button in the hero and the closing section on phones (the long one is Download Atlas). i18n-distinct: the short label of the download button on phones, not the page heading.",
+	"page_download_links_star": "Button that opens the GitHub repository so the visitor can star it, next to the download button.",
+	"page_download_mac_button": {
+		"description": "Button of the macOS card: downloads the .dmg disk image.",
+		"platform": "mac"
+	},
+	"page_download_mac_intel_note": {
+		"description": "Note shown on the macOS card to a visitor whose Mac has an Intel chip. {cta} is the label of the notify button of the coming-soon cards.",
+		"platform": "mac"
+	},
+	"page_download_mac_label": "Subtitle of the macOS card with the latest version, for example Atlas 1.5.0-alpha.27 for Apple silicon.",
+	"page_download_mac_label_latest": "Subtitle of the macOS card when the latest version could not be read: the button goes to the GitHub releases page.",
+	"page_download_mac_meta": "Small line beside the macOS download button. {size} is the file size with its unit, for example 12.3 MB.",
+	"page_download_os_linux": "Name of the Linux platform: card heading and requirements label on the download page.",
+	"page_download_os_macos": {
+		"description": "Name of the macOS platform: card heading and requirements label on the download page. A proper name, the same in every language.",
+		"platform": "mac"
+	},
+	"page_download_os_windows": {
+		"description": "Name of the Windows platform: card heading and requirements label on the download page. A proper name, the same in every language.",
+		"platform": "windows"
+	},
+	"page_download_phone_text": "Text of the phone-visitor block of the download page, above the share and email buttons.",
+	"page_download_phone_title": "Heading of the block shown only to phone visitors: Atlas does not run on a phone, so it offers to send the link.",
+	"page_download_primary_channel": "Note above the release facts. {label} is the channel name (Alpha, Beta, Stable) and {promise} its one-sentence promise, from the channel copy of this page.",
+	"page_download_release_aria": "Accessible name of the box with the version, date, notes and requirements.",
+	"page_download_req_linux": "Requirements of the Linux build.",
+	"page_download_req_macos": "Requirements of the macOS build.",
+	"page_download_req_optional": "Optional tools: git and gh for worktrees and pull requests, Docker for the infra block of atlas.yaml. Tool names and the file name stay as written.",
+	"page_download_req_optional_label": "Label of the requirements row that lists tools Atlas can use but does not need.",
+	"page_download_req_title": "Heading of the requirements list.",
+	"page_download_req_windows": {
+		"description": "Requirements of the Windows build.",
+		"platform": "windows"
+	},
+	"page_download_soon_linux_arm_name": "Name of the coming-soon card for Linux on Arm computers.",
+	"page_download_soon_linux_arm_note": "Description of the Linux on Arm coming-soon card: the package formats that will ship.",
+	"page_download_soon_macos_intel_name": {
+		"description": "Name of the coming-soon card for Macs with an Intel chip.",
+		"platform": "mac"
+	},
+	"page_download_soon_macos_intel_note": {
+		"description": "Description of the Intel Mac coming-soon card.",
+		"platform": "mac"
+	},
+	"page_download_soon_note": "Note under the coming-soon cards. {windows} is the platform name passed by the page; the link goes to the build-from-source docs section.",
+	"page_download_soon_text": "Text of the coming-soon section, above the platform cards with the notify forms.",
+	"page_download_soon_title": "Heading of the coming-soon section and badge of each platform in it.",
+	"page_download_soon_windows_arm_name": {
+		"description": "Name of the coming-soon card for Windows PCs with an Arm chip. Microsoft's product designation, not translated.",
+		"platform": "windows"
+	},
+	"page_download_soon_windows_arm_note": {
+		"description": "Description of the Windows on Arm coming-soon card.",
+		"platform": "windows"
+	},
+	"page_download_terminals_note": "Note about platform differences of Atlas Desktop. {macos} and {windows} are the platform names, passed by the page.",
+	"page_download_verify_text": "Explains the SHA-256 checksums list. <file> is a placeholder the reader replaces with the file name; the commands stay as written.",
+	"page_download_verify_title": "Heading of the checksums section.",
+	"page_download_win_button": {
+		"description": "Button of the Windows card: downloads the one-click installer.",
+		"platform": "windows"
+	},
+	"page_download_win_meta": "Small line beside the Windows download button. Atlas-Setup.exe is the file name.",
+	"page_download_win_smartscreen": {
+		"description": "Note on the Windows card while the installer is unsigned. The quoted warning and the two buttons are what Windows SmartScreen shows, so the pt-BR uses Windows' own Portuguese wording. policy links to the code signing policy page, sha to the checksums section.",
+		"platform": "windows"
+	},
+	"page_download_win_sub": {
+		"description": "Subtitle of the Windows card: supported versions and that the installer needs no administrator rights.",
+		"platform": "windows"
+	},
+	"page_download_you_linux": "Label that marks the card of the visitor's own computer when it runs Linux.",
+	"page_download_you_mac": {
+		"description": "Label that marks the card of the visitor's own computer when it is a Mac.",
+		"platform": "mac"
+	},
+	"page_download_you_pc": "Label that marks the card of the visitor's own computer when it is a Windows PC."
+}

@@ -1,0 +1,14 @@
+{
+	"docs_chrome_close_menu": "Accessible name of the close button of the docs drawer on phones.",
+	"docs_chrome_documentation": "Accessible name of the docs sidebar and heading of the phone drawer.",
+	"docs_chrome_edit": "Link at the end of a docs page that opens the page's source file on GitHub for editing.",
+	"docs_chrome_group_guides": "Docs sidebar group: docs/_nav.json group titled Guides (one page per feature).",
+	"docs_chrome_group_help": "Docs sidebar group: docs/_nav.json group titled Help (troubleshooting, FAQ).",
+	"docs_chrome_group_project": "Docs sidebar group: docs/_nav.json group titled Project (architecture, contributing, releases).",
+	"docs_chrome_group_reference": "Docs sidebar group: docs/_nav.json group titled Reference (CLI, configuration).",
+	"docs_chrome_group_start_here": "Docs sidebar group: docs/_nav.json group titled Start here (introduction, getting started, installation).",
+	"docs_chrome_next": "Small label above the title of the next docs page, in the links at the end of a page. pt-BR agrees with página. i18n-distinct: the next page of the docs (feminine, agrees with página), not the Next step of the desktop tour.",
+	"docs_chrome_on_this_page": "Heading and accessible name of the table of contents of a docs page.",
+	"docs_chrome_previous": "Small label above the title of the previous docs page, in the links at the end of a page.",
+	"docs_chrome_search_placeholder": "Placeholder of the docs search box."
+}

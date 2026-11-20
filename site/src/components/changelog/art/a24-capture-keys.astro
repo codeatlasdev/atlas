@@ -1,0 +1,52 @@
+---
+// Labels: k3, k4, k5, k6, k7, saved
+// Moment: on the mini screen a selection rectangle is drawn out from its corner (the resting state shows the drawn rectangle).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const keys = [
+	["3", labels.k3],
+	["4", labels.k4],
+	["5", labels.k5],
+	["6", labels.k6],
+	["7", labels.k7],
+];
+---
+<div class="art art-a24-capture-keys" role="img" aria-label={alt}>
+	<div class="screen">
+		<div class="lines"><u></u><u></u><u></u></div>
+		<div class="sel part"></div>
+	</div>
+	<ul class="keys">
+		{keys.map(([n, text]) => (
+			<li class={n === "4" ? "on" : ""}>
+				<!-- i18n-ignore: the macOS capture hotkeys, drawn as an illustration; capture exists on macOS only -->
+				<kbd><span>⌃⌥</span>{n}</kbd>
+				<span class="what">{text}</span>
+			</li>
+		))}
+	</ul>
+	<p class="saved">{labels.saved}</p>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.9rem; font-family: var(--font); color: var(--ink); }
+	.screen { position: relative; aspect-ratio: 16 / 6; min-height: 7rem; background: var(--paper); border: 2px solid var(--ink); border-radius: 0.35rem; overflow: hidden; }
+	.lines { padding: 0.9rem; display: grid; gap: 0.5rem; }
+	.lines u { display: block; height: 0.5rem; border-radius: 2px; background: var(--paper-line); text-decoration: none; }
+	.lines u:nth-child(2) { width: 70%; }
+	.lines u:nth-child(3) { width: 40%; }
+	.sel { position: absolute; left: 30%; top: 18%; width: 44%; height: 62%; border: 2px dashed var(--blue); background: rgb(27 51 240 / 0.1); transform-origin: top left; }
+	.keys { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.6rem; }
+	.keys li { display: grid; justify-items: center; gap: 0.4rem; text-align: center; }
+	kbd { display: inline-flex; align-items: baseline; gap: 0.25rem; padding: 0.4rem 0.7rem; border: 1.5px solid var(--ink); border-bottom-width: 4px; border-radius: 0.4rem; background: var(--white); font-family: var(--mono); font-size: 1rem; font-weight: 600; }
+	kbd span { font-size: 0.8rem; font-weight: 500; color: var(--ink-2); }
+	.on kbd { background: var(--blue); color: var(--white); }
+	.on kbd span { color: var(--white); }
+	.what { font-size: 0.9rem; line-height: 1.25; }
+	.saved { margin: 0; padding: 0.55rem 0.8rem; background: var(--paper); border: 1.5px dashed var(--ink); border-radius: 0.4rem; font-size: 0.9rem; line-height: 1.35; }
+
+	@keyframes a24c-draw { from { transform: scale(0); opacity: 0; } 15% { opacity: 1; } to { transform: scale(1); opacity: 1; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .sel { animation: a24c-draw 1.2s cubic-bezier(0.4, 0, 0.2, 1) 0.2s both; }
+	}
+</style>

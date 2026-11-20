@@ -111,7 +111,6 @@
 		}
 	],
 	"islands_stack_visualizer_unknown_dependency": "{service} depends on unknown service \"{dependency}\". Nothing starts.",
-	"islands_terminal_replay_label": "Replay of atlas dev: infra starts, migrations run, the api becomes healthy, web and worker start, and a crashing worker restarts with backoff.",
 	"islands_waitlist_done": "One email per release. Nothing else.",
 	"islands_waitlist_email": "Email",
 	"islands_waitlist_email_placeholder": "you@company.com",

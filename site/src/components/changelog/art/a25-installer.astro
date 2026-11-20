@@ -1,0 +1,54 @@
+---
+// Labels: window, installing, opening, noadmin, nowebview
+// Moment: the progress bar fills and the status line changes from "installing" to "opening" (the resting state is the finished one).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+---
+<div class="art art-a25-installer" role="img" aria-label={alt}>
+	<div class="win">
+		<div class="bar"><span>{labels.window}</span><i></i></div>
+		<div class="body">
+			<svg class="globe" viewBox="0 0 100 100" width="84" height="84" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+				<circle cx="50" cy="50" r="40"></circle>
+				<ellipse cx="50" cy="50" rx="17" ry="40"></ellipse>
+				<path d="M10 50h80M16 29h68M16 71h68"></path>
+			</svg>
+			<div class="meter"><div class="fill part"></div></div>
+			<div class="status">
+				<span class="s a part">{labels.installing}</span>
+				<span class="s b part">{labels.opening}</span>
+			</div>
+		</div>
+	</div>
+	<ul class="chips">
+		<li>{labels.noadmin}</li>
+		<li>{labels.nowebview}</li>
+		<li><code>--silent</code></li>
+	</ul>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.9rem; justify-items: center; font-family: var(--font); color: var(--ink); }
+	.win { width: min(100%, 24rem); background: var(--ink); color: var(--white); border-radius: 0.5rem; overflow: hidden; border: 1.5px solid var(--ink); }
+	.bar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.45rem 0.75rem; background: var(--blue-deep); font-family: var(--mono); font-size: 0.8rem; }
+	.bar i { width: 0.7rem; height: 0.7rem; border: 1.5px solid rgb(255 255 255 / 0.7); border-radius: 1px; flex: none; }
+	.body { display: grid; justify-items: center; gap: 0.9rem; padding: 1.5rem 1.25rem 1.4rem; }
+	.globe { color: var(--port); }
+	.meter { width: 100%; height: 0.55rem; border-radius: 999px; background: rgb(255 255 255 / 0.18); overflow: hidden; }
+	.fill { height: 100%; width: 100%; background: var(--go); border-radius: 999px; transform-origin: left center; }
+	.status { display: grid; width: 100%; text-align: center; font-size: 0.9rem; line-height: 1.3; }
+	.s { grid-area: 1 / 1; }
+	.a { opacity: 0; }
+	.chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem; }
+	.chips li { border: 1.5px solid var(--ink); border-radius: 999px; padding: 0.2rem 0.7rem; font-size: 0.85rem; font-weight: 600; background: var(--paper); }
+	.chips code { font-family: var(--mono); font-size: 0.8rem; }
+
+	@keyframes a25i-fill { from { transform: scaleX(0.06); } to { transform: scaleX(1); } }
+	@keyframes a25i-out { 0%, 70% { opacity: 1; } 85%, 100% { opacity: 0; } }
+	@keyframes a25i-in { 0%, 70% { opacity: 0; } 85%, 100% { opacity: 1; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .fill { animation: a25i-fill 1.3s cubic-bezier(0.4, 0, 0.2, 1) both; }
+		:global(html.js) .art.play .a { animation: a25i-out 1.3s both; }
+		:global(html.js) .art.play .b { animation: a25i-in 1.3s both; }
+	}
+</style>

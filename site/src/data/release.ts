@@ -106,6 +106,3 @@ export async function channelReleases(): Promise<Partial<Record<Channel, Release
 	}
 	return out;
 }
-
-export const fmtSize = (n: number) => `${(n / 1_048_576).toFixed(1)} MB`;
-export const fmtDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });

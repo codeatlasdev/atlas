@@ -1,7 +1,7 @@
 ---
 title: "O site"
 source: site.md
-source_sha: "ff021a471ba3f5ce52acb3e920874d006084039d"
+source_sha: "a0d300e670e6a554d2a39d5b322e171732ff3f11"
 translation: machine
 ---
 
@@ -23,11 +23,28 @@ O filme, os loops e as imagens estáticas maiores (`site/public/media/*.mp4`, `*
 
 Rode o `scripts/fetch-media.sh` antes de `bun run build` ou `bun run site:deploy` em qualquer máquina que nunca tenha compilado o site, senão o site publicado iria sem o filme.
 
+## Idiomas
+
+Toda página existe em inglês em `/` e em português do Brasil em `/pt-br/`: a home, o download, o changelog, privacidade e política de assinatura de código (`LOCALIZED_PAGES` em `site/src/lib/i18n.ts`) e todas as páginas da documentação. Os textos são mensagens do catálogo em `i18n/messages/`, como no resto do Atlas; estrutura e regras estão no [site/README.md](https://github.com/codeatlasdev/atlas/blob/main/site/README.md#languages-en-pt-br).
+
+O idioma de quem visita é decidido na borda (`site/functions/_lib/locale.ts`), numa URL em inglês que tem versão em português: `?lang=en|pt-BR` (fica salvo), depois o cookie `atlas_lang` que o seletor de idioma grava, depois o país da requisição (países de língua portuguesa recebem pt-BR, mesmo com o navegador em inglês), depois o `Accept-Language`, depois inglês. Querer português é um `302` para a versão em `/pt-br/`; robôs de busca e prévias de link nunca são redirecionados, e uma URL `/pt-br/` sempre é servida como pedida.
+
+**Histórias das versões.** O `/changelog/` abre cada versão com uma história em linguagem simples quando ela existe (`site/src/content/releases/<locale>/<id>.yaml`, ilustrações em `site/src/components/changelog/art/`) e mantém a lista técnica completa do `CHANGELOG.md` atrás de um botão de expandir, com as mesmas âncoras. A página publicada carrega os próprios textos e histórias, então o handler da borda que troca o changelog pelo da versão mais nova serve tanto `/changelog/` quanto `/pt-br/changelog/`. Uma versão sem história mostra o resumo e a lista. Como escrever uma ao lançar uma versão: site/README.md, "Release stories".
+
 ## Restrições de design
 
 - A Content-Security-Policy em `site/public/_headers` só permite recursos de mesma origem: sem fontes, scripts, analytics ou embeds externos. Mantenha tudo hospedado por nós.
 - O Cloudflare Pages concatena as regras `_headers` que casam, então um header definido em `/*` não pode ser sobrescrito em um subcaminho; defina `Cache-Control` só em caminhos específicos.
 - `prefers-reduced-motion`: sem rolagem suave, sem ScrollTrigger, sem autoplay de vídeo. Sem JavaScript, a página é HTML estático completo.
+
+## Busca, imagens de compartilhamento e agentes (SEO, OG, AX)
+
+Tudo aqui é gerado no build a partir dos docs e do catálogo de mensagens; nada é listado à mão.
+
+- **Imagens de compartilhamento.** Toda página tem uma imagem Open Graph (PNG 1200x630) por idioma em `/og/<en|pt-br>/<chave>.png` (`home`, `download`, `changelog`, `privacy`, `code-signing-policy`, `docs/<slug>`): o título, um subtítulo de uma linha, o logo, o endereço e as palavras do idioma. `site/src/pages/og/[locale]/[...key].png.ts` renderiza com satori (layout) e sharp (PNG), a partir dos TTFs estáticos do Archivo em `site/src/assets/fonts/`; não há navegador nem captura de tela. As palavras são as mensagens `seo_og_*` mais os títulos das páginas; o card de um doc usa a `description` do doc (inglês) e o título da tradução (pt-BR, só páginas traduzidas). O `Base.astro` aponta cada página para a própria imagem (`og:image`, `twitter:image`, alt = título); uma página que é cópia (uma página de `/pt-br/docs/` sem tradução) usa a imagem da sua página canônica. Para mudar o visual, edite `site/src/lib/og.ts`. Depois de mudar a fonte variável, rode `site/scripts/og-fonts.sh` para refazer os TTFs (precisa de `pip install fonttools brotli`).
+- **Head e dados estruturados.** O `Base.astro` escreve o canonical, o hreflang (nos dois sentidos mais `x-default`, a partir de `alternates`), `og:*` com `og:locale` e `og:locale:alternate`, `twitter:card`, o web manifest e, em toda página, JSON-LD `Organization` + `WebSite` (`inLanguage`). As páginas acrescentam o seu pela prop `jsonLd`: `SoftwareApplication` na home e no download, `BreadcrumbList` + `TechArticle` nos docs (`dateModified` é a data do último commit git do arquivo mostrado, omitida quando o git não tem histórico). Construtores: `site/src/lib/seo.ts`. A 404 é `noindex` e não tem canonical. O `robots.txt` permite tudo, inclusive crawlers de IA, de propósito; o sitemap lista toda tradução real com alternativas `xhtml:link`.
+- **Markdown para agentes.** Todo doc também é markdown puro em `/docs/<slug>.md` e `/pt-br/docs/<slug>.md` (a tradução, quando existe), com os links relativos tornados absolutos (`site/src/lib/markdown.ts`) e anunciado por `<link rel="alternate" type="text/markdown">`. No edge, `GET /docs/<slug>/` com `Accept: text/markdown` (citado, e acima de `text/html` ou antes dele) responde com o mesmo markdown e `Vary: Accept` (`site/functions/_lib/negotiate.ts`, `site/functions/docs/[[path]].ts`); navegadores e `*/*` continuam recebendo HTML. O redirecionamento de idioma nunca vale para um pedido de markdown.
+- **`llms.txt`.** `/llms.txt` (índice com o posicionamento e o link `.md` de cada página), `/llms-full.txt` (todos os docs em inglês num arquivo só) e `/pt-br/llms.txt` (as páginas traduzidas) são gerados a partir de `docs/_nav.json` por `site/src/lib/llms.ts`. Ficam em inglês por política (são para máquinas). O `_headers` define os content types.
 
 ## Deploy (mantenedores)
 

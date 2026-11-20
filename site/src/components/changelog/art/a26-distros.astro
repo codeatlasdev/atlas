@@ -1,0 +1,60 @@
+---
+// Labels: heading, arch, fedora, ubuntu, debian, opens, file, bad, withdrawn, safe
+// Moment: the four distro tiles light up in turn, each with its "opens" check; the withdrawn tag follows.
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const distros = [labels.arch, labels.fedora, labels.ubuntu, labels.debian];
+---
+<div class="art art-a26-distros" role="img" aria-label={alt}>
+	<p class="heading">{labels.heading}</p>
+	<div class="tiles">
+		{distros.map((d, i) => (
+			<div class="tile" style={`--i:${i}`}>
+				<div class="win"><span class="tb"></span><span class="l"></span><span class="l s"></span></div>
+				<strong>{d}</strong>
+				<p class="opens">
+					<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" /><path d="M6.5 12.5l3.8 3.8 7.2-8" /></svg>
+					{labels.opens}
+				</p>
+			</div>
+		))}
+	</div>
+	<div class="yank">
+		<code class="file">{labels.file}</code>
+		<p class="flow">
+			<span class="ver bad">{labels.bad}</span>
+			<span class="tag">{labels.withdrawn}</span>
+			<span class="arrow" aria-hidden="true">→</span>
+			<span class="ver ok">{labels.safe}</span>
+		</p>
+	</div>
+</div>
+<style>
+	.art { display: grid; gap: 1rem; color: var(--ink); font-family: var(--font); }
+	.heading { margin: 0; font-weight: 700; font-size: 0.95rem; }
+	.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: 0.6rem; }
+	.tile { background: var(--white); border: 1.5px solid var(--ink); padding: 0.6rem; display: grid; gap: 0.45rem; justify-items: start; }
+	.win { width: 100%; height: 2.6rem; border: 1.5px solid var(--ink); background: var(--paper); padding: 0.25rem; display: grid; align-content: start; gap: 0.2rem; }
+	.tb { display: block; height: 0.35rem; background: var(--ink); }
+	.l { display: block; height: 0.25rem; background: var(--blue); }
+	.l.s { width: 55%; background: var(--ink-2); }
+	.tile strong { font-size: 0.95rem; }
+	.opens { margin: 0; display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+	.opens svg { flex: none; width: 1.1rem; height: 1.1rem; }
+	.opens circle { fill: var(--go); stroke: var(--ink); stroke-width: 1.5; }
+	.opens path { fill: none; stroke: var(--ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+	.yank { border: 1.5px dashed var(--ink-2); padding: 0.6rem 0.8rem; display: grid; gap: 0.5rem; }
+	.file { justify-self: start; font-family: var(--mono); font-size: 0.85rem; padding: 0.15rem 0.45rem; background: var(--paper); border: 1px solid var(--paper-line); }
+	.flow { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+	.ver { font-family: var(--mono); font-size: 0.85rem; padding: 0.15rem 0.45rem; border: 1.5px solid var(--ink); background: var(--white); }
+	.ver.bad { text-decoration: line-through; text-decoration-thickness: 2px; }
+	.tag { font-size: 0.8rem; font-weight: 700; padding: 0.15rem 0.5rem; background: var(--wait); border: 1.5px solid var(--ink); }
+	@keyframes a26ds-light { from { opacity: 0.45; background: var(--paper); } to { opacity: 1; } }
+	@keyframes a26ds-pop { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: none; } }
+	@keyframes a26ds-tag { from { opacity: 0; transform: translateY(0.3rem); } to { opacity: 1; transform: none; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .tile { animation: a26ds-light 0.3s calc(var(--i) * 0.25s) ease-out both; }
+		:global(html.js) .art.play .tile .opens svg { animation: a26ds-pop 0.25s calc(var(--i) * 0.25s + 0.1s) cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+		:global(html.js) .art.play .tag { animation: a26ds-tag 0.3s 1.15s ease-out both; }
+	}
+</style>

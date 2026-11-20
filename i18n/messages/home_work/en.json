@@ -1,0 +1,20 @@
+{
+	"home_work_agents_lead": "Each task gets its own worktree: a separate copy of the code on its own branch, with its own ports, and a terminal that keeps running if you close the app. You see who is working, who needs you and who is done.",
+	"home_work_agents_more": "Review the diff, comment on a line, send it back. Works with Claude Code, Codex and omp. {#link}Agents in Atlas{/link}.",
+	"home_work_agents_shot_alt": "Atlas Desktop with a project's worktrees in the sidebar, an agent's terminal open in one of them",
+	"home_work_agents_title": "Three agents on one project, none in another's way.",
+	"home_work_branches_alt": "main branches into three agent worktrees, each with its own ports",
+	"home_work_mcp_lead": "Atlas gives agents a direct line to the running project. Instead of asking you to paste an error, the agent checks the status, searches the logs and restarts a service, and anything destructive still waits for your approval.",
+	"home_work_mcp_more": "It speaks MCP, the open standard agents use for tools. One command connects it: {#code}atlas setup claude-code --apply{/code}. {#link}The tools{/link}.",
+	"home_work_mcp_title": "Your agent sees what you see.",
+	"home_work_ports": "ports +{n}",
+	"home_work_stack_lead": "Database, API, web app, workers: describe them once in {#code}atlas.yaml{/code}, and {#code}atlas dev{/code} starts them in the right order, waits until each one is healthy and restarts what crashes. No {#code}atlas.yaml{/code} yet? Atlas reads the project and works without one.",
+	"home_work_stack_more": "One panel shows the health, logs and resource use of every service, and a service that fails says why. {#link}The atlas.yaml reference{/link}.",
+	"home_work_stack_title": "Your whole project starts with one command.",
+	"home_work_tx_agent": "agent",
+	"home_work_tx_answer": "Stripe was timing out at 5s. The worker restarted and is healthy.",
+	"home_work_tx_caption": "An example session. The tool names are the real ones.",
+	"home_work_tx_offer": "The retry in {file} needs a jitter. Want a patch?",
+	"home_work_tx_question": "why is checkout returning 504?",
+	"home_work_tx_you": "you"
+}

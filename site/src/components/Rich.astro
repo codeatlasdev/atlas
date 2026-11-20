@@ -1,0 +1,11 @@
+---
+// One message with markup, drawn whole: <Rich parts={m.key.parts({ n })} tags={{ code: "code", link: { el: "a", attrs: { href } } }} />
+import { richHtml, type RichTag } from "../lib/rich";
+import type { MessagePart } from "../lib/paraglide/runtime.js";
+interface Props {
+	parts: MessagePart[];
+	tags: Record<string, RichTag>;
+}
+const { parts, tags } = Astro.props;
+---
+<Fragment set:html={richHtml(parts, tags)} />

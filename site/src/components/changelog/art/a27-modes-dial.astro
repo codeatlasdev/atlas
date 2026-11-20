@@ -1,0 +1,54 @@
+---
+// Labels: working, modes_title, ask, edits, bypass, rails_title, rail_keys, rail_tasks
+// Moment: the selector thumb slides from Ask to Accept edits (the resting state is Accept edits).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+---
+<div class="art art-a27-modes-dial" role="img" aria-label={alt}>
+	<div class="head"><span class="dot"></span><span>{labels.working}</span></div>
+	<div class="mode-title">{labels.modes_title}</div>
+	<div class="track">
+		<span class="thumb part"></span>
+		<span class="seg was part">{labels.ask}</span>
+		<span class="seg on part">{labels.edits}</span>
+		<span class="seg"><i class="amber"></i>{labels.bypass}</span>
+	</div>
+	<div class="rails">
+		<div class="rails-title">
+			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1.5"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+			<span>{labels.rails_title}</span>
+		</div>
+		<ul>
+			<li><code>.git</code></li>
+			<li><code>.env*</code></li>
+			<li>{labels.rail_keys}</li>
+			<li>{labels.rail_tasks}</li>
+		</ul>
+	</div>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.75rem; font-family: var(--font); color: var(--ink); }
+	.head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: var(--ink-2); }
+	.dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--go); border: 1px solid var(--ink); flex: none; }
+	.mode-title { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+	.track { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); padding: 0.25rem; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--paper); }
+	.thumb { position: absolute; top: 0.25rem; bottom: 0.25rem; left: calc(0.25rem + (100% - 0.5rem) / 3); width: calc((100% - 0.5rem) / 3); border-radius: 999px; background: var(--blue); }
+	.seg { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 2.6rem; padding: 0.3rem 0.4rem; text-align: center; font-size: 0.9rem; font-weight: 600; line-height: 1.15; color: var(--ink); }
+	.seg.on { color: var(--white); }
+	.amber { flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--wait); border: 1px solid var(--ink); }
+	.rails { background: var(--ink); color: var(--white); border-radius: 0.5rem; padding: 0.85rem 1rem; display: grid; gap: 0.6rem; }
+	.rails-title { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; font-weight: 700; }
+	.rails ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+	.rails li { border: 1px solid rgb(255 255 255 / 0.5); border-radius: 999px; padding: 0.2rem 0.65rem; font-size: 0.85rem; }
+	.art .rails li code { font-family: var(--mono); font-size: 0.85rem; color: inherit; background: none; padding: 0; }
+
+	@keyframes slide { from { transform: translateX(-100%); } }
+	@keyframes from-white { from { color: var(--white); } }
+	@keyframes from-ink { from { color: var(--ink); } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .thumb { animation: slide 0.7s cubic-bezier(0.5, 0, 0.2, 1) 0.3s both; }
+		:global(html.js) .art.play .seg.was { animation: from-white 0.7s linear 0.3s both; }
+		:global(html.js) .art.play .seg.on { animation: from-ink 0.7s linear 0.3s both; }
+	}
+</style>

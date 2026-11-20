@@ -1,6 +1,6 @@
 // Landing page choreography. Everything here is skipped under prefers-reduced-motion, where the HTML and CSS
 // already render every final state (no hidden content, no scrub, no autoplay).
-import { gsap, ScrollTrigger, reduced, touch, startScroll, stopScroll, scroller, riseHeadings } from "./motion";
+import { gsap, ScrollTrigger, reduced, touch, startScroll, stopScroll, riseHeadings } from "./motion";
 
 const doc = document.documentElement;
 const $$ = <T extends Element>(s: string) => [...document.querySelectorAll<T>(s)];
@@ -81,17 +81,7 @@ const clipIO = new IntersectionObserver(
 const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData === true;
 if (!calm && !saveData) clips.forEach((v) => clipIO.observe(v));
 
-// Log rivers and other continuous CSS animation only run while on screen and while the tab is visible.
-const rivers = $$<HTMLElement>("[data-river], [data-fast]");
-const riverState = new Set<Element>();
-const syncRivers = () => doc.classList.toggle("river-on", !document.hidden && riverState.size > 0);
-const riverIO = new IntersectionObserver((entries) => {
-	entries.forEach((e) => (e.isIntersecting ? riverState.add(e.target) : riverState.delete(e.target)));
-	syncRivers();
-});
-if (!calm) rivers.forEach((r) => riverIO.observe(r));
 const onVis = () => {
-	syncRivers();
 	if (document.hidden) clips.forEach((v) => v.pause());
 };
 document.addEventListener("visibilitychange", onVis);
@@ -104,40 +94,6 @@ if (!calm) {
 	// as short reveals when the element enters the viewport.
 	const native = touch();
 	const once = (trigger: Element, start = "top 85%") => ({ trigger, start, once: true });
-
-	// Terminal window slides in from the right edge as it enters.
-	$$<HTMLElement>("[data-slide]").forEach((el) => {
-		if (native) return;
-		gsap.fromTo(el, { xPercent: 14 }, { xPercent: 0, ease: "none", scrollTrigger: { trigger: el, start: "top 95%", end: "top 40%", scrub: 0.6 } });
-	});
-
-	// Spaces: the sidebar peeks from the window edge, the way the real peek works. A mask slides over the sidebar strip.
-	$$<HTMLElement>("[data-peek]").forEach((stage) => {
-		const cover = document.createElement("div");
-		cover.className = "peekcover";
-		cover.setAttribute("aria-hidden", "true");
-		stage.querySelector(".win")?.append(cover);
-		gsap.fromTo(
-			cover,
-			{ xPercent: 0 },
-			native
-				? { xPercent: -100, duration: 0.9, ease: "power3.inOut", delay: 0.25, scrollTrigger: once(stage, "top 75%") }
-				: { xPercent: -100, ease: "none", scrollTrigger: { trigger: stage, start: "top 85%", end: "top 35%", scrub: 0.5 } },
-		);
-	});
-
-	// Panel: the chapter holds the screen while the camera pushes into the charts (wide, fine-pointer screens only).
-	// On touch the push-in plays once when the chart enters.
-	$$<HTMLElement>("[data-zoom]").forEach((box) => {
-		const win = box.querySelector(".win");
-		const chapter = box.closest<HTMLElement>(".screen")!;
-		gsap.to(
-			win,
-			native
-				? { scale: 1.3, duration: 2.2, ease: "power2.inOut", delay: 0.3, scrollTrigger: once(box, "top 70%") }
-				: { scale: 1.55, ease: "none", scrollTrigger: { trigger: chapter, start: "top top", end: "+=70%", scrub: 0.7, pin: true, anticipatePin: 1 } },
-		);
-	});
 
 	// Agents: branches draw one by one (pinned scrub on desktop, one timed draw on touch).
 	$$<SVGElement>("[data-branches]").forEach((box) => {
@@ -156,17 +112,25 @@ if (!calm) {
 		});
 	});
 
-	// Logs river speeds up with scroll velocity, then settles.
-	const lenis = scroller();
-	const fast = document.querySelector<HTMLElement>("[data-fast] .strip");
-	if (lenis && fast) {
-		const anim = fast.getAnimations()[0];
-		lenis.on("scroll", ({ velocity }: { velocity: number }) => {
-			if (!anim) return;
-			const target = 1 + Math.min(Math.abs(velocity) * 0.35, 6);
-			gsap.to(anim, { playbackRate: target, duration: 0.25, overwrite: true, onComplete: () => void gsap.to(anim, { playbackRate: 1, duration: 1.2 }) });
-		});
-	}
+	// The idea: the four stations come in along the route, left to right, the way the voyage reads. Once, when the route enters.
+	$$<HTMLElement>("[data-route]").forEach((route) => {
+		const tl = gsap.timeline({ scrollTrigger: once(route, "top 80%") });
+		tl.from(route.querySelector(".sea"), { opacity: 0, duration: 0.5 });
+		tl.from(route.querySelectorAll(".st"), { opacity: 0, y: 18, duration: 0.5, stagger: 0.18, ease: "power2.out" }, 0.1);
+	});
+
+	// The night: each step lights up in time order, and the question that waits for you settles last.
+	$$<HTMLElement>("[data-night]").forEach((fig) => {
+		const steps = fig.querySelectorAll(".nt");
+		const tl = gsap.timeline({ scrollTrigger: once(fig, "top 78%") });
+		tl.from(steps, { opacity: 0, x: -12, duration: 0.45, stagger: 0.35, ease: "power2.out" });
+		tl.from(fig.querySelector(".badge"), { scale: 0.6, opacity: 0, duration: 0.35, ease: "back.out(2)" }, 0.35 * 2 + 0.2);
+	});
+
+	// Grand Line: the routes between the islands appear one after the other.
+	$$<SVGElement>("[data-ocean]").forEach((sea) => {
+		gsap.from(sea.querySelectorAll(".routes path"), { opacity: 0, duration: 0.6, stagger: 0.25, scrollTrigger: once(sea.closest("section")!, "top 70%") });
+	});
 
 	// MCP transcript types in once.
 	$$<HTMLElement>("[data-type] code").forEach((code) => {
@@ -206,7 +170,6 @@ addEventListener(
 	() => {
 		stopScroll();
 		clipIO.disconnect();
-		riverIO.disconnect();
 		document.removeEventListener("visibilitychange", onVis);
 		removeEventListener("scroll", inkUnderBar);
 		ScrollTrigger.getAll().forEach((t) => t.kill());

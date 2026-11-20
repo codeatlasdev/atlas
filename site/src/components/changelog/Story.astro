@@ -1,0 +1,69 @@
+---
+// One release story (src/content/releases/<locale>/<id>.yaml): a human intro, 3 to 6 highlights each with its illustration or a real still/clip,
+// and the short "also" list. Rendered to a string by ChangelogPage.astro and placed in its version's section (functions/_lib/page.ts).
+import Clip from "../Clip.astro";
+import { mediaUrl } from "../../data/landing";
+import { renderInline } from "../../../functions/_lib/changelog";
+import type { Story } from "../../lib/story";
+
+interface Props { story: Story; id: string; alsoLabel: string; artNote: string }
+const { story, id, alsoLabel, artNote } = Astro.props;
+
+// Every art file is a component named by the `art.type` of a highlight.
+const arts = import.meta.glob<{ default: (props: { labels: Record<string, string>; alt: string }) => unknown }>("./art/*.astro", { eager: true });
+const artFor = (type: string) => {
+	const mod = arts[`./art/${type}.astro`];
+	if (!mod) throw new Error(`release story ${id}: no illustration ./art/${type}.astro`);
+	return mod.default;
+};
+---
+<div class="story">
+	<h3 class="story-title">{story.title}</h3>
+	<div class="story-intro" set:html={story.intro.trim().split(/\n{2,}/).map((p) => `<p>${renderInline(p)}</p>`).join("")} />
+	<ol class="hls">
+		{story.highlights.map((h) => {
+			const Art = h.art ? artFor(h.art.type) : null;
+			return (
+				<li class="hl" id={`${id}-${h.id}`}>
+					<h3><a href={`#${id}-${h.id}`}>{h.title}</a></h3>
+					<div class="hl-body" set:html={h.body.trim().split(/\n{2,}/).map((p) => `<p>${renderInline(p)}</p>`).join("")} />
+					{Art && h.art && (
+						<figure class="hl-fig">
+							<div class="hl-card"><Art labels={h.art.labels} alt={h.art.alt} /></div>
+							<figcaption>{h.art.caption ?? artNote}</figcaption>
+						</figure>
+					)}
+					{h.media && (
+						<figure class="hl-fig hl-media">
+							{"clip" in h.media ? <Clip name={h.media.clip} alt={h.media.alt} /> : <div class="win"><img src={mediaUrl(h.media.still)} alt={h.media.alt} width="1280" height="800" loading="lazy" decoding="async" /></div>}
+						</figure>
+					)}
+				</li>
+			);
+		})}
+	</ol>
+	<div class="story-also">
+		<h3>{alsoLabel}</h3>
+		<ul>{story.also.map((t) => <li set:html={renderInline(t)} />)}</ul>
+	</div>
+</div>
+<style>
+	.story { margin: 0 0 1.4rem; }
+	.story .story-title { font: 800 clamp(1.7rem, 4.4vw, 2.6rem)/1.02 var(--font); font-stretch: 72%; letter-spacing: -0.01em; text-wrap: balance; color: var(--fg); margin: 0.2rem 0 1rem; }
+	.story .story-intro :global(p) { font-size: 1.14rem; line-height: 1.6; color: var(--fg); max-width: 66ch; margin: 0 0 0.9rem; text-wrap: pretty; }
+	.hls { list-style: none; margin: 2.2rem 0 0; padding: 0; display: grid; gap: 2.8rem; counter-reset: hl; }
+	.hl { counter-increment: hl; min-width: 0; scroll-margin-top: 5rem; }
+	.story .hl h3 { margin: 0 0 0.5rem; font: 800 clamp(1.3rem, 3vw, 1.7rem)/1.1 var(--font); font-stretch: 78%; text-wrap: balance; }
+	.story .hl h3::before { content: counter(hl, decimal-leading-zero); display: block; font: 600 0.78rem/1 var(--mono); letter-spacing: 0.08em; color: var(--blue); margin-bottom: 0.55rem; }
+	.story .hl h3 a { text-decoration: none; color: var(--fg); }
+	.story .hl-body :global(p) { max-width: 62ch; margin: 0 0 0.7rem; font-size: 1.05rem; line-height: 1.62; text-wrap: pretty; }
+	.hl-fig { margin: 1.1rem 0 0; max-width: 44rem; }
+	.hl-card { background: var(--white); border: 1.5px solid var(--ink); padding: 1.25rem; min-width: 0; overflow: hidden; }
+	.hl-fig figcaption { margin-top: 0.5rem; font-size: 0.85rem; line-height: 1.4; color: var(--fg-2); }
+	.hl-media { max-width: 44rem; }
+	.story-also { margin-top: 2.6rem; padding-top: 1.1rem; border-top: 1.5px solid var(--paper-line); }
+	.story .story-also h3 { margin: 0 0 0.6rem; font: 800 1.05rem/1.2 var(--font); font-stretch: 85%; }
+	.story-also ul { margin: 0; padding-left: 1.2rem; max-width: 66ch; }
+	.story .story-also :global(li) { margin: 0.4rem 0; font-size: 0.98rem; line-height: 1.55; }
+	@media (max-width: 760px) { .hls { gap: 2.4rem; } .hl-card { padding: 0.9rem; } }
+</style>

@@ -1,0 +1,455 @@
+---
+// The landing page, in every language (thin wrappers: src/pages/index.astro and src/pages/pt-br/index.astro). One idea per chapter, in
+// the order a newcomer needs them: what Atlas is for (hero), the picture that explains it (map, ships, crew, captain), Atlas Crew, then
+// what you use on your own computer (agents, projects, context), the quality we treat as the floor, where it is going (Grand Line), the
+// questions, and the install. Every word is a message (i18n/messages/home_*); illustrations are coded SVG, motion lives in lib/page.ts.
+import Base from "../../layouts/Base.astro";
+import Hero from "../Hero.astro";
+import Rail from "../Rail.astro";
+import Clip from "../Clip.astro";
+import Rich from "../Rich.astro";
+import DownloadLinks from "../DownloadLinks.astro";
+import StackVisualizer from "../islands/StackVisualizer.svelte";
+import InstallCopy from "../islands/InstallCopy.svelte";
+import Waitlist from "../islands/Waitlist.svelte";
+import { homeJsonLd, mediaUrl } from "../../data/landing";
+import { SITE } from "../../data/site";
+import { m } from "../../lib/paraglide/messages.js";
+import { alternatesOf, docPath, localeOfAstro, localizePath, platformList } from "../../lib/i18n";
+import type { RichTag } from "../../lib/rich";
+
+const locale = localeOfAstro(Astro.currentLocale);
+const platforms = platformList(locale);
+const doc = (slug: string, hash = "") => `${docPath(slug, locale)}${hash}`;
+const ln = (href: string): RichTag => ({ el: "a", attrs: { class: "ln", href, ...(href.startsWith("http") ? { rel: "noopener" } : {}) } });
+const code = { code: "code" };
+const os = { mac: "macOS", windows: "Windows" };
+
+// `plain` is the answer without markup (JSON-LD); `parts`/`tags` draw it on the page when it has code spans or links.
+type Qa = { q: string; plain: string; parts?: ReturnType<typeof m.home_faq_agents_a.parts>; tags?: Record<string, RichTag> };
+const faq: Qa[] = [
+	{ q: m.home_faq_what_q(), plain: m.home_faq_what_a() },
+	{ q: m.home_faq_install_q(), plain: m.home_faq_install_a(os), parts: m.home_faq_install_a.parts(os), tags: { ...code, link: ln(localizePath("/download/", locale)) } },
+	{ q: m.home_faq_cost_q(), plain: m.home_faq_cost_a() },
+	{ q: m.home_faq_who_q(), plain: m.home_faq_who_a() },
+	{ q: m.home_faq_agents_q(), plain: m.home_faq_agents_a(), parts: m.home_faq_agents_a.parts(), tags: code },
+	{ q: m.home_faq_privacy_q(), plain: m.home_faq_privacy_a(), parts: m.home_faq_privacy_a.parts(), tags: code },
+	{ q: m.home_faq_quit_q(), plain: m.home_faq_quit_a() },
+	{ q: m.home_faq_signed_q(), plain: m.home_faq_signed_a(os), parts: m.home_faq_signed_a.parts(os), tags: code },
+	{ q: m.home_faq_compare_q(), plain: m.home_faq_compare_a() },
+];
+const jsonLd = homeJsonLd(m.home_hero_meta_description(), faq.map((f) => ({ q: f.q, a: f.plain })));
+
+const stations = [
+	{ id: "map", title: m.home_idea_map(), text: m.home_idea_map_text() },
+	{ id: "ships", title: m.home_idea_ships(), text: m.home_idea_ships_text() },
+	{ id: "crew", title: m.home_idea_crew(), text: m.home_idea_crew_text() },
+	{ id: "captain", title: m.home_idea_captain(), text: m.home_idea_captain_text() },
+];
+const night = [
+	{ time: "22:00", text: m.home_crew_step_leave(), kind: "leave" },
+	{ time: "01:30", text: m.home_crew_step_work(), kind: "work" },
+	{ time: "03:10", text: m.home_crew_step_ask(), kind: "ask" },
+	{ time: "07:00", text: m.home_crew_step_approve(), kind: "done" },
+];
+const facts = [
+	{ title: m.home_crew_modes(), text: m.home_crew_modes_text() },
+	{ title: m.home_crew_auto(), text: m.home_crew_auto_text() },
+	{ title: m.home_crew_yours(), text: m.home_crew_yours_text() },
+];
+const floor = [
+	{ title: m.home_floor_app(), text: m.home_floor_app_text({ platforms }) },
+	{ title: m.home_floor_term(), text: m.home_floor_term_text(), more: { href: doc("terminal", "#performance"), label: m.home_floor_numbers() } },
+	{ title: m.home_floor_survive(), text: m.home_floor_survive_text() },
+	{ title: m.home_floor_local(), text: m.home_floor_local_text() },
+	{ title: m.home_floor_cli(), parts: m.home_floor_cli_text.parts() },
+	{ title: m.home_floor_lang(), text: m.home_floor_lang_text() },
+	{ title: m.home_floor_open(), text: m.home_floor_open_text() },
+];
+const now = [m.home_grand_now_map(), m.home_grand_now_agents(), m.home_grand_now_crew(), m.home_grand_now_approve()];
+const next = [m.home_grand_next_phone(), m.home_grand_next_company(), m.home_grand_next_teach(), m.home_grand_next_trust()];
+---
+<Base title={m.home_hero_meta_title()} description={m.home_hero_meta_description()} jsonLd={jsonLd} alternates={alternatesOf("/")}>
+	<Rail slot="rail" />
+	<Hero />
+
+	<!-- THE IDEA: paper. The picture the rest of the page leans on. -->
+	<section id="idea" class="sec on-paper idea screen" data-sec="idea" data-ground="paper">
+		<div class="wrap">
+			<h2 class="display rise">{m.home_idea_title()}</h2>
+			<p class="lead">{m.home_idea_lead()}</p>
+			<ol class="route" data-route>
+				<svg class="sea" viewBox="0 0 1000 40" preserveAspectRatio="none" aria-hidden="true"><path d="M0 20 C 80 2, 170 38, 250 20 S 420 2, 500 20 S 670 38, 750 20 S 920 2, 1000 20" pathLength="1" /></svg>
+				{stations.map((s) => (
+					<li class={`st st-${s.id}`}>
+						<svg class="pic" viewBox="0 0 64 64" aria-hidden="true">
+							{s.id === "map" && <g><path d="M8 16 24 10l16 6 16-6v38l-16 6-16-6-16 6z" /><path d="M24 10v38M40 16v38" /><path class="mk" d="M30 30c3-4 8-3 10 1" /><circle class="mk" cx="44" cy="34" r="2.5" /></g>}
+							{s.id === "ships" && <g><path d="M8 40h48l-6 10H14z" /><path d="M32 12v26" /><path d="M32 14l14 20H32z" /><path d="M30 18 18 34h12z" /><path class="mk" d="M4 56c6-4 10 4 16 0s10 4 16 0 10 4 16 0 8 3 8 3" /></g>}
+							{s.id === "crew" && <g><circle cx="16" cy="22" r="6" /><circle cx="32" cy="18" r="6" /><circle cx="48" cy="22" r="6" /><path d="M6 46c0-8 4-14 10-14s10 6 10 14M22 42c0-9 4-15 10-15s10 6 10 15M38 46c0-8 4-14 10-14s10 6 10 14" /></g>}
+							{s.id === "captain" && <g><circle cx="32" cy="32" r="16" /><circle cx="32" cy="32" r="5" /><path d="M32 8v11M32 45v11M8 32h11M45 32h11M15 15l8 8M41 41l8 8M49 15l-8 8M23 41l-8 8" /><circle class="mk" cx="32" cy="32" r="1.5" /></g>}
+						</svg>
+						<h3>{s.title}</h3>
+						<p>{s.text}</p>
+					</li>
+				))}
+			</ol>
+		</div>
+	</section>
+
+	<!-- ATLAS CREW: deep night, the timeline is the scene -->
+	<section id="crew" class="sec on-deep crew screen" data-sec="crew">
+		<div class="wrap">
+			<div class="phead">
+				<h2 class="display rise">{m.home_crew_title()}</h2>
+				<p class="lead">{m.home_crew_lead()}</p>
+			</div>
+			<figure class="night" data-night>
+				<figcaption>{m.home_crew_night()}</figcaption>
+				<ol>
+					{night.map((n) => (
+						<li class={`nt nt-${n.kind}`}>
+							<time>{n.time}</time>
+							<i class="dot" aria-hidden="true"></i>
+							<p>{n.text}{n.kind === "ask" && <span class="badge">{m.home_crew_step_ask_badge()}</span>}</p>
+						</li>
+					))}
+				</ol>
+			</figure>
+			<dl class="facts">
+				{facts.map((f) => (<div><dt>{f.title}</dt><dd>{f.text}</dd></div>))}
+			</dl>
+			<p class="more"><a class="ln" href={doc("crew")}>{m.home_crew_more()}</a></p>
+		</div>
+	</section>
+
+	<!-- AGENTS: cobalt, branches draw -->
+	<section id="agents" class="sec agents screen" data-sec="agents">
+		<div class="wrap">
+			<div class="phead">
+				<h2 class="display rise">{m.home_work_agents_title()}</h2>
+				<div class="pcopy">
+					<p class="lead">{m.home_work_agents_lead()}</p>
+					<p class="prose-sm"><Rich parts={m.home_work_agents_more.parts()} tags={{ link: ln(doc("agents")) }} /></p>
+				</div>
+			</div>
+			<div class="ag">
+				<div class="branches" data-branches>
+					<svg viewBox="0 0 520 360" role="img" aria-label={m.home_work_branches_alt()}>
+						<path class="trunk" d="M30 20 V340" pathLength="1" />
+						<g class="b" data-b="0"><path d="M30 70 H470" pathLength="1" /><circle cx="30" cy="70" r="6" /><text x="160" y="58">checkout-shipping</text><text x="160" y="92" class="po">{m.home_work_ports({ n: "100" })}</text></g>
+						<g class="b" data-b="1"><path d="M30 170 H470" pathLength="1" /><circle cx="30" cy="170" r="6" /><text x="160" y="158">fix-stripe-timeout</text><text x="160" y="192" class="po">{m.home_work_ports({ n: "200" })}</text></g>
+						<g class="b" data-b="2"><path d="M30 270 H470" pathLength="1" /><circle cx="30" cy="270" r="6" /><text x="160" y="258">cart-empty-state</text><text x="160" y="292" class="po">{m.home_work_ports({ n: "300" })}</text></g>
+						<text class="mn" x="44" y="14">main</text>
+					</svg>
+				</div>
+				<div class="win shot"><img src={mediaUrl("shot-workspace.jpg")} alt={m.home_work_agents_shot_alt()} width="2000" height="1246" loading="lazy" decoding="async" /></div>
+			</div>
+		</div>
+	</section>
+
+	<!-- PROJECTS: paper, the file you can edit -->
+	<section id="stack" class="sec on-paper file screen" data-sec="stack" data-ground="paper">
+		<div class="wrap">
+			<h2 class="display rise">{m.home_work_stack_title()}</h2>
+			<div class="two">
+				<p class="lead"><Rich parts={m.home_work_stack_lead.parts()} tags={code} /></p>
+				<p class="prose-sm"><Rich parts={m.home_work_stack_more.parts()} tags={{ link: ln(doc("configuration")) }} /></p>
+			</div>
+			<div class="viz"><StackVisualizer client:visible /></div>
+		</div>
+	</section>
+
+	<!-- CONTEXT (MCP): deep, a transcript -->
+	<section id="mcp" class="sec on-deep mcp screen" data-sec="mcp">
+		<div class="wrap">
+			<h2 class="display rise">{m.home_work_mcp_title()}</h2>
+			<div class="mc">
+				<div class="words">
+					<p class="lead">{m.home_work_mcp_lead()}</p>
+					<p class="prose-sm"><Rich parts={m.home_work_mcp_more.parts()} tags={{ ...code, link: ln(doc("mcp")) }} /></p>
+				</div>
+				<figure class="tx" data-type>
+					<figcaption>{m.home_work_tx_caption()}</figcaption>
+					<pre><code><span class="u">{m.home_work_tx_you()}</span>  {m.home_work_tx_question()}
+<span class="a">{m.home_work_tx_agent()}</span> <b>atlas_status</b>
+       api    <i class="g">running</i>  :4100
+       worker <i class="g">running</i>  queue lag 1.2s
+<span class="a">{m.home_work_tx_agent()}</span> <b>atlas_logs_search</b> {"{"} query: "/stripe|504/", service: "api" {"}"}
+       [api:3318] {"{"}"level":50,"msg":"stripe timeout","ms":5000{"}"}
+<span class="a">{m.home_work_tx_agent()}</span> <b>atlas_restart_service</b> {"{"} service: "worker" {"}"}
+<span class="a">{m.home_work_tx_agent()}</span> <b>atlas_wait_ready</b> {"{"} service: "worker", timeout_s: 30 {"}"}
+       worker <i class="g">running</i>  healthy after 2.1s
+<span class="a">{m.home_work_tx_agent()}</span> {m.home_work_tx_answer()}
+       {m.home_work_tx_offer({ file: "src/billing/charge.ts:88" })}</code></pre>
+				</figure>
+			</div>
+		</div>
+	</section>
+
+	<!-- THE BASICS: cobalt, a ruled list beside the terminal -->
+	<section id="floor" class="sec floor screen" data-sec="floor">
+		<div class="wrap">
+			<div class="phead">
+				<h2 class="display rise">{m.home_floor_title()}</h2>
+				<p class="lead">{m.home_floor_lead()}</p>
+			</div>
+			<div class="fl">
+				<dl class="spec">
+					{floor.map((f) => (
+						<div>
+							<dt>{f.title}</dt>
+							<dd>{f.parts ? <Rich parts={f.parts} tags={code} /> : f.text}{f.more && <> <a class="ln" href={f.more.href}>{f.more.label}</a></>}</dd>
+						</div>
+					))}
+				</dl>
+				<div class="winwrap"><Clip name="loop-terminal" ratio="16 / 10" alt="" /></div>
+			</div>
+		</div>
+	</section>
+
+	<!-- GRAND LINE: deep ocean, islands and routes -->
+	<section id="grand" class="sec on-deep grand screen" data-sec="grand">
+		<svg class="ocean" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true" data-ocean>
+			<g class="isl">
+				<path d="M140 180c30-40 110-40 130 0s-20 70-70 70-90-30-60-70z" />
+				<path d="M520 110c40-30 120-20 130 20s-40 60-90 55-80-45-40-75z" />
+				<path d="M930 210c35-45 125-30 130 15s-55 70-100 60-65-40-30-75z" />
+				<path d="M300 500c30-35 110-30 120 10s-45 60-85 55-65-35-35-65z" />
+				<path d="M780 520c40-40 130-30 135 20s-60 65-105 55-70-40-30-75z" />
+			</g>
+			<g class="routes">
+				<path d="M265 215 C 380 150, 450 140, 525 140" pathLength="1" />
+				<path d="M650 140 C 760 150, 860 190, 935 230" pathLength="1" />
+				<path d="M200 250 C 220 360, 250 440, 305 505" pathLength="1" />
+				<path d="M420 520 C 560 560, 680 560, 785 545" pathLength="1" />
+				<path d="M1000 285 C 980 380, 920 450, 860 520" pathLength="1" />
+			</g>
+		</svg>
+		<div class="wrap">
+			<h2 class="display rise">{m.home_grand_title()}</h2>
+			<p class="lead">{m.home_grand_lead()}</p>
+			<div class="lists">
+				<div>
+					<h3>{m.home_grand_now()}</h3>
+					<ul class="now">{now.map((t) => <li>{t}</li>)}</ul>
+				</div>
+				<div>
+					<h3>{m.home_grand_next()}</h3>
+					<ul class="next">{next.map((t) => <li>{t}</li>)}</ul>
+					<p class="prose-sm"><Rich parts={m.home_grand_note.parts()} tags={{ link: ln(SITE.github) }} /></p>
+				</div>
+			</div>
+			<p class="close-line">{m.home_grand_close()}</p>
+		</div>
+	</section>
+
+	<!-- QUESTIONS: paper -->
+	<section id="faq" class="sec on-paper faq" data-sec="faq" data-ground="paper">
+		<div class="wrap fq">
+			<div class="fh">
+				<h2 class="display rise">{m.home_faq_title()}</h2>
+			</div>
+			<div class="items">
+				{faq.map((f) => (
+					<details>
+						<summary>{f.q}</summary>
+						<p>{f.parts ? <Rich parts={f.parts} tags={f.tags ?? {}} /> : f.plain}</p>
+					</details>
+				))}
+			</div>
+		</div>
+	</section>
+
+	<section id="join" class="sec close screen" data-sec="join" aria-labelledby="close-h">
+		<div class="wrap">
+			<h2 id="close-h" class="display rise">{m.home_faq_join_title()}</h2>
+			<div class="cw">
+				<InstallCopy client:visible cmd={SITE.install} winCmd={SITE.installWindows} />
+				<div class="ctas">
+					<DownloadLinks />
+				</div>
+				<p class="fine"><Rich parts={m.home_faq_join_fine.parts({ platforms })} tags={{ link: ln(localizePath("/download/", locale)), link2: ln(doc("installation", "#build-from-source")) }} /></p>
+				<div class="notes">
+					<p class="notes-h">{m.home_faq_notes_title()}</p>
+					<Waitlist client:visible variant="close" />
+					<p class="fine"><Rich parts={m.home_faq_notes_fine.parts()} tags={{ link: ln(SITE.github) }} /></p>
+				</div>
+			</div>
+		</div>
+	</section>
+</Base>
+
+<script>
+	// Text and the board are already painted from static HTML; load GSAP + Lenis right after the first frame.
+	const boot = () => import("../../lib/page");
+	if ("requestIdleCallback" in window) requestIdleCallback(boot, { timeout: 600 });
+	else setTimeout(boot, 120);
+</script>
+
+<style>
+	/* One idea per screen. svh/dvh so the iOS URL bar never moves the layout. */
+	.screen { min-height: 100vh; min-height: 100svh; padding: clamp(4.6rem, 10svh, 6.4rem) 0 clamp(2rem, 6svh, 4rem); display: grid; align-content: center; }
+	section :global(.rise) { max-width: 20ch; font-size: clamp(2rem, min(4.6vw, 8svh), 4.4rem); text-wrap: balance; }
+	.lead { max-width: 52ch; font-size: clamp(1.05rem, min(1.4vw, 2.6svh), 1.3rem); margin: clamp(0.8rem, 2svh, 1.4rem) 0 0; }
+	.phead { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: clamp(1.2rem, 4vw, 4rem); align-items: end; }
+	.phead .lead { margin: 0; }
+	.pcopy { display: grid; gap: 0.8rem; }
+	.words { display: grid; gap: 1rem; align-content: start; }
+	.prose-sm :global(code), .lead :global(code), dd :global(code), details :global(code) { font-size: 0.88em; }
+	dd :global(code) { white-space: nowrap; }
+
+	/* the idea: four stations on one sea route */
+	.route { position: relative; list-style: none; margin: clamp(1.6rem, 5svh, 3.4rem) 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(1rem, 3vw, 2.6rem); }
+	.sea { position: absolute; left: 4%; right: 4%; top: 30px; width: 92%; height: 40px; overflow: visible; }
+	.sea path { fill: none; stroke: var(--ink); stroke-width: 2; stroke-dasharray: 0.012 0.008; opacity: 0.5; vector-effect: non-scaling-stroke; }
+	.st { position: relative; display: grid; gap: 0.5rem; align-content: start; }
+	.pic { width: 96px; height: 96px; padding: 12px; background: var(--paper); border: 2px solid var(--ink); border-radius: 50%; overflow: visible; }
+	.pic g { fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+	.pic .mk { stroke: var(--blue); }
+	.st-captain .pic { background: var(--ink); }
+	.st-captain .pic g { stroke: var(--paper); }
+	.st-captain .pic .mk { stroke: var(--wait); }
+	.st h3 { margin: 0.6rem 0 0; font-weight: 800; font-stretch: 75%; font-size: clamp(1.4rem, 2.2vw, 1.9rem); line-height: 1; }
+	.st p { margin: 0; color: var(--ink-2); max-width: 30ch; line-height: 1.5; }
+
+	/* crew: the night */
+	.night { margin: clamp(1.6rem, 5svh, 3rem) 0 0; }
+	.night figcaption { font-weight: 700; color: var(--fg-2); margin-bottom: 1rem; }
+	.night ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: relative; }
+	.night ol::before { content: ""; position: absolute; left: 0; right: 0; top: 2.45rem; height: 2px; background: linear-gradient(90deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.85)); }
+	.nt { display: grid; gap: 0.7rem; align-content: start; padding-right: clamp(0.8rem, 2vw, 2rem); }
+	.nt time { font: 600 1rem var(--mono); color: var(--fg-2); font-variant-numeric: tabular-nums; }
+	.nt .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--blue-deep); border: 2px solid var(--white); position: relative; z-index: 1; }
+	.nt-ask .dot { border-color: var(--wait); background: var(--wait); }
+	.nt-done .dot { border-color: var(--go); background: var(--go); }
+	.nt p { margin: 0; font-size: 1.05rem; line-height: 1.5; max-width: 30ch; }
+	.badge { display: block; width: max-content; margin-top: 0.6rem; padding: 0.25rem 0.55rem; border-radius: 3px; background: var(--wait); color: var(--ink); font-weight: 700; font-size: 0.85rem; }
+	.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1rem, 3vw, 2.4rem); margin: clamp(1.8rem, 5svh, 3rem) 0 0; }
+	.facts div { border-top: 1px solid var(--blue-line); padding-top: 0.9rem; }
+	.facts dt { font-weight: 800; font-stretch: 85%; font-size: 1.15rem; }
+	.facts dd { margin: 0.4rem 0 0; color: var(--fg-2); line-height: 1.55; }
+	.more { margin: 1.6rem 0 0; font-weight: 700; }
+
+	/* agents */
+	.ag { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr); gap: clamp(1.5rem, 4vw, 4rem); margin-top: clamp(1rem, 3svh, 2.2rem); align-items: center; }
+	.branches svg { width: 100%; height: auto; max-height: 50svh; overflow: visible; }
+	.branches path { fill: none; stroke: var(--white); stroke-width: 3; stroke-dasharray: 1; stroke-dashoffset: 0; }
+	.branches .trunk { stroke-width: 4; }
+	.branches circle { fill: var(--blue); stroke: var(--white); stroke-width: 3; }
+	.branches text { fill: var(--white); font: 700 17px var(--font); font-stretch: 85%; }
+	.branches .po, .branches .mn { font: 500 13px var(--mono); fill: var(--wait); }
+	.branches .mn { fill: var(--white); }
+	.shot img { display: block; width: 100%; height: auto; max-height: 56svh; object-fit: cover; object-position: top left; }
+
+	/* projects (paper) */
+	.file .two { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: clamp(1rem, 4vw, 3rem); align-items: start; }
+	.file .two .prose-sm { margin-top: clamp(0.8rem, 2svh, 1.4rem); }
+	.file .viz { margin-top: clamp(1rem, 3svh, 2rem); }
+	.file :global(.node) { padding: 0.4rem 0.7rem; }
+	.file :global(textarea) { min-height: 0; height: min(22rem, 30svh); }
+
+	/* context (mcp) */
+	.mc { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(1.5rem, 4vw, 4rem); margin-top: clamp(1rem, 3svh, 2.2rem); align-items: start; }
+	.mc .lead { margin: 0; }
+	.tx { margin: 0; background: #070e4f; color: #eef0ff; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px var(--blue-line); }
+	.tx figcaption { padding: 0.6rem 1rem; font-size: 0.85rem; font-weight: 600; border-bottom: 1px solid rgb(255 255 255 / 0.18); color: rgb(255 255 255 / 0.78); }
+	.tx pre { margin: 0; padding: 1rem 1.1rem 1.2rem; font-size: clamp(0.66rem, min(1vw, 1.9svh), 0.84rem); line-height: 1.65; overflow-x: auto; }
+	.tx .u { color: var(--wait); } .tx .a { color: var(--port); } .tx b { color: #fff; font-weight: 700; } .tx i { font-style: normal; } .tx .g { color: var(--go); }
+
+	/* the basics: a ruled spec list, the terminal beside it */
+	.fl { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 4rem); margin-top: clamp(1.4rem, 4svh, 2.6rem); align-items: start; }
+	.spec { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(1rem, 2.4vw, 2rem); }
+	.spec div { border-top: 1px solid var(--blue-line); padding: 0.8rem 0 1rem; }
+	.spec dt { font-weight: 800; font-stretch: 85%; font-size: 1.08rem; }
+	.spec dd { margin: 0.35rem 0 0; color: var(--fg-2); line-height: 1.5; font-size: 0.97rem; }
+	.floor .winwrap { position: sticky; top: 6rem; }
+
+	/* grand line */
+	.grand { position: relative; overflow: clip; }
+	/* The ocean is a chart in the background: it fades out under the words (left) and reads on the right. */
+	.ocean { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.5; pointer-events: none; mask-image: linear-gradient(90deg, transparent 25%, #000 75%); -webkit-mask-image: linear-gradient(90deg, transparent 25%, #000 75%); }
+	.ocean .isl path { fill: rgb(255 255 255 / 0.06); stroke: rgb(255 255 255 / 0.35); stroke-width: 1.2; }
+	.ocean .routes path { fill: none; stroke: var(--port); stroke-width: 1.6; stroke-dasharray: 0.02 0.015; opacity: 0.8; }
+	.grand .wrap { position: relative; }
+	.lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1.5rem, 4vw, 4rem); margin-top: clamp(1.6rem, 4svh, 2.6rem); max-width: 64rem; }
+	.lists h3 { margin: 0 0 0.6rem; font-weight: 800; font-stretch: 80%; font-size: 1.25rem; }
+	.lists ul { list-style: none; margin: 0; padding: 0; }
+	.lists li { position: relative; padding: 0.65rem 0 0.65rem 1.8rem; border-top: 1px solid var(--blue-line); line-height: 1.45; }
+	.lists li::before { content: ""; position: absolute; left: 0.1rem; top: 0.95rem; width: 0.8rem; height: 0.8rem; border-radius: 50%; }
+	.now li::before { background: var(--go); }
+	.next li { color: var(--fg-2); }
+	.next li::before { border: 2px dashed var(--port); }
+	.lists .prose-sm { margin-top: 0.8rem; color: var(--fg-2); }
+	.close-line { margin: clamp(2rem, 6svh, 3.6rem) 0 0; font-weight: 800; font-stretch: 70%; font-size: clamp(1.8rem, min(3.6vw, 6svh), 3.2rem); line-height: 1.02; max-width: 26ch; text-wrap: balance; }
+
+	/* faq */
+	.faq { padding: clamp(4rem, 9vw, 8rem) 0; }
+	.fq { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(1.5rem, 5vw, 5rem); }
+	.fh { position: sticky; top: 5rem; align-self: start; }
+	details { border-top: 2px solid var(--ink); }
+	details:last-child { border-bottom: 2px solid var(--ink); }
+	summary { cursor: pointer; list-style: none; padding: 1.1rem 2.4rem 1.1rem 0; font-weight: 700; font-size: 1.12rem; position: relative; }
+	summary::-webkit-details-marker { display: none; }
+	summary::after { content: "+"; position: absolute; right: 0.2rem; top: 0.85rem; font: 500 1.6rem/1 var(--mono); }
+	details[open] summary::after { content: "−"; }
+	details p { margin: 0 0 1.3rem; max-width: 62ch; color: var(--ink-2); line-height: 1.6; }
+	details p :global(code) { overflow-wrap: anywhere; }
+
+	/* close */
+	.close { background: var(--blue); }
+	.close :global(.rise) { max-width: 14ch; font-size: clamp(2.8rem, min(8vw, 14svh), 7rem); }
+	.cw { margin-top: clamp(1.2rem, 3svh, 2.4rem); max-width: 40rem; min-width: 0; }
+	.close > .wrap { min-width: 0; }
+	.fine { margin: 1rem 0 0; color: var(--fg-2); font-size: 0.95rem; }
+	.ctas { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.9rem; }
+	.notes { margin-top: clamp(1.6rem, 4svh, 2.6rem); padding-top: 1.2rem; border-top: 1px solid var(--blue-line); }
+	.notes-h { margin: 0 0 0.6rem; font-weight: 700; font-size: 1.05rem; }
+
+	@media (max-height: 780px) and (min-width: 901px) {
+		.facts dd, .spec dd { font-size: 0.9rem; }
+		.pic { width: 76px; height: 76px; }
+		.sea { top: 20px; }
+	}
+	@media (max-width: 1100px) {
+		.spec { grid-template-columns: 1fr; }
+	}
+	@media (max-width: 900px) {
+		/* Phones and tablets: chapters flow at their natural height, one idea each. */
+		.screen { min-height: 0; align-content: start; padding: clamp(3.5rem, 12vw, 5rem) 0 clamp(2.4rem, 8vw, 4rem); }
+		section :global(.rise) { font-size: clamp(2.1rem, 9.4vw, 3.4rem); max-width: 18ch; }
+		.lead { font-size: 1.125rem; line-height: 1.45; max-width: 40ch; }
+		.prose-sm { font-size: 1rem; line-height: 1.6; }
+		.phead, .ag, .mc, .fq, .file .two, .fl, .lists, .facts { grid-template-columns: 1fr; gap: 1.2rem; }
+		.phead .lead { margin-top: 0; }
+		/* the route runs down the left edge */
+		.route { grid-template-columns: 1fr; gap: 1.6rem; padding-left: 0; }
+		.sea { display: none; }
+		.route::before { content: ""; position: absolute; left: 35px; top: 72px; bottom: 40px; border-left: 2px dashed color-mix(in srgb, var(--ink) 45%, transparent); }
+		.st { grid-template-columns: 72px minmax(0, 1fr); column-gap: 1rem; }
+		.pic { width: 72px; height: 72px; padding: 9px; grid-row: span 2; position: relative; z-index: 1; }
+		.st h3 { margin: 0.4rem 0 0; font-size: 1.5rem; }
+		/* the night runs downwards */
+		.night ol { grid-template-columns: 1fr; gap: 1.2rem; }
+		.night ol::before { left: 7px; right: auto; top: 0.6rem; bottom: 0.6rem; width: 2px; height: auto; background: linear-gradient(180deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.85)); }
+		.nt { grid-template-columns: 16px 3.6rem minmax(0, 1fr); column-gap: 0.8rem; align-items: start; padding: 0; }
+		.nt time { grid-column: 2; grid-row: 1; padding-top: 0.1rem; }
+		.nt .dot { grid-column: 1; grid-row: 1; margin-top: 0.2rem; }
+		.nt p { grid-column: 3; grid-row: 1; }
+		.branches svg { max-height: none; }
+		.branches text { font-size: 21px; }
+		.branches .po, .branches .mn { font-size: 17px; }
+		.shot img { max-height: none; }
+		.mc .tx pre { font-size: 0.8125rem; }
+		.floor .winwrap { position: static; }
+		.fh { position: static; }
+		.faq { padding: clamp(3.5rem, 12vw, 5rem) 0; }
+		summary { min-height: 56px; display: flex; align-items: center; padding: 0.9rem 2.6rem 0.9rem 0; font-size: 1.125rem; line-height: 1.3; }
+		summary::after { top: 50%; transform: translateY(-50%); right: 0.1rem; }
+		details p { font-size: 1rem; }
+		.close :global(.rise) { font-size: clamp(2.6rem, 12vw, 4.2rem); max-width: 12ch; }
+		.cw { max-width: none; }
+		.fine { font-size: 1rem; line-height: 1.55; }
+		.ocean { opacity: 0.2; }
+		.close-line { font-size: clamp(1.7rem, 7.6vw, 2.4rem); }
+	}
+</style>

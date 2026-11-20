@@ -112,7 +112,6 @@
 		}
 	],
 	"islands_stack_visualizer_unknown_dependency": "{service} depende de um serviço que não existe: \"{dependency}\". Nada inicia.",
-	"islands_terminal_replay_label": "Replay do atlas dev: a infra inicia; as migrações rodam; o api fica healthy; web e worker iniciam; um worker que cai reinicia com backoff.",
 	"islands_waitlist_done": "Um e-mail por versão. Nada além disso.",
 	"islands_waitlist_email": "E-mail",
 	"islands_waitlist_email_placeholder": "voce@empresa.com",

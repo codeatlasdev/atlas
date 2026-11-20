@@ -1,0 +1,51 @@
+---
+// Labels: to, mention, message, send, hint
+// Moment: the pill slides in over the faint app window, then the @mention chip pops (the resting state shows both).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+---
+<div class="art art-a24-agent-dock" role="img" aria-label={alt}>
+	<div class="stage">
+		<div class="app">
+			<div class="top"><b></b><b></b><b></b></div>
+			<div class="lines"><u></u><u></u><u></u><u></u></div>
+		</div>
+		<div class="pill part">
+			<span class="to">{labels.to} <b>api</b></span>
+			<span class="field"><span class="chip part2">{labels.mention}</span><span class="msg">{labels.message}</span></span>
+			<kbd>{labels.send}</kbd>
+		</div>
+	</div>
+	<!-- i18n-ignore: the macOS hotkey of the agent dock, drawn as an illustration (Windows and Linux have Ctrl+Alt+D) -->
+	<p class="hot"><span>{labels.hint}</span><span class="keys"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>Space</kbd></span></p>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.8rem; font-family: var(--font); color: var(--ink); }
+	.stage { position: relative; display: grid; align-items: center; justify-items: center; min-height: 12rem; padding: 1rem 0.5rem; }
+	.app { position: absolute; inset: 0; background: var(--paper); border: 1.5px solid var(--paper-line); border-radius: 0.4rem; opacity: 0.7; overflow: hidden; }
+	.top { display: flex; gap: 0.3rem; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--paper-line); }
+	.top b { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--paper-line); }
+	.lines { padding: 0.8rem; display: grid; gap: 0.5rem; }
+	.lines u { display: block; height: 0.5rem; border-radius: 2px; background: var(--paper-line); text-decoration: none; }
+	.lines u:nth-child(2) { width: 75%; }
+	.lines u:nth-child(3) { width: 90%; }
+	.lines u:nth-child(4) { width: 50%; }
+	.pill { position: relative; width: min(100%, 30rem); display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.7rem; padding: 0.7rem 0.9rem; background: var(--ink); color: var(--white); border-radius: 1.2rem; box-shadow: 0 0.6rem 1.6rem rgb(12 16 56 / 0.35); }
+	.to { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.6rem; border: 1px solid rgb(255 255 255 / 0.5); border-radius: 999px; font-size: 0.85rem; }
+	.to b { font-family: var(--mono); font-weight: 600; }
+	.field { flex: 1 1 10rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.95rem; }
+	.chip { padding: 0.1rem 0.5rem; background: var(--blue); border-radius: 0.3rem; font-family: var(--mono); font-size: 0.85rem; }
+	kbd { font-family: var(--mono); font-size: 0.8rem; }
+	.pill kbd { padding: 0.15rem 0.5rem; border: 1px solid rgb(255 255 255 / 0.5); border-radius: 0.3rem; }
+	.hot { margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.6rem; font-size: 0.9rem; color: var(--ink-2); }
+	.keys { display: inline-flex; gap: 0.3rem; }
+	.keys kbd { min-width: 2rem; text-align: center; padding: 0.25rem 0.55rem; border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 0.35rem; background: var(--white); color: var(--ink); font-size: 0.85rem; }
+
+	@keyframes a24d-in { from { transform: translateY(-1.2rem); opacity: 0; } to { transform: none; opacity: 1; } }
+	@keyframes a24d-chip { from { transform: scale(0); opacity: 0; } 70% { transform: scale(1.15); opacity: 1; } to { transform: none; opacity: 1; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .pill { animation: a24d-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+		:global(html.js) .art.play .chip { animation: a24d-chip 0.4s ease-out 0.65s both; }
+	}
+</style>

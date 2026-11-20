@@ -1,0 +1,53 @@
+---
+// Labels: before, after, folder, nothing, found, c1, c2, c3, c4, c5, c6, button
+// Moment: the detected stack chips pop in one by one, then the button appears (the resting state shows them all).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const chips = [labels.c1, labels.c2, labels.c3, labels.c4, labels.c5, labels.c6];
+const folder = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>`;
+---
+<div class="art art-a25-detect" role="img" aria-label={alt}>
+	<div class="pair">
+		<section class="panel">
+			<p class="tag"><i class="dot bad"></i>{labels.before}</p>
+			<div class="box">
+				<p class="folder"><Fragment set:html={folder} /><span>{labels.folder}</span></p>
+				<p class="nothing">{labels.nothing}</p>
+			</div>
+		</section>
+		<section class="panel">
+			<p class="tag"><i class="dot good"></i>{labels.after}</p>
+			<div class="box">
+				<p class="folder"><Fragment set:html={folder} /><span>{labels.folder}</span></p>
+				<p class="found">{labels.found}</p>
+				<ul class="chips">
+					{chips.map((text, i) => <li class="chip part" style={`--i:${i}`}>{text}</li>)}
+				</ul>
+				<span class="btn part">{labels.button}</span>
+			</div>
+		</section>
+	</div>
+</div>
+
+<style>
+	.art { font-family: var(--font); color: var(--ink); }
+	.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+	.panel { display: grid; gap: 0.5rem; align-content: start; }
+	.tag { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+	.dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; border: 1px solid var(--ink); flex: none; }
+	.dot.bad { background: var(--fail); }
+	.dot.good { background: var(--go); }
+	.box { display: grid; gap: 0.7rem; align-content: start; height: 100%; padding: 0.9rem; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 0.4rem; }
+	.folder { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-family: var(--mono); font-size: 0.85rem; color: var(--ink-2); }
+	.nothing { margin: 0; padding: 1.2rem 0.5rem; text-align: center; font-size: 0.95rem; color: var(--ink-2); border: 1.5px dashed var(--paper-line); border-radius: 0.3rem; }
+	.found { margin: 0; font-size: 0.95rem; font-weight: 700; }
+	.chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+	.chip { border: 1.5px solid var(--ink); border-radius: 999px; padding: 0.15rem 0.65rem; font-size: 0.85rem; font-weight: 600; background: var(--white); }
+	.btn { justify-self: start; padding: 0.5rem 0.95rem; background: var(--blue); color: var(--white); border-radius: 0.3rem; font-size: 0.9rem; font-weight: 700; }
+
+	@keyframes a25d-pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .chip { animation: a25d-pop 0.3s ease-out calc(var(--i) * 0.14s) both; }
+		:global(html.js) .art.play .btn { animation: a25d-pop 0.35s ease-out 1s both; }
+	}
+</style>

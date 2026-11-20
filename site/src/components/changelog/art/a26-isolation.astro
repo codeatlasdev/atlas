@@ -1,0 +1,57 @@
+---
+// Labels: server, user, crewmate1, crewmate2, crewmate3, crewmate4, cap, running, stopped, note
+// Moment: crewmate 3's memory bar climbs to its cap and that one box is stopped; the others keep running.
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const boxes = [
+	{ name: labels.crewmate1, fill: 38, hot: false },
+	{ name: labels.crewmate2, fill: 55, hot: false },
+	{ name: labels.crewmate3, fill: 100, hot: true },
+	{ name: labels.crewmate4, fill: 24, hot: false },
+];
+---
+<div class="art art-a26-isolation" role="img" aria-label={alt}>
+	<div class="server">
+		<p class="top"><strong>{labels.server}</strong><span>{labels.user}</span></p>
+		<div class="boxes">
+			{boxes.map((b) => (
+				<div class:list={["box", { hot: b.hot }]}>
+					<p class="who"><i class="dot"></i>{b.name}</p>
+					<div class="mem"><span class="fill" style={`width:${b.fill}%`}></span></div>
+					<p class="state">{b.hot ? labels.stopped : labels.running}</p>
+				</div>
+			))}
+		</div>
+		<p class="legend"><i class="capmark"></i>{labels.cap}</p>
+	</div>
+	<p class="note">{labels.note}</p>
+</div>
+<style>
+	.art { display: grid; gap: 0.9rem; color: var(--ink); font-family: var(--font); }
+	.server { border: 2px solid var(--ink); background: var(--paper); padding: 0.8rem; display: grid; gap: 0.7rem; }
+	.top { margin: 0; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.3rem 1rem; font-size: 0.9rem; }
+	.top span { color: var(--ink-2); font-size: 0.85rem; }
+	.boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.6rem; }
+	.box { background: var(--white); border: 1.5px solid var(--ink); padding: 0.6rem; display: grid; gap: 0.45rem; }
+	.who { margin: 0; display: flex; align-items: center; gap: 0.45rem; font-weight: 700; font-size: 0.9rem; }
+	.dot { flex: none; width: 0.65rem; height: 0.65rem; border-radius: 50%; background: var(--go); border: 1px solid var(--ink); }
+	.hot .dot { background: var(--fail); }
+	.mem { position: relative; height: 0.7rem; background: var(--paper); border: 1px solid var(--ink); }
+	.fill { display: block; height: 100%; background: var(--blue); transform-origin: left center; }
+	.hot .fill { background: var(--ink); }
+	.mem::after { content: ""; position: absolute; top: -0.2rem; bottom: -0.2rem; right: -1px; width: 2px; background: var(--ink); }
+	.state { margin: 0; font-size: 0.8rem; color: var(--ink-2); line-height: 1.25; }
+	.hot { border-style: dashed; background: var(--paper); }
+	.hot .who, .hot .state { opacity: 0.7; }
+	.legend { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--ink-2); }
+	.capmark { display: inline-block; width: 2px; height: 0.9rem; background: var(--ink); }
+	.note { margin: 0; font-size: 0.9rem; color: var(--ink-2); }
+	@keyframes a26is-fill { from { transform: scaleX(0.1); } to { transform: scaleX(1); } }
+	@keyframes a26is-stop { from { opacity: 1; background: var(--white); border-style: solid; } to { opacity: 1; } }
+	@keyframes a26is-fade { from { opacity: 1; } to { opacity: 0.7; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .hot .fill { animation: a26is-fill 0.9s ease-in both; }
+		:global(html.js) .art.play .hot { animation: a26is-stop 0.3s 0.9s both; }
+		:global(html.js) .art.play .hot .who, :global(html.js) .art.play .hot .state { animation: a26is-fade 0.3s 0.9s both; }
+	}
+</style>

@@ -1,0 +1,17 @@
+{
+	"home_crew_auto": "Automações",
+	"home_crew_auto_text": "Tarefas que começam sozinhas: num horário, num evento do GitHub, por um webhook ou quando outro crewmate termina.",
+	"home_crew_lead": "O Atlas Crew mantém agentes trabalhando num servidor Linux seu, e o seu notebook pode dormir. Cada crewmate tem nome, função, fila de tarefas e memória própria. Eles rodam com a sua assinatura ou chave de API; o próprio Atlas nunca chama um modelo.",
+	"home_crew_modes": "Modos de permissão",
+	"home_crew_modes_text": "Perguntar, Aceitar edições ou Bypass, e dá para trocar enquanto ele trabalha. Algumas travas nenhum modo remove: arquivos protegidos, comandos destrutivos e tarefas que vieram de fora.",
+	"home_crew_more": "Como o Atlas Crew funciona",
+	"home_crew_night": "Uma noite de exemplo",
+	"home_crew_step_approve": "Você lê o resultado e o diff e responde: permitir uma vez, permitir nesta tarefa ou negar com um comentário.",
+	"home_crew_step_ask": "Ele quer rodar algo arriscado. Para e pergunta, e a pergunta espera por você.",
+	"home_crew_step_ask_badge": "Aguardando você",
+	"home_crew_step_leave": "Você deixa uma tarefa, por texto ou por voz, no Atlas Desktop ou no Telegram.",
+	"home_crew_step_work": "Um crewmate reproduz o bug, escreve um teste que falha e depois corrige.",
+	"home_crew_title": "Deixe uma tarefa à noite. Acorde com o trabalho feito, e a prova.",
+	"home_crew_yours": "Sua máquina, suas chaves",
+	"home_crew_yours_text": "O servidor é seu, configurado com um comando via SSH. O acesso ao GitHub passa pelo GitHub App do próprio crew, com tokens de curta duração."
+}

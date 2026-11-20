@@ -1,0 +1,59 @@
+---
+// The legal pages (privacy policy, code signing policy), in every language. The text of each page is one markdown file per language in
+// src/data/legal/<locale>/<doc>.md: long legal prose with links and lists is easier to translate and review as a document than as dozens
+// of message keys, and a translator sees the whole structure. Rendered at build time with `marked` (not the docs markdown pipeline,
+// which adds heading anchors and rewrites links for docs). The chrome (title, description, heading) is messages.
+import { marked } from "marked";
+import Base from "../../layouts/Base.astro";
+import { m } from "../../lib/paraglide/messages.js";
+import { localeOfAstro, localizePath } from "../../lib/i18n";
+
+interface Props {
+	doc: "privacy" | "code-signing-policy";
+}
+const { doc } = Astro.props;
+const locale = localeOfAstro(Astro.currentLocale);
+const files = import.meta.glob<string>("../../data/legal/*/*.md", { query: "?raw", import: "default", eager: true });
+const source = files[`../../data/legal/${locale}/${doc}.md`];
+if (source === undefined) throw new Error(`site/src/data/legal/${locale}/${doc}.md is missing`);
+
+// Links that leave the site open without referrer power, like the hand-written pages did.
+const renderer = new marked.Renderer();
+renderer.link = function ({ href, title, tokens }) {
+	const external = /^https?:/i.test(href);
+	const text = this.parser.parseInline(tokens);
+	return `<a href="${href}"${title ? ` title="${title}"` : ""}${external ? ' rel="noopener"' : ""}>${text}</a>`;
+};
+const html = marked.parse(source, { async: false, renderer }) as string;
+
+const path = `/${doc}/`;
+const meta = doc === "privacy"
+	? { title: m.page_legal_privacy_title(), description: m.page_legal_privacy_description(), heading: m.footer_privacy() }
+	: { title: m.page_legal_signing_title(), description: m.page_legal_signing_description(), heading: m.footer_code_signing() };
+---
+<Base ground="paper" title={meta.title} description={meta.description} alternates={{ en: path, "pt-BR": localizePath(path, "pt-BR") }}>
+	<div class="wrap page">
+		<article class="prose">
+			<h1 class="display">{meta.heading}</h1>
+			<Fragment set:html={html} />
+		</article>
+	</div>
+</Base>
+<style>
+	.page { max-width: 820px; padding: 7rem 0 4rem; }
+	.prose { min-width: 0; overflow-wrap: break-word; }
+	.prose h1 { font-family: var(--font); font-weight: 800; font-stretch: 68%; letter-spacing: -0.012em; line-height: 0.92; text-wrap: balance; font-size: clamp(2.6rem, 6vw, 4.6rem); margin: 0 0 1.6rem; }
+	.prose :global(h2) { font-weight: 800; font-stretch: 75%; font-size: 2rem; line-height: 1.05; margin: 3.2rem 0 1rem; padding-top: 0.8rem; border-top: 2px solid var(--fg); }
+	.prose :global(p), .prose :global(li) { color: var(--fg-2); font-size: 1rem; line-height: 1.65; }
+	.prose :global(li) { margin: 0.45rem 0; }
+	.prose :global(strong) { color: var(--fg); }
+	.prose :global(code) { background: rgb(12 16 56 / 0.08); color: var(--fg); padding: 0.1em 0.38em; font-size: 0.86em; overflow-wrap: anywhere; }
+	.prose :global(a) { color: var(--fg); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 0.2em; }
+	@media (max-width: 760px) {
+		.page { padding: calc(5.5rem + env(safe-area-inset-top)) 0 3rem; }
+		.prose :global(h2) { font-size: 1.75rem; margin-top: 2.6rem; }
+		.prose :global(p), .prose :global(li) { font-size: 1.0625rem; }
+		.prose :global(a) { padding-block: 0.45em; }
+		.prose :global(ul) { padding-left: 1.3rem; }
+	}
+</style>

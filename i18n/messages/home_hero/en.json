@@ -1,0 +1,10 @@
+{
+	"home_hero_alpha": "{#b}Alpha:{/b} it works and we use it every day, but expect bugs and breaking changes. {#link}Report what breaks{/link}.",
+	"home_hero_clip_alt": "The Atlas agents view: three agents in separate worktrees, marked working, needs you and done",
+	"home_hero_fine": "Open source, MIT or Apache-2.0, for {platforms}. Your code and your keys stay on your machines.",
+	"home_hero_lead": "Atlas is a free, open-source workspace for working with AI agents. It runs your projects, gives each agent its own copy of the code, and keeps a crew of agents working on your own server, day and night. Anything important waits for your OK.",
+	"home_hero_lead_short": "Each agent works in its own space, on your machines. You approve what matters.",
+	"home_hero_meta_description": "Free, open-source workspace for working with AI agents: each agent gets its own copy of your project, a crew keeps working on your own server, and anything important waits for your OK.",
+	"home_hero_meta_title": "Atlas: put AI agents to work, keep the final say",
+	"home_hero_title": "Put AI agents to work. Keep the final say."
+}

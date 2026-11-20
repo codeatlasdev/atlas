@@ -67,7 +67,6 @@
 	"islands_stack_visualizer_start_order_blocked": "Caption above the start-order graph when the edited atlas.yaml has an error.",
 	"islands_stack_visualizer_start_order_waves": "Caption above the start-order graph: how many waves (groups of services that start together) the edited atlas.yaml has.",
 	"islands_stack_visualizer_unknown_dependency": "Error shown instead of the graph when a depends_on names a service that is not in the file. {service} and {dependency} are service names.",
-	"islands_terminal_replay_label": "Accessible name of the animated terminal on the home page (the animation itself is hidden from screen readers).",
 	"islands_waitlist_done": "Rest of the default confirmation after signing up for release notes.",
 	"islands_waitlist_email": "Visually hidden label of the email field of the release-notes and notify forms.",
 	"islands_waitlist_email_placeholder": "Example address shown inside the empty email field.",

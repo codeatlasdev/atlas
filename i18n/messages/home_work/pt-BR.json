@@ -1,0 +1,20 @@
+{
+	"home_work_agents_lead": "Cada tarefa ganha a própria worktree: uma cópia separada do código, na sua própria branch, com portas próprias e um terminal que continua rodando se você fechar o app. Você vê quem está trabalhando, quem precisa de você e quem terminou.",
+	"home_work_agents_more": "Revise o diff, comente uma linha e devolva. Funciona com Claude Code, Codex e omp. {#link}Agentes no Atlas{/link}.",
+	"home_work_agents_shot_alt": "O Atlas Desktop com as worktrees de um projeto na barra lateral e o terminal de um agente aberto numa delas",
+	"home_work_agents_title": "Três agentes no mesmo projeto, sem um atrapalhar o outro.",
+	"home_work_branches_alt": "a main se divide em três worktrees de agentes, cada uma com as próprias portas",
+	"home_work_mcp_lead": "O Atlas dá aos agentes uma linha direta com o projeto rodando. Em vez de pedir para você colar um erro, o agente confere o status, busca nos logs e reinicia um serviço, e o que for destrutivo continua esperando a sua aprovação.",
+	"home_work_mcp_more": "Ele fala MCP, o padrão aberto que os agentes usam para ferramentas. Um comando conecta: {#code}atlas setup claude-code --apply{/code}. {#link}As ferramentas{/link}.",
+	"home_work_mcp_title": "Seu agente vê o que você vê.",
+	"home_work_ports": "portas +{n}",
+	"home_work_stack_lead": "Banco de dados, API, app web, workers: descreva tudo uma vez no {#code}atlas.yaml{/code}, e o {#code}atlas dev{/code} sobe na ordem certa, espera cada um ficar saudável e reinicia o que cair. Ainda não tem {#code}atlas.yaml{/code}? O Atlas lê o projeto e funciona sem ele.",
+	"home_work_stack_more": "Um painel mostra saúde, logs e consumo de cada serviço, e o serviço que falha diz por quê. {#link}Referência do atlas.yaml{/link}.",
+	"home_work_stack_title": "Seu projeto inteiro sobe com um comando.",
+	"home_work_tx_agent": "agente",
+	"home_work_tx_answer": "O Stripe estava estourando o tempo em 5s. O worker reiniciou e está saudável.",
+	"home_work_tx_caption": "Uma sessão de exemplo. Os nomes das ferramentas são os reais.",
+	"home_work_tx_offer": "O retry em {file} precisa de um jitter. Quer um patch?",
+	"home_work_tx_question": "por que o checkout está dando 504?",
+	"home_work_tx_you": "você"
+}

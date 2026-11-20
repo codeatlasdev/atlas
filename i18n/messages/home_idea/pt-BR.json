@@ -1,0 +1,12 @@
+{
+	"home_idea_captain": "O capitão",
+	"home_idea_captain_text": "Você. Os agentes pedem antes de qualquer coisa arriscada, e cada passo fica registrado para você conferir.",
+	"home_idea_crew": "A tripulação",
+	"home_idea_crew_text": "Os agentes que você já usa, Claude Code, Codex, omp ou OpenCode, cada um com nome, função e um lugar próprio para trabalhar.",
+	"home_idea_lead": "Agentes de IA já escrevem código, respondem clientes e organizam tarefas, e são rápidos. Mas ser rápido não é o mesmo que chegar. O Atlas dá a eles o que todo navegador sempre precisou, e mantém uma pessoa no leme.",
+	"home_idea_map": "O mapa",
+	"home_idea_map_text": "Como cada projeto funciona, escrito uma vez num arquivo que pessoas e agentes leem: o que subir, em que ordem, onde ficam os logs.",
+	"home_idea_ships": "Os navios",
+	"home_idea_ships_text": "Seus computadores e servidores: o Atlas Desktop no seu computador, um crew server numa máquina Linux sua e o seu celular.",
+	"home_idea_title": "Para atravessar o oceano, é preciso mapa, navio e tripulação."
+}

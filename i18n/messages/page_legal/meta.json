@@ -1,0 +1,9 @@
+{
+	"page_legal_privacy_description": "Meta description of the privacy policy page (search results, link previews). Atlas: Dev Remote is the phone app's name.",
+	"page_legal_privacy_title": "Browser tab title of the privacy policy page.",
+	"page_legal_signing_description": {
+		"description": "Meta description of the code signing policy page. SignPath.io and SignPath Foundation are names.",
+		"platform": "windows"
+	},
+	"page_legal_signing_title": "Browser tab title of the code signing policy page."
+}

@@ -1,0 +1,11 @@
+{
+	"home_rail_agents": "Rail tooltip: the chapter about running several agents at once, each in its own worktree.",
+	"home_rail_crew": "Rail tooltip: the chapter about Atlas Crew (agents working on your own server). Product name.",
+	"home_rail_faq": "Rail tooltip: the questions and answers chapter.",
+	"home_rail_floor": "Rail tooltip: the chapter about the quality Atlas treats as the minimum (native app, terminal, privacy...).",
+	"home_rail_grand": "Rail tooltip: the chapter about Grand Line, where Atlas is going. Grand Line is a name and stays as is.",
+	"home_rail_idea": "Rail tooltip: the chapter about the map, the ship, the crew and the captain.",
+	"home_rail_label": "Accessible name of the chapter rail on the left of the home page.",
+	"home_rail_mcp": "Rail tooltip: the chapter about agents reading the running project (status, logs) through MCP.",
+	"home_rail_stack": "Rail tooltip: the chapter about starting a whole project with one command."
+}

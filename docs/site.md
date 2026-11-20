@@ -21,11 +21,28 @@ The film, loops and larger stills (`site/public/media/*.mp4`, `*.webm`, and `dem
 
 Run `scripts/fetch-media.sh` before `bun run build` or `bun run site:deploy` on any machine that has not built the site before, otherwise the deployed site would ship without the film.
 
+## Languages
+
+Every page exists in English at `/` and in Brazilian Portuguese at `/pt-br/`: the home, download, changelog, privacy and code signing pages (`LOCALIZED_PAGES` in `site/src/lib/i18n.ts`) and every docs page. Words are catalog messages in `i18n/messages/` like the rest of Atlas; layout and rules are in [site/README.md](https://github.com/codeatlasdev/atlas/blob/main/site/README.md#languages-en-pt-br).
+
+Which language a visitor gets is decided at the edge (`site/functions/_lib/locale.ts`) on an English URL that has a twin: `?lang=en|pt-BR` (stored), then the `atlas_lang` cookie the language switch writes, then the request's country (Portuguese-speaking countries get pt-BR, even with an English browser), then `Accept-Language`, then English. Wanting Portuguese is a `302` to the `/pt-br/` twin; crawlers and link previews are never redirected, and a `/pt-br/` URL is always served as asked.
+
+**Release stories.** `/changelog/` opens each version with a plain-language story when one exists (`site/src/content/releases/<locale>/<id>.yaml`, illustrations in `site/src/components/changelog/art/`), and keeps the full technical list from `CHANGELOG.md` behind a disclosure under the same anchors. The built page carries its own words and stories, so the edge handler that swaps in the newest release's changelog serves both `/changelog/` and `/pt-br/changelog/`. A version without a story shows its summary and the list. How to write one when cutting a release: site/README.md, "Release stories".
+
 ## Design constraints
 
 - The Content-Security-Policy in `site/public/_headers` allows only same-origin resources: no external fonts, scripts, analytics or embeds. Keep everything self-hosted.
 - Cloudflare Pages concatenates matching `_headers` rules, so a header set on `/*` cannot be overridden on a sub-path; set `Cache-Control` only on specific paths.
 - `prefers-reduced-motion`: no smooth scroll, no ScrollTrigger, no video autoplay. Without JavaScript the page is complete static HTML.
+
+## Search, share images and agents (SEO, OG, AX)
+
+Everything here is generated at build time from the docs and the message catalog; nothing is hand-listed.
+
+- **Share images.** Every page has an Open Graph image (1200x630 PNG) per language at `/og/<en|pt-br>/<key>.png` (`home`, `download`, `changelog`, `privacy`, `code-signing-policy`, `docs/<slug>`): the title, a one-line subtitle, the logo, the address and the language's words. `site/src/pages/og/[locale]/[...key].png.ts` renders them with satori (layout) and sharp (PNG), from the static Archivo TTFs in `site/src/assets/fonts/`; there is no browser and no screenshot. The words are the `seo_og_*` messages plus the page titles; a docs card uses the doc's `description` (English) and the translation's title (pt-BR, translated pages only). `Base.astro` points each page at its own image (`og:image`, `twitter:image`, alt = title); a page that is a copy (an untranslated `/pt-br/docs/` page) shares its canonical page's image. To change the look, edit `site/src/lib/og.ts`. After changing the variable font run `site/scripts/og-fonts.sh` to rebuild the TTFs (needs `pip install fonttools brotli`).
+- **Head and structured data.** `Base.astro` writes the canonical, hreflang (both ways plus `x-default`, from `alternates`), `og:*` with `og:locale` and `og:locale:alternate`, `twitter:card`, the web manifest and, on every page, JSON-LD `Organization` + `WebSite` (`inLanguage`). Pages add their own through the `jsonLd` prop: `SoftwareApplication` on the home and download pages, `BreadcrumbList` + `TechArticle` on docs pages (`dateModified` is the date of the last git commit of the file shown, left out when git has no history). Builders: `site/src/lib/seo.ts`. The 404 is `noindex` and has no canonical. `robots.txt` allows everything, AI crawlers included, on purpose; the sitemap lists every real translation with `xhtml:link` alternates.
+- **Markdown for agents.** Every docs page is also plain markdown at `/docs/<slug>.md` and `/pt-br/docs/<slug>.md` (the translation when it exists), with relative links made absolute (`site/src/lib/markdown.ts`) and advertised by `<link rel="alternate" type="text/markdown">`. At the edge, `GET /docs/<slug>/` with `Accept: text/markdown` (named, and ranked above or before `text/html`; browsers and `*/*` still get HTML) answers with the same markdown and `Vary: Accept` (`site/functions/_lib/negotiate.ts`, `site/functions/docs/[[path]].ts`). The language redirect never applies to a request for markdown.
+- **`llms.txt`.** `/llms.txt` (index with the positioning and every page's `.md` link), `/llms-full.txt` (all English docs in one file) and `/pt-br/llms.txt` (the translated pages) are generated from `docs/_nav.json` by `site/src/lib/llms.ts`. They stay English by policy (machine-facing). `_headers` sets the content types.
 
 ## Deploying (maintainers)
 

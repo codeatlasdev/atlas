@@ -1,0 +1,63 @@
+---
+// Labels: before, after, crewmate, github, before_chip, after_chip, before_who, after_who, after_create, before_events, after_events
+// Moment: the "after" panel wipes in from left to right over its resting place.
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+---
+<div class="art art-a27-github-app" role="img" aria-label={alt}>
+	<section class="panel before">
+		<h4>{labels.before}</h4>
+		<div class="flow">
+			<span class="node">{labels.crewmate}</span>
+			<svg class="arrow" viewBox="0 0 24 12" width="24" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M0 6h20M15 1l5 5-5 5"></path></svg>
+			<span class="chip">{labels.before_chip}</span>
+			<svg class="arrow" viewBox="0 0 24 12" width="24" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M0 6h20M15 1l5 5-5 5"></path></svg>
+			<span class="node">{labels.github}</span>
+		</div>
+		<ul>
+			<li><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>{labels.before_who}</li>
+			<li><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>{labels.before_events}</li>
+		</ul>
+	</section>
+	<section class="panel after part">
+		<h4>{labels.after}</h4>
+		<div class="flow">
+			<span class="node">{labels.crewmate}</span>
+			<svg class="arrow" viewBox="0 0 24 12" width="24" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M0 6h20M15 1l5 5-5 5"></path></svg>
+			<span class="chip app">
+				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"></rect><path d="M12 8V4M9 13v1M15 13v1"></path></svg>
+				{labels.after_chip}
+			</span>
+			<svg class="arrow" viewBox="0 0 24 12" width="24" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M0 6h20M15 1l5 5-5 5"></path></svg>
+			<span class="node">{labels.github}</span>
+		</div>
+		<ul>
+			<li><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>{labels.after_create}</li>
+			<li><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"></rect><path d="M12 8V4M9 13v1M15 13v1"></path></svg>{labels.after_who}</li>
+			<li><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 14h6l-1 7 8-11h-6z"></path></svg>{labels.after_events}</li>
+		</ul>
+	</section>
+</div>
+
+<style>
+	.art { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.9rem; font-family: var(--font); color: var(--ink); }
+	.panel { border-radius: 0.5rem; padding: 0.9rem; display: grid; gap: 0.8rem; align-content: start; }
+	.before { background: var(--paper); border: 1.5px dashed var(--ink-2); }
+	.after { background: var(--white); border: 2px solid var(--blue); }
+	h4 { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+	.after h4 { color: var(--blue-deep); }
+	.flow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+	.arrow { flex: none; color: var(--ink-2); }
+	.node { border: 1.5px solid var(--ink); border-radius: 0.4rem; background: var(--white); padding: 0.25rem 0.55rem; font-size: 0.85rem; font-weight: 600; }
+	.chip { display: inline-flex; align-items: center; gap: 0.35rem; border: 1.5px dashed var(--ink-2); border-radius: 999px; padding: 0.2rem 0.65rem; font-size: 0.85rem; font-family: var(--mono); background: var(--white); }
+	.chip.app { border: 1.5px solid var(--blue); background: var(--blue); color: var(--white); font-family: var(--font); font-weight: 600; }
+	ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+	li { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.9rem; line-height: 1.35; }
+	li svg { flex: none; margin-top: 0.05rem; color: var(--ink-2); }
+	.after li svg { color: var(--blue); }
+
+	@keyframes wipe { from { clip-path: inset(0 100% 0 0); } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .after { animation: wipe 1.2s cubic-bezier(0.6, 0, 0.2, 1) 0.2s both; }
+	}
+</style>

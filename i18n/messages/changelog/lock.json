@@ -1,0 +1,32 @@
+{
+  "pt-BR": {
+    "changelog_added": "cc95494803aa",
+    "changelog_all_changes": "ca616c025e6e",
+    "changelog_alpha_note": "b533795075aa",
+    "changelog_alpha_report": "359143312f65",
+    "changelog_also": "65d277513cdd",
+    "changelog_art_note": "078d5f362427",
+    "changelog_badge_alpha": "ec2017d5496a",
+    "changelog_badge_beta": "45dcef5400c6",
+    "changelog_badge_pre": "dd3bd20a11c4",
+    "changelog_badge_rc": "7f98d8909ec9",
+    "changelog_changed": "4f322c9d6340",
+    "changelog_count_many": "c873400ba9a9",
+    "changelog_count_one": "45c29a09cd48",
+    "changelog_date_locale": "c52845230044",
+    "changelog_filter_all": "663175a9c461",
+    "changelog_filter_legend": "827e0c6ac993",
+    "changelog_filter_pre": "7438d35557ed",
+    "changelog_filter_stable": "57ab2ac0922e",
+    "changelog_fixed": "052d545329a7",
+    "changelog_intro": "5dacd8ef0d54",
+    "changelog_latest": "3743553e6292",
+    "changelog_meta_description": "4ec3829ebc84",
+    "changelog_meta_title": "7c24d00d347c",
+    "changelog_release_link": "8b2b93f9ce60",
+    "changelog_stale": "b827f3264bcc",
+    "changelog_technical_note": "9b54e9acffcb",
+    "changelog_title": "498179d19a4d",
+    "changelog_versions_label": "214e87a44e87"
+  }
+}

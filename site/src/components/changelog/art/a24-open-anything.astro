@@ -1,0 +1,42 @@
+---
+// Labels: o1, o2, o3, detect
+// Moment: each command types itself out in the terminal and its result fades in below it (the resting state shows all three).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const rows = [
+	{ cmd: "atlas .", ch: 7, text: labels.o1 },
+	{ cmd: "atlas <file>", ch: 12, text: labels.o3 },
+	{ cmd: "atlas -- bun dev", ch: 16, text: labels.o2 },
+];
+---
+<div class="art art-a24-open-anything" role="img" aria-label={alt}>
+	<div class="term">
+		{rows.map((row, i) => (
+			<div class="row" style={`--i:${i};--ch:${row.ch}`}>
+				<p class="line"><span class="prompt">$</span> <span class="cmd part">{row.cmd}</span></p>
+				<p class="out part2">{row.text}</p>
+			</div>
+		))}
+	</div>
+	<p class="detect"><span class="files"><code>package.json</code><code>Cargo.toml</code><code>pyproject.toml</code><code>go.mod</code></span><span>{labels.detect}</span></p>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.8rem; font-family: var(--font); color: var(--ink); }
+	.term { display: grid; gap: 0.9rem; padding: 1rem 1.1rem; background: var(--ink); color: var(--white); border-radius: 0.5rem; }
+	.row { display: grid; gap: 0.25rem; }
+	.line { margin: 0; font-family: var(--mono); font-size: 0.95rem; }
+	.prompt { color: var(--port); }
+	.cmd { display: inline-block; vertical-align: bottom; overflow: hidden; white-space: nowrap; font-weight: 600; }
+	.out { margin: 0; padding-left: 1.4rem; font-size: 0.9rem; line-height: 1.35; color: rgb(255 255 255 / 0.82); }
+	.detect { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.7rem; font-size: 0.9rem; line-height: 1.35; }
+	.files { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; }
+	.files code { padding: 0.1rem 0.5rem; border: 1.5px solid var(--ink); border-radius: 0.3rem; background: var(--paper); font-family: var(--mono); font-size: 0.8rem; }
+
+	@keyframes a24o-type { from { width: 0; } to { width: calc(var(--ch) * 1ch); } }
+	@keyframes a24o-fade { from { opacity: 0; transform: translateY(0.3rem); } to { opacity: 1; transform: none; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .cmd { animation: a24o-type 0.3s steps(var(--ch), end) calc(var(--i) * 0.45s) both; }
+		:global(html.js) .art.play .out { animation: a24o-fade 0.25s ease-out calc(var(--i) * 0.45s + 0.3s) both; }
+	}
+</style>

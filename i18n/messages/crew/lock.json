@@ -1,0 +1,33 @@
+{
+  "pt-BR": {
+    "crew_permission_allow_bypass_hint": "1d6b3e7c436a",
+    "crew_permission_allow_bypass_label": "8ad6e611e276",
+    "crew_permission_allow_once": "d2ce72fd95f8",
+    "crew_permission_allow_once_title": "5a4f77f715f8",
+    "crew_permission_allow_task": "6a1f87228f44",
+    "crew_permission_answered_denied": "b4837d1e9686",
+    "crew_permission_answered_once": "8f36092e875a",
+    "crew_permission_answered_task": "8698e7b55883",
+    "crew_permission_applies_next": "1575b0a57e84",
+    "crew_permission_badge_label": "64f8ab9abb6f",
+    "crew_permission_comment_label": "6dc599dc4253",
+    "crew_permission_comment_placeholder": "3d19f77d2bf8",
+    "crew_permission_default_hint": "9f4efe49265c",
+    "crew_permission_default_label": "94f586d9dec8",
+    "crew_permission_deny": "c0456fee0bc0",
+    "crew_permission_deny_title": "80a559d6668e",
+    "crew_permission_fixed_reason": "6f53dbe7dc9e",
+    "crew_permission_hint_ask": "e4e7d61b2b8a",
+    "crew_permission_hint_bypass": "bf3242e60c38",
+    "crew_permission_hint_edits": "5af3dc61cbe1",
+    "crew_permission_mode_ask": "5632aefc70eb",
+    "crew_permission_mode_bypass": "5aebb26f969d",
+    "crew_permission_mode_edits": "63b3454aa45e",
+    "crew_permission_picker_label": "116bc0a7e3e2",
+    "crew_permission_picker_menu_label": "5cea838368c7",
+    "crew_permission_rail_no_auto": "8f6107ba2521",
+    "crew_permission_rail_protected_path": "0aaee8866ee8",
+    "crew_permission_settings_mode": "5cea838368c7",
+    "crew_permission_settings_mode_hint": "4a65dc04d96a"
+  }
+}

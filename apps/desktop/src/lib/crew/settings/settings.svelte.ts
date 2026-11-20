@@ -1,11 +1,12 @@
 /**
- * State and saves of the selected crewmate's settings dialog: role, approval, short replies, memory, usage and
+ * State and saves of the selected crewmate's settings dialog: role, permission mode, short replies, memory, usage and
  * the automation list edits. The shell resets it on every open; sections read the fields and call the saves.
  * Fields autosave (selects on change, text on blur / Cmd+Enter); the provider form is crew/providerForm.svelte.ts.
  */
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
-import type { Crewmate, Trigger } from "#lib/crew.ts";
+import type { Crewmate, PermissionMode, Trigger } from "#lib/crew.ts";
+import { modeOf } from "#lib/crew/permissionMode.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import { AutosaveField } from "#lib/crew/settings/autosaveField.svelte.ts";
 import { isDirty, updateSavedRef } from "#lib/crew/settings/autosave.ts";
@@ -26,8 +27,8 @@ export class CrewmateSettings {
 	roleSaved = $state("");
 	readonly roleField = new AutosaveField();
 
-	approval = $state<"ask" | "auto">("auto");
-	readonly approvalField = new AutosaveField();
+	mode = $state<PermissionMode>("ask");
+	readonly modeField = new AutosaveField();
 
 	shortReplies = $state<ShortReplies>("crew");
 	readonly shortRepliesField = new AutosaveField();
@@ -49,9 +50,9 @@ export class CrewmateSettings {
 	open(crewmate: Crewmate) {
 		this.role = crewmate.role ?? "";
 		this.roleSaved = crewmate.role ?? "";
-		this.approval = crewmate.approval;
+		this.mode = modeOf(crewmate);
 		this.shortReplies = shortRepliesOf(crewmate.short_replies);
-		for (const f of [this.roleField, this.approvalField, this.shortRepliesField, this.memoryField]) f.reset();
+		for (const f of [this.roleField, this.modeField, this.shortRepliesField, this.memoryField]) f.reset();
 		this.memory = "";
 		this.memorySaved = "";
 		this.usageData = [];
@@ -75,8 +76,12 @@ export class CrewmateSettings {
 		this.roleSaved = updateSavedRef(this.roleSaved, attempted, ok);
 	}
 
-	saveApproval(crewmate: Crewmate) {
-		return this.approvalField.run(() => this.update(crewmate, { approval: this.approval }));
+	/** Switch the mode (`crewmate_set_approval`); on a refusal the select goes back to the mode hostd still has. */
+	async saveMode(crewmate: Crewmate) {
+		const hostKey = crew.selected?.hostKey;
+		if (!hostKey || this.mode === modeOf(crewmate)) return;
+		const ok = await this.modeField.run(() => crew.setMode(hostKey, crewmate.id, this.mode));
+		if (!ok) this.mode = modeOf(crewmate);
 	}
 
 	saveShortReplies(crewmate: Crewmate) {

@@ -1,5 +1,5 @@
 /**
- * Owns: the state machine of the setup conversation a new crewmate walks through (name, role, project, approval,
+ * Owns: the state machine of the setup conversation a new crewmate walks through (name, role, project,
  * summary): replaying answered steps, the typing delay, and mapping each answer onto the crewmate record.
  * Question text and step order live in crewSetup.ts; this file only drives them.
  */
@@ -9,13 +9,13 @@ import { errText } from "#lib/api.ts";
 import { m } from "#lib/i18n/m.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import type { Crewmate } from "#lib/crew.ts";
+import { modeOf } from "#lib/crew/permissionMode.ts";
 import { projectForServer } from "#lib/crew/projectRef.ts";
 import {
 	getQuestion,
 	optionAnswer,
 	nextStep as setupNextStep,
 	roleKeyToText,
-	approvalKeyToMode,
 	summaryText,
 	typingDelay,
 	RESTART_STEP,
@@ -45,7 +45,6 @@ interface Collected {
 	roleKey: string;
 	roleText: string;
 	project: string;
-	approvalKey: string;
 }
 
 export class SetupFlow {
@@ -65,7 +64,6 @@ export class SetupFlow {
 		roleKey: "",
 		roleText: "",
 		project: "",
-		approvalKey: "A",
 	});
 
 	/**
@@ -79,7 +77,6 @@ export class SetupFlow {
 			roleKey: "",
 			roleText: b.role ?? "",
 			project: b.project?.name ?? b.project?.path ?? b.project?.url ?? "",
-			approvalKey: b.approval === "auto" ? "C" : "A",
 		};
 		this.collected = resumed;
 
@@ -95,8 +92,6 @@ export class SetupFlow {
 			// Only what was really saved: an empty role used to replay as the user saying "Something else".
 			else if (s === "role") answer = resumed.roleText;
 			else if (s === "project") answer = resumed.project || m.crew_workspace_setup_skip();
-			else if (s === "approval")
-				answer = getQuestion("approval").options?.find((o) => o.key === resumed.approvalKey)?.title ?? "";
 			if (answer) replay.push({ kind: "user", text: answer });
 		}
 		this.messages = replay;
@@ -112,7 +107,7 @@ export class SetupFlow {
 					name: resumed.name || b.name,
 					roleText: resumed.roleText || m.crew_workspace_setup_default_role(),
 					project: resumed.project || undefined,
-					approvalKey: resumed.approvalKey,
+					mode: modeOf(b),
 				} satisfies SummaryState);
 				this.question = { ...getQuestion("summary"), parts, text: parts.map((p) => p.text).join("") };
 			} else {
@@ -192,10 +187,6 @@ export class SetupFlow {
 				}
 			}
 			next = setupNextStep("project");
-		} else if (step === "approval") {
-			newState.approvalKey = key ?? "A";
-			patch.approval = approvalKeyToMode(key ?? "A");
-			next = setupNextStep("approval");
 		} else if (step === "summary") {
 			if (key === "B") {
 				// Restart: go back to first step
@@ -221,7 +212,6 @@ export class SetupFlow {
 			const updatePatch: Patch = {
 				...("name" in patch ? { name: patch.name as string } : {}),
 				...("role" in patch ? { role: patch.role as string } : {}),
-				...("approval" in patch ? { approval: patch.approval as string } : {}),
 				...("project" in patch ? { project: patch.project as Patch["project"] } : {}),
 				...(step !== "summary" || key !== "B"
 					? { setup_step: next === "done" ? null : (next as string) }

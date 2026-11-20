@@ -1,0 +1,64 @@
+{
+  "action": "created",
+  "pull_request": {
+    "url": "https://api.github.com/repos/o/r/pulls/12",
+    "number": 12,
+    "state": "open",
+    "title": "Fix the crash",
+    "user": {
+      "login": "someone",
+      "id": 9001,
+      "type": "User"
+    },
+    "body": "Fixes the null pointer.",
+    "author_association": "MEMBER",
+    "head": {
+      "ref": "fix/crash",
+      "sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+      "label": "o:fix/crash"
+    },
+    "base": {
+      "ref": "main",
+      "sha": "a1b2c3d4"
+    },
+    "draft": false,
+    "requested_reviewers": []
+  },
+  "comment": {
+    "id": 300,
+    "body": "This should check for None first.",
+    "user": {
+      "login": "dev",
+      "id": 5001,
+      "type": "User"
+    },
+    "author_association": "COLLABORATOR",
+    "created_at": "2026-11-19T10:02:00Z",
+    "updated_at": "2026-11-19T10:02:00Z",
+    "path": "src/parse.rs",
+    "line": 42,
+    "original_line": 42,
+    "pull_request_review_id": 42
+  },
+  "repository": {
+    "id": 1296269,
+    "full_name": "o/r",
+    "name": "r",
+    "private": true,
+    "owner": {
+      "login": "o",
+      "id": 583231,
+      "type": "Organization"
+    }
+  },
+  "sender": {
+    "login": "dev",
+    "id": 5001,
+    "type": "User",
+    "site_admin": false
+  },
+  "installation": {
+    "id": 7,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNw=="
+  }
+}

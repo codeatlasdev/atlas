@@ -833,6 +833,11 @@ pub enum HostCmd {
         /// crewmate out of Bypass (back to Ask).
         #[serde(default)]
         allow_bypass: Option<bool>,
+        /// The public `https://` URL GitHub reaches this server at (your reverse proxy or tunnel to the hook server;
+        /// Atlas never exposes it itself): the GitHub App's webhook posts to `<url>/github/webhook`. Absent leaves
+        /// it as it is, an empty string turns webhooks off.
+        #[serde(default)]
+        public_url: Option<String>,
     },
     /// A terminal that runs only `engine`'s login command as the crew user (`crew::engine_login`); the reply is
     /// `{engine, pty}` and the phone attaches with its terminal screen. `engine` is one of `claude`, `codex`,

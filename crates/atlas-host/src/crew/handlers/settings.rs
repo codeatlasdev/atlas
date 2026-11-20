@@ -184,6 +184,7 @@ pub(crate) fn get(hub: &Hub) -> Result<Value, String> {
         "agent_memory_max": settings.agent_memory_max,
         "default_approval": settings.default_approval,
         "allow_bypass": settings.allow_bypass,
+        "public_url": settings.public_url,
         // What agents run under now, or why there is no cap: asked of the helper, never assumed.
         "memory_cap": super::super::memory_cap::report(hub),
     }))
@@ -197,10 +198,12 @@ pub(crate) struct SettingsIn {
     pub agent_memory_max: Option<u64>,
     pub default_approval: Option<String>,
     pub allow_bypass: Option<bool>,
+    /// Absent leaves it, `""` clears it (webhooks off).
+    pub public_url: Option<String>,
 }
 
 /// `CrewSettingsSet`
-pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
+pub(crate) async fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
     let SettingsIn {
         short_replies,
         short_replies_model,
@@ -208,12 +211,17 @@ pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
         agent_memory_max,
         default_approval,
         allow_bypass,
+        public_url,
     } = input;
     if max_agents == Some(0) {
         return Err("max_agents must be at least 1: 0 would stop every task".into());
     }
     let memory_max = agent_memory_max
         .map(super::super::memory_cap::parse_setting)
+        .transpose()?;
+    let public_url = public_url
+        .as_deref()
+        .map(super::super::store::normalize_public_url)
         .transpose()?;
     // Load, change, save: the file also holds `paused`, which this command must never reset.
     let mut settings = hub.crew.store.load_crew_settings();
@@ -227,6 +235,10 @@ pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
     }
     if let Some(allow) = allow_bypass {
         settings.allow_bypass = allow;
+    }
+    let old_url = settings.public_url.clone();
+    if let Some(url) = public_url {
+        settings.public_url = url;
     }
     if let Some(m) = default_approval.as_deref().map(Mode::parse).transpose()? {
         if m == Mode::Bypass && !settings.allow_bypass {
@@ -248,10 +260,29 @@ pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
     hub.crew.agent_slots.set_limit(settings.max_agents);
     // The cap depends on both numbers: the helper rewrites memory.max of the agents that run.
     let cap = super::super::memory_cap::apply(hub);
+    // The webhook follows the URL: what was verified under the old one is forgotten and GitHub is told the new one.
+    // The setting is saved either way; a failure to tell GitHub is said in the reply and retried by the
+    // reconciliation loop.
+    let mut webhook_error = None;
+    if settings.public_url != old_url {
+        hub.crew.audit.record(
+            None,
+            "github_webhook_url_set",
+            json!({"url": settings.public_url}),
+        );
+        webhook_error = hub
+            .crew
+            .github_app
+            .webhook_url_changed(settings.public_url.as_deref())
+            .await
+            .err();
+    }
     Ok(json!({
         "memory_cap": cap,
         "default_approval": settings.default_approval,
         "allow_bypass": settings.allow_bypass,
+        "public_url": settings.public_url,
+        "webhook_error": webhook_error,
     }))
 }
 

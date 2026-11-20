@@ -112,7 +112,7 @@ fn files_under(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 #[tokio::test(flavor = "multi_thread")]
 async fn conversion_keeps_the_key_only_in_the_private_file_and_status_never_returns_it() {
     let rig = rig().await;
-    let status = rig.svc.convert("goodcode").await.unwrap();
+    let status = rig.svc.convert("goodcode", None).await.unwrap();
 
     // The file hostd keeps: the key, the webhook secret, the ids; owner-only.
     let file = rig.dir().join("github-app.json");
@@ -144,7 +144,7 @@ async fn conversion_keeps_the_key_only_in_the_private_file_and_status_never_retu
     }
 
     // What a client reads: the app, its identity, its installations; never a secret.
-    let again = rig.svc.status().await.unwrap();
+    let again = rig.svc.status(None).await.unwrap();
     assert_eq!(status, again);
     let text = again.to_string();
     for secret in [
@@ -196,7 +196,7 @@ async fn conversion_keeps_the_key_only_in_the_private_file_and_status_never_retu
 async fn a_second_conversion_is_refused_before_the_code_is_spent() {
     let rig = rig().await;
     install(&rig);
-    let e = rig.svc.convert("goodcode").await.unwrap_err();
+    let e = rig.svc.convert("goodcode", None).await.unwrap_err();
     assert_eq!(e.code, service::EXISTS);
     assert_eq!(rig.fake.count("POST", "/app-manifests/"), 0);
 }
@@ -204,7 +204,7 @@ async fn a_second_conversion_is_refused_before_the_code_is_spent() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_used_or_expired_code_says_so_and_stores_nothing() {
     let rig = rig().await;
-    let e = rig.svc.convert("oldcode").await.unwrap_err();
+    let e = rig.svc.convert("oldcode", None).await.unwrap_err();
     assert_eq!(e.code, service::CODE_EXPIRED);
     assert!(!rig.dir().join("github-app.json").exists());
 }
@@ -219,7 +219,7 @@ async fn a_conversion_github_refuses_carries_its_status() {
         Http::new(&fake.base),
         Arc::new(super::tokens::SystemClock),
     );
-    let e = svc.convert("abc").await.unwrap_err();
+    let e = svc.convert("abc", None).await.unwrap_err();
     assert_eq!(e.code, service::CONVERSION_FAILED);
     assert_eq!(e.args["status"], 503);
     assert!(!tmp.path().join("github-app.json").exists());
@@ -230,7 +230,7 @@ async fn a_conversion_github_refuses_carries_its_status() {
 async fn a_code_that_is_not_a_code_never_reaches_github() {
     let rig = rig().await;
     for code in ["", "a/b", "a b", "../x", "abc?x=1", &"a".repeat(200)] {
-        assert!(rig.svc.convert(code).await.is_err(), "{code:?}");
+        assert!(rig.svc.convert(code, None).await.is_err(), "{code:?}");
     }
     assert!(rig.fake.seen().is_empty());
 }
@@ -248,7 +248,7 @@ async fn a_key_that_cannot_sign_fails_the_conversion() {
         Http::new(&fake.base),
         Arc::new(super::tokens::SystemClock),
     );
-    let e = svc.convert("abc").await.unwrap_err();
+    let e = svc.convert("abc", None).await.unwrap_err();
     assert_eq!(e.code, service::CONVERSION_FAILED);
     assert!(!tmp.path().join("github-app.json").exists());
 }
@@ -256,7 +256,7 @@ async fn a_key_that_cannot_sign_fails_the_conversion() {
 #[tokio::test(flavor = "multi_thread")]
 async fn status_without_an_app_is_null() {
     let rig = rig().await;
-    assert_eq!(rig.svc.status().await.unwrap(), json!({"app": null}));
+    assert_eq!(rig.svc.status(None).await.unwrap(), json!({"app": null}));
 }
 
 // GitHub down: the app is still shown, with the reason the list is empty.
@@ -270,7 +270,7 @@ async fn status_still_shows_the_app_when_github_cannot_be_asked() {
         Http::new("http://127.0.0.1:1"),
         rig.clock.clone(),
     );
-    let s = svc.status().await.unwrap();
+    let s = svc.status(None).await.unwrap();
     assert_eq!(s["app"]["slug"], "atlas-crew-box");
     assert_eq!(s["app"]["installations"], json!([]));
     assert!(
@@ -290,7 +290,7 @@ async fn remove_deletes_the_key_forgets_tokens_and_is_audited() {
     rig.svc.remove().await.unwrap();
     assert!(!rig.dir().join("github-app.json").exists());
     assert!(rig.audit_text().contains("github_app_removed"));
-    assert_eq!(rig.svc.status().await.unwrap(), json!({"app": null}));
+    assert_eq!(rig.svc.status(None).await.unwrap(), json!({"app": null}));
     // Nothing minted before is handed out again.
     assert_eq!(
         rig.svc.token_for("acme/web").await.unwrap_err(),
@@ -1203,5 +1203,379 @@ mod hooks_with_real_git {
                 .unwrap(),
             before
         );
+    }
+}
+
+// ── #645: the webhook: hook config, coverage, reconciliation ─────────────────
+
+mod webhook {
+    use std::sync::atomic::AtomicU16;
+
+    use parking_lot::Mutex;
+
+    use super::*;
+    use crate::crew::github::app::webhook::HookState;
+
+    const URL: &str = "https://crew.example.com";
+
+    /// A rig whose GitHub answers the hook endpoints from `state`, and everything else like [`fake::github`].
+    struct HookRig {
+        rig: Rig,
+        /// What `GET /app/hook/deliveries` lists.
+        deliveries: Arc<Mutex<Value>>,
+        /// What `PATCH /app/hook/config` answers.
+        patch: Arc<AtomicU16>,
+    }
+
+    impl std::ops::Deref for HookRig {
+        type Target = Rig;
+        fn deref(&self) -> &Rig {
+            &self.rig
+        }
+    }
+
+    async fn hook_rig() -> HookRig {
+        let mints = Arc::new(AtomicUsize::new(0));
+        let inner = fake::github(mints.clone(), iso(T0 + 3600));
+        let deliveries = Arc::new(Mutex::new(json!([])));
+        let patch = Arc::new(AtomicU16::new(200));
+        let (d, p) = (deliveries.clone(), patch.clone());
+        let fake = fake::serve(move |r: &Req| match (r.method.as_str(), r.path.as_str()) {
+            ("PATCH", "/app/hook/config") => (p.load(Ordering::SeqCst), "{}".to_string()),
+            ("GET", path) if path.starts_with("/app/hook/deliveries") => {
+                (200, d.lock().to_string())
+            }
+            _ => inner(r),
+        })
+        .await;
+        let tmp = tempfile::tempdir().unwrap();
+        let audit = Arc::new(Audit::new(tmp.path()));
+        let clock = Arc::new(FakeClock(AtomicI64::new(T0)));
+        let svc = Arc::new(AppService::with(
+            tmp.path(),
+            audit.clone(),
+            Http::new(&fake.base),
+            clock.clone(),
+        ));
+        fake::install_app(tmp.path());
+        HookRig {
+            rig: Rig {
+                tmp,
+                svc,
+                audit,
+                clock,
+                fake,
+                mints,
+            },
+            deliveries,
+            patch,
+        }
+    }
+
+    /// One row of `GET /app/hook/deliveries`.
+    fn row(id: u64, guid: &str, at: i64, status: u16) -> Value {
+        json!({"id": id, "guid": guid, "delivered_at": iso(at), "status_code": status,
+               "status": if status < 300 { "OK" } else { "failed" }, "event": "issue_comment",
+               "redelivery": false})
+    }
+
+    fn state(rig: &Rig) -> HookState {
+        // No file yet is the default state: nothing synced, nothing verified.
+        std::fs::read(rig.dir().join("github-webhook.json"))
+            .ok()
+            .map(|b| serde_json::from_slice(&b).unwrap())
+            .unwrap_or_default()
+    }
+
+    fn redeliveries(rig: &Rig) -> Vec<String> {
+        rig.fake
+            .seen()
+            .into_iter()
+            .filter(|r| r.method == "POST" && r.path.starts_with("/app/hook/deliveries/"))
+            .map(|r| r.path)
+            .collect()
+    }
+
+    // The hook config GitHub is given: the route under the operator's URL, JSON, TLS checked, and the secret kept in
+    // the private file. It is the app's JWT that authorises it (an installation token cannot touch the app itself).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_hook_is_pointed_at_the_route_with_the_stored_secret() {
+        let rig = hook_rig().await;
+        rig.svc.ensure_hook(URL).await.unwrap();
+        let patch = rig
+            .fake
+            .seen()
+            .into_iter()
+            .find(|r| r.method == "PATCH")
+            .unwrap();
+        assert_eq!(
+            patch.body,
+            json!({"url": "https://crew.example.com/github/webhook", "content_type": "json",
+                   "insecure_ssl": "0", "secret": SECRET})
+        );
+        assert_eq!(
+            jwt_claims(patch.bearer.as_deref().unwrap())["iss"],
+            "Iv23liTESTCLIENT"
+        );
+        assert_eq!(state(&rig).synced_url.as_deref(), Some(URL));
+        let audit = rig.audit_text();
+        assert!(audit.contains("github_webhook_configured"), "{audit}");
+        assert!(!audit.contains(SECRET), "{audit}");
+    }
+
+    // An app made with the hook off has no secret: one is generated, kept in the private file BEFORE GitHub hears of it,
+    // and sent. It never appears in the status or the audit.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_app_without_a_secret_gets_one_that_stays_in_the_private_file() {
+        let rig = hook_rig().await;
+        let store = AppStore::new(rig.dir());
+        let mut rec = store.load().unwrap().unwrap();
+        rec.webhook_secret.clear();
+        store.save(&rec).unwrap();
+
+        rig.svc.ensure_hook(URL).await.unwrap();
+        let made = store.load().unwrap().unwrap().webhook_secret;
+        assert_eq!(made.len(), 64, "32 random bytes, hex");
+        let sent = rig
+            .fake
+            .seen()
+            .into_iter()
+            .find(|r| r.method == "PATCH")
+            .unwrap()
+            .body["secret"]
+            .clone();
+        assert_eq!(sent, json!(made), "GitHub got the secret that was kept");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(rig.dir().join("github-app.json"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "{mode:o}");
+        }
+        let status = rig.svc.status(Some(URL)).await.unwrap().to_string();
+        for text in [status, rig.audit_text()] {
+            assert!(!text.contains(&made), "the secret leaks: {text}");
+        }
+    }
+
+    // A failed `PATCH` is audited (with GitHub's words, no secret) and returned; the reconciliation tries again.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_hook_config_github_refuses_is_audited_and_retried_by_the_reconciliation() {
+        let rig = hook_rig().await;
+        rig.patch.store(500, Ordering::SeqCst);
+        let e = rig.svc.webhook_url_changed(Some(URL)).await.unwrap_err();
+        assert!(e.contains("500"), "{e}");
+        assert!(rig.audit_text().contains("github_webhook_sync_failed"));
+        assert_eq!(state(&rig).synced_url, None);
+        assert_eq!(
+            rig.svc.webhook_status(Some(URL))["synced"],
+            false,
+            "the status says it is not synced"
+        );
+
+        rig.patch.store(200, Ordering::SeqCst);
+        rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert_eq!(state(&rig).synced_url.as_deref(), Some(URL));
+        assert_eq!(rig.fake.count("PATCH", "/app/hook/config"), 2);
+        // Synced: another pass does not tell it again.
+        rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert_eq!(rig.fake.count("PATCH", "/app/hook/config"), 2);
+    }
+
+    // No URL, nothing: the reconciliation makes no call at all.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn without_a_public_url_the_reconciliation_calls_nothing() {
+        let rig = hook_rig().await;
+        assert_eq!(
+            rig.svc.reconcile(None).await.unwrap(),
+            super::super::webhook::Reconciled::default()
+        );
+        assert!(rig.fake.seen().is_empty());
+    }
+
+    // Coverage is per installation and only after a correctly signed delivery of it: the repo the app is installed on
+    // is covered, another is not, and a failing hook covers nothing.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_repo_is_covered_once_its_installation_has_delivered_and_while_the_hook_is_up() {
+        let rig = hook_rig().await;
+        assert!(
+            !rig.svc.webhook_covers("acme/web").await,
+            "nothing delivered yet"
+        );
+        rig.svc.note_verified(7);
+        assert!(rig.svc.webhook_covers("acme/web").await);
+        assert!(
+            !rig.svc.webhook_covers("other/repo").await,
+            "no installation covers it"
+        );
+        // An installation that delivered is not every installation.
+        rig.svc.note_verified(8);
+        assert!(!rig.svc.webhook_covers("other/repo").await);
+
+        // The hook goes down: every repo goes back to the poll.
+        *rig.deliveries.lock() = json!([row(1, "a", T0 - 7200, 502)]);
+        let r = rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert!(r.failing);
+        assert!(!rig.svc.webhook_covers("acme/web").await);
+        // A signed delivery is the proof it is up again.
+        rig.svc.note_verified(7);
+        assert!(rig.svc.webhook_covers("acme/web").await);
+        let audit = rig.audit_text();
+        assert!(audit.contains("github_webhook_verified"), "{audit}");
+        assert!(audit.contains("github_webhook_failing"), "{audit}");
+        assert!(audit.contains("github_webhook_recovered"), "{audit}");
+    }
+
+    // The URL changing forgets what the old one verified: the new one has proved nothing yet.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_new_url_forgets_what_the_old_one_verified() {
+        let rig = hook_rig().await;
+        rig.svc.note_verified(7);
+        assert!(rig.svc.webhook_covers("acme/web").await);
+        rig.svc
+            .webhook_url_changed(Some("https://other.example.com"))
+            .await
+            .unwrap();
+        assert!(!rig.svc.webhook_covers("acme/web").await);
+        assert!(state(&rig).verified.is_empty());
+        assert_eq!(
+            state(&rig).synced_url.as_deref(),
+            Some("https://other.example.com")
+        );
+    }
+
+    // Reconciliation: failed deliveries are redelivered while the hook is up, by the id of the newest attempt, never a
+    // delivery that later succeeded, with the backoff doubling and a bound on attempts.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn failed_deliveries_are_redelivered_with_backoff_and_a_bound() {
+        let rig = hook_rig().await;
+        rig.svc.note_verified(7); // the hook worked: healthy since T0
+        rig.svc.reconcile(Some(URL)).await.unwrap(); // sync
+        rig.clock.0.store(T0 + 600, Ordering::SeqCst);
+        // "ok" delivered fine and "late" failed twice (the redelivery of it failed too); "redone" failed and its
+        // redelivery succeeded.
+        *rig.deliveries.lock() = json!([
+            row(9, "late", T0 + 300, 502),
+            row(8, "redone", T0 + 250, 200),
+            row(7, "ok", T0 + 200, 200),
+            row(6, "late", T0 + 100, 502),
+            row(5, "redone", T0 + 50, 502),
+        ]);
+        let r = rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert_eq!((r.redelivered, r.failing), (1, false), "{r:?}");
+        assert_eq!(
+            redeliveries(&rig),
+            vec!["/app/hook/deliveries/9/attempts"],
+            "only `late`, by its newest attempt"
+        );
+        assert!(rig.audit_text().contains("github_webhook_redelivered"));
+
+        // Waits: 10 min after the first, 20 after the second, 40, 80, and then never. The hook stays up (a delivery
+        // succeeded a minute ago): it is only these two that keep failing.
+        let list = |now: i64| {
+            json!([
+                row(1000 + now as u64, "fresh", now - 60, 200),
+                row(9, "late", T0 + 300, 502),
+                row(6, "late", T0 + 100, 502),
+            ])
+        };
+        let mut waits = vec![];
+        let mut now = T0 + 600;
+        for wait in [10, 20, 40, 80] {
+            // One second short: nothing.
+            now += wait * 60 - 1;
+            rig.clock.0.store(now, Ordering::SeqCst);
+            *rig.deliveries.lock() = list(now);
+            let before = redeliveries(&rig).len();
+            rig.svc.reconcile(Some(URL)).await.unwrap();
+            assert_eq!(
+                redeliveries(&rig).len(),
+                before,
+                "redelivered {wait} min - 1 s after"
+            );
+            now += 1;
+            rig.clock.0.store(now, Ordering::SeqCst);
+            *rig.deliveries.lock() = list(now);
+            rig.svc.reconcile(Some(URL)).await.unwrap();
+            waits.push(redeliveries(&rig).len() - before);
+        }
+        assert_eq!(waits, vec![1, 1, 1, 1]);
+        assert_eq!(redeliveries(&rig).len(), 5, "five attempts in all");
+        // Out of attempts: never again, however long it fails.
+        now += 24 * 3600;
+        rig.clock.0.store(now, Ordering::SeqCst);
+        *rig.deliveries.lock() = json!([
+            row(20, "fresh-ok", now - 60, 200),
+            row(9, "late", now - 3600, 502),
+        ]);
+        rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert_eq!(redeliveries(&rig).len(), 5, "a sixth attempt was made");
+    }
+
+    // The poll covers a hook that is down, so redelivering then would fire what the poll already did: while it fails,
+    // nothing is redelivered; and what failed before it recovered (the poll's) is never redelivered afterwards.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn nothing_is_redelivered_while_the_hook_is_down_or_for_what_the_poll_covered() {
+        let rig = hook_rig().await;
+        rig.svc.note_verified(7);
+        rig.svc.reconcile(Some(URL)).await.unwrap();
+        // An hour of failures, none succeeded for over half an hour: down.
+        rig.clock.0.store(T0 + 7200, Ordering::SeqCst);
+        *rig.deliveries.lock() = json!([
+            row(3, "c", T0 + 7000, 502),
+            row(2, "b", T0 + 5000, 502),
+            row(1, "a", T0 + 3000, 502),
+        ]);
+        let r = rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert!(r.failing && r.redelivered == 0 && r.skipped == 3, "{r:?}");
+        assert!(state(&rig).failing);
+        assert!(redeliveries(&rig).is_empty());
+
+        // It comes back (a signed delivery at T0 + 7300) with a new failure after it: only that one is redelivered.
+        rig.clock.0.store(T0 + 7300, Ordering::SeqCst);
+        rig.svc.note_verified(7);
+        rig.clock.0.store(T0 + 7400, Ordering::SeqCst);
+        *rig.deliveries.lock() = json!([
+            row(5, "d", T0 + 7390, 502),
+            row(4, "ok", T0 + 7300, 200),
+            row(3, "c", T0 + 7000, 502),
+        ]);
+        let r = rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert_eq!((r.redelivered, r.failing), (1, false), "{r:?}");
+        assert_eq!(redeliveries(&rig), vec!["/app/hook/deliveries/5/attempts"]);
+    }
+
+    // Before any signed delivery the poll covers everything: a failed delivery from the setup (a tunnel that was not
+    // up yet) is not redelivered, or it would fire what the poll fired.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn nothing_is_redelivered_before_the_hook_has_delivered_once() {
+        let rig = hook_rig().await;
+        rig.svc.reconcile(Some(URL)).await.unwrap();
+        *rig.deliveries.lock() = json!([row(2, "b", T0 - 60, 200), row(1, "a", T0 - 120, 502),]);
+        let r = rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert_eq!((r.redelivered, r.skipped), (0, 1), "{r:?}");
+        assert!(redeliveries(&rig).is_empty());
+    }
+
+    // A pass is bounded: a flood of failures is spread over passes, not sent at GitHub at once.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn one_pass_redelivers_a_bounded_number() {
+        let rig = hook_rig().await;
+        rig.svc.note_verified(7);
+        rig.svc.reconcile(Some(URL)).await.unwrap();
+        rig.clock.0.store(T0 + 600, Ordering::SeqCst);
+        let mut rows: Vec<Value> = (0..30)
+            .map(|n| row(100 + n, &format!("g{n}"), T0 + 60 + n as i64, 502))
+            .collect();
+        rows.push(row(1, "ok", T0 + 599, 200));
+        rows.reverse();
+        *rig.deliveries.lock() = json!(rows);
+        let r = rig.svc.reconcile(Some(URL)).await.unwrap();
+        assert_eq!(r.redelivered, 20, "{r:?}");
+        assert_eq!(r.skipped, 10);
+        // Oldest first: the order things happened.
+        assert_eq!(redeliveries(&rig)[0], "/app/hook/deliveries/100/attempts");
     }
 }

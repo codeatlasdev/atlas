@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Flutter rasterises text a few pixels differently on macOS and Linux, so one image
 /// cannot match both (0.4–3% diffs on every golden with text). Each platform keeps
@@ -11,6 +12,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// `flutter test --update-goldens` on each; the Linux set can also be taken from the
 /// `mobile-golden-failures` artifact of a failed CI run. docs/mobile.md, "Goldens".
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
+  // `readAloudProvider` calls `SharedPreferencesAsync()` in its build.  Without a mock every
+  // test that pumps a screen with the provider in scope crashes.  An in-memory stub covers all
+  // test suites; the initial value is empty (read-aloud off, the default).
+  SharedPreferences.setMockInitialValues({});
   goldenFileComparator = _PerPlatformGoldens(goldenFileComparator);
   await testMain();
 }

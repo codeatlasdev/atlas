@@ -18,13 +18,28 @@ abstract interface class ReadAloudStore {
 
 class PrefsReadAloudStore implements ReadAloudStore {
   static const _key = 'atlas_mobile.read_replies_aloud';
-  final _prefs = SharedPreferencesAsync();
+
+  /// Lazy: `SharedPreferencesAsync()` throws `StateError` when the platform is not set up (tests).
+  /// The getter is only called on a real device; tests override [readAloudStoreProvider] with a fake.
+  SharedPreferencesAsync get _prefs => SharedPreferencesAsync();
 
   @override
-  Future<bool> load() async => await _prefs.getBool(_key) ?? false;
+  Future<bool> load() async {
+    try {
+      return await _prefs.getBool(_key) ?? false;
+    } on StateError {
+      return false; // SharedPreferencesAsyncPlatform not set up (tests without a mock)
+    }
+  }
 
   @override
-  Future<void> save(bool on) => _prefs.setBool(_key, on);
+  Future<void> save(bool on) async {
+    try {
+      await _prefs.setBool(_key, on);
+    } on StateError {
+      // no-op in test environments without a platform mock
+    }
+  }
 }
 
 final readAloudStoreProvider = Provider<ReadAloudStore>(

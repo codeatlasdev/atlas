@@ -295,6 +295,17 @@ pub const ENGINES_DIR: &str = "/usr/local/lib/atlas-crew/engines";
 /// by every crewmate user. Not a crewmate's home and not the crew user's: nobody's sign-in lives here.
 pub const ENGINE_HOME: &str = "/usr/local/lib/atlas-crew/engine-home";
 
+/// The `gh` every crewmate finds first: a link to the `atlas` binary in the helper's engine directory (the helper pins
+/// its `PATH`, so this is the one place a root-owned name can win over `/usr/bin/gh`). `atlas` run as `gh` asks hostd for
+/// an installation token of the GitHub App for the repo the command targets and runs the real `gh` with it
+/// (`atlas_host::crew::gh_shim`); with no app it runs the real `gh` untouched. The link follows `atlas crew update`
+/// (it names the path, not the file).
+pub fn gh_shim_step() -> String {
+    format!(
+        "sudo install -d -m 0755 {ENGINES_DIR} && sudo ln -sfn {INSTALL_DIR}/atlas {ENGINES_DIR}/gh"
+    )
+}
+
 /// Where each installer puts its binary under its `$HOME`, in the order they are tried.
 const BIN_DIRS: [&str; 5] = [
     ".local/bin",
@@ -401,6 +412,7 @@ pub fn install_actions(a: &Account, ids: &[String], engines: &[(&str, &str)]) ->
         EGRESS_FILE.rsplit_once('/').map_or("/etc", |(d, _)| d)
     )));
     v.extend(start_steps().into_iter().map(Action::Run));
+    v.push(Action::Run(gh_shim_step()));
     for (agent, cmd) in engines {
         if let Some(script) = engine_install_script(agent, cmd) {
             v.push(Action::Engine {
@@ -1046,6 +1058,22 @@ mod tests {
     fn the_engine_dir_the_installer_links_into_is_the_one_the_helper_searches_first() {
         use atlas_host::crew::spawn::exec::ENGINE_DIRS;
         assert_eq!(ENGINE_DIRS[0], ENGINES_DIR);
+    }
+
+    // The helper pins an isolated crewmate's PATH to its engine directory first: that is where `gh` must be to win.
+    #[cfg(unix)]
+    #[test]
+    fn gh_is_linked_to_atlas_in_the_directory_the_helper_searches_first() {
+        use atlas_host::crew::spawn::exec::ENGINE_DIRS;
+        let sh = gh_shim_step();
+        assert!(
+            sh.contains(&format!(
+                "ln -sfn {INSTALL_DIR}/atlas {}/gh",
+                ENGINE_DIRS[0]
+            )),
+            "{sh}"
+        );
+        assert!(sh.starts_with("sudo install -d -m 0755 "), "{sh}");
     }
 
     #[test]

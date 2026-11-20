@@ -132,7 +132,11 @@ pub fn get(
 }
 
 /// `POST /crew/<id>/git_credential` to the hook server over loopback; the JSON of a `200`.
-fn ask(ep: &Endpoint, body: &str, timeout: Duration) -> Result<serde_json::Value, String> {
+pub(super) fn ask(
+    ep: &Endpoint,
+    body: &str,
+    timeout: Duration,
+) -> Result<serde_json::Value, String> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], ep.port));
     let mut s = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(2))
         .map_err(|e| format!("hostd is not reachable: {e}"))?;

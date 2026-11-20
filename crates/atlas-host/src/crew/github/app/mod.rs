@@ -19,7 +19,10 @@ mod api;
 mod env;
 #[cfg(test)]
 pub(crate) mod fake;
+pub mod gh_shim;
 pub mod helper;
+#[cfg(unix)]
+mod hooks;
 mod http;
 mod jwt;
 mod manifest;
@@ -38,7 +41,8 @@ use crate::protocol::{Failure, HostCmd};
 use crate::server::Hub;
 
 pub(crate) use api::Routed;
-#[cfg(test)]
+// Only the Unix-only `crew::tests::github_app` reaches it from outside; on Windows it would be an unused import.
+#[cfg(all(test, unix))]
 pub(crate) use http::TEST_API_BASE;
 pub(crate) use service::{
     AppService, CODE_EXPIRED, CONVERSION_FAILED, EXISTS, FORBIDDEN, NONE, TokenError,
@@ -143,36 +147,86 @@ pub(crate) fn project_repo(hub: &Hub, crewmate_id: &str) -> Option<String> {
     }
 }
 
-/// The environment of crewmate `id`'s agent for git through the app (see `env`): empty when no app is set up, and
-/// for a crewmate that carries a `GITHUB_TOKEN` secret of its own (its own credential stays its own).
-pub(crate) async fn agent_env(hub: &Hub, id: &str) -> Vec<(String, String)> {
+/// Whether crewmate `id` works through the app: one is set up, and the crewmate has no `GITHUB_TOKEN` of its own.
+pub(crate) fn uses_app(hub: &Hub, id: &str) -> bool {
+    matches!(hub.crew.github_app.record(), Ok(Some(_)))
+        && !hub.crew.store.secret_env(id).contains_key("GITHUB_TOKEN")
+}
+
+/// The environment of crewmate `id`'s agent for git and `gh` through the app: empty when no app is set up, and for
+/// a crewmate that carries a `GITHUB_TOKEN` secret of its own (its own credential stays its own). Never a token:
+/// the git credential helper and the `gh` shim ask hostd per operation.
+///
+/// - the helper, the bot identity, the hooks directory (`hooks`), and `ATLAS_CO_AUTHOR` for the person who started the
+///   task (`pane_key` names it), whom the `commit-msg` hook credits;
+/// - `PATH` with the `gh` shim first, for a crewmate that is not its own Linux user. For one that is, the spawn helper
+///   pins `PATH` and the installer links the shim into its engine directory.
+pub(crate) async fn agent_env(hub: &Hub, id: &str, pane_key: &str) -> Vec<(String, String)> {
     if hub.crew.store.secret_env(id).contains_key("GITHUB_TOKEN") {
         return vec![];
     }
     let Some(who) = hub.crew.github_app.identity().await else {
         return vec![];
     };
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "atlas".into());
+    let exe = std::env::current_exe().unwrap_or_else(|_| "atlas".into());
+    let isolated = hub.crew.store.isolated(id).is_some();
+    // Where the agent reads what hostd writes for it: `crew-runtime/` when isolated.
+    #[cfg(unix)]
+    let hooks = {
+        let runtime = match hub.crew.store.isolated(id) {
+            Some(iso) => iso.runtime(),
+            None => hub.crew.store.crewmate_dir(id),
+        };
+        match hooks::ensure(&runtime) {
+            Ok(d) => Some(d.to_string_lossy().into_owned()),
+            Err(e) => {
+                // i18n-ignore: log
+                eprintln!("atlas crew: crewmate {id}: cannot write the git hooks: {e}");
+                None
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let hooks: Option<String> = None;
+    let co_author = pane::task_id(pane_key, id)
+        .and_then(|t| hub.crew.store.task(id, t))
+        .and_then(|t| t.origin)
+        .and_then(|o| o.requester)
+        .map(|u| env::co_author(&u.login, u.id));
     // A crewmate that is its own Linux user never gets the crew user's `gh` login as a fallback.
-    let gh_fallback = hub.crew.store.isolated(id).is_none();
-    env::git_env(&exe, &who, gh_fallback)
+    #[cfg_attr(not(unix), allow(unused_mut))]
+    let mut out = env::git_env(
+        &exe.to_string_lossy(),
+        &who,
+        !isolated,
+        hooks.as_deref(),
+        co_author.as_deref(),
+    );
+    #[cfg(unix)]
+    if !isolated {
+        match gh_shim::ensure_dir(&hub.crew.dir, &exe) {
+            Ok(dir) => {
+                let old = std::env::var_os("PATH").unwrap_or_default();
+                let paths = std::iter::once(dir).chain(std::env::split_paths(&old));
+                if let Ok(path) = std::env::join_paths(paths) {
+                    out.push(("PATH".to_string(), path.to_string_lossy().into_owned()));
+                }
+            }
+            Err(e) => {
+                // i18n-ignore: log
+                eprintln!("atlas crew: crewmate {id}: cannot make the gh shim: {e}");
+            }
+        }
+    }
+    out
 }
 
-/// What a task is told about commits when an app is set up: the identity is already in the environment, the
-/// requester is the one thing only the agent can put in the message.
-pub(crate) fn commit_note(requester: Option<(&str, u64)>) -> String {
-    let mut note = String::from(
-        "Commit with the git identity already configured (the GitHub App's bot); never change it.\n",
-    );
-    if let Some((login, id)) = requester {
-        note.push_str(&format!(
-            "End every commit message with a blank line and this trailer, so the person who asked is credited:\n{}\n",
-            env::co_author(login, id)
-        ));
-    }
-    note
+/// What a task is told about commits when an app is set up: the identity is already in the environment, and the
+/// `Co-authored-by:` trailer of the requester is added by the `commit-msg` hook (`hooks`).
+pub(crate) fn commit_note() -> String {
+    "Commit with the git identity already configured (the GitHub App's bot); never change it. \
+     A hook adds the Co-authored-by trailer of the person who asked: do not write it yourself.\n"
+        .to_string()
 }
 
 /// Whether crewmate `id`'s project is reached through the app, with nothing from the `gh` login: an isolated

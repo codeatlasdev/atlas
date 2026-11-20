@@ -186,7 +186,7 @@ async fn run_pty_inner(
     req.env.extend(ctx.agent_env(hub, &crewmate.id));
     // Git through the GitHub App (helper and bot identity, never a token).
     req.env
-        .extend(crate::crew::github::app::agent_env(hub, &crewmate.id).await);
+        .extend(crate::crew::github::app::agent_env(hub, &crewmate.id, pane_key).await);
     // Inject hook endpoint env vars (must come after crewmate env so ATLAS_* always wins).
     crate::server::hook_env(hub, &mut req);
 

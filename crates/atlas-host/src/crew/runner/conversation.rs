@@ -188,7 +188,7 @@ impl Turn<'_> {
             env.entry(k).or_insert(v);
         }
         // Git through the GitHub App (helper and bot identity, never a token): hostd's, so it wins over a secret.
-        env.extend(crate::crew::github::app::agent_env(hub, &crewmate.id).await);
+        env.extend(crate::crew::github::app::agent_env(hub, &crewmate.id, self.pane_key).await);
         // What the engine's stream says the agent ran, for the guards (`runner::tape`).
         let task_id = self
             .pane_key

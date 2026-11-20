@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "d2010d5d3fc3ddb4f821a706a4efb9bd44d3b247"
+source_sha: "a02fa17bd0cb7cd356ac59f9bec64fa9a7f12ec7"
 translation: machine
 ---
 
@@ -315,9 +315,11 @@ As falhas trazem um código: `crew.github_app.exists` (já existe um app; checad
 
 **Git de um crewmate.** O ambiente do agente não leva token. Leva entradas `GIT_CONFIG_*` que fazem o git consultar um credential helper, `atlas crew git-credential`, e `GIT_AUTHOR_*` / `GIT_COMMITTER_*` com o bot (`<slug>[bot]`, `<id>+<slug>[bot]@users.noreply.github.com`). A cada operação que precisa de senha para `https://github.com` o helper pergunta ao hostd pelo endpoint de hook do próprio crewmate (`POST /crew/<id>/git_credential`, aberto só ao token daquele crewmate e só a partir de uma tarefa dele), e o hostd responde `username=x-access-token` com um token do repositório que o git citou. O helper não guarda nada, então um crewmate nunca segura um token além de uma operação, e um push uma hora depois do início da tarefa continua funcionando. Ele só responde `github.com` por https. Um crewmate com um segredo `GITHUB_TOKEN` próprio fica com ele. Um crewmate que é seu próprio usuário Linux nunca recebe o login do `gh` do usuário do crew como segundo helper.
 
-**Autoria.** Uma tarefa iniciada por um evento do GitHub registra quem o provocou (`origin.requester`), e o prompt dela manda o agente terminar cada mensagem de commit com `Co-authored-by: <login> <id>+<login>@users.noreply.github.com`.
+**`gh` em um crewmate.** Um `gh` fica em primeiro no `PATH` do crewmate: um link para o binário `atlas` (`<crew dir>/shims/gh`, colocado no começo do `PATH` de um crewmate que não é o próprio usuário Linux; o `atlas crew install` cria o link no diretório de engines do spawn helper para os demais, então rode-o de novo em um servidor existente). Executado como `gh`, o `atlas` descobre o repositório que o comando usa (`-R`/`--repo`, `GH_REPO`, o `repos/<owner>/<repo>` de um caminho de `gh api`, ou o `origin` do diretório atual nos comandos que agem sobre um repositório), pede ao hostd um token para ele pela mesma rota de hook do helper do git, e roda o `gh` de verdade com `GH_TOKEN` definido só naquele processo filho. O token não fica no ambiente do crewmate nem em disco. Ele roda o `gh` de verdade sem mexer em nada quando não há app, quando nenhuma instalação cobre o repositório, para um comando que não nomeia repositório (`gh auth status`, `gh api user`, `gh api graphql`), para outro host (`GH_HOST`) e quando o crewmate já tem um `GH_TOKEN` ou `GITHUB_TOKEN` próprio.
 
-**Limites.** O checkout e o fetch de um crewmate isolado usam um token de instalação só naquele processo do git (no ambiente limpo do spawn helper), e uma tarefa dessas não espera pelo login do `gh` quando o app cobre o projeto. Um crewmate que não é isolado tem o checkout feito pelo git do próprio hostd, que ainda usa o login do `gh` para clonar. O `gh api` dentro de um crewmate ainda precisa de um login do `gh` ou de um token próprio: o `gh` só lê token pelo ambiente, e o desenho mantém tokens fora dele.
+**Autoria.** Uma tarefa iniciada por um evento do GitHub registra quem o provocou (`origin.requester`). O ambiente do agente passa então a levar `ATLAS_CO_AUTHOR` (`<login> <id>+<login>@users.noreply.github.com`, que não é segredo) e `core.hooksPath` apontando para um diretório que o hostd grava (`<crewmate dir>/githooks`, ou `crew-runtime/githooks` quando isolado; o agente não consegue alterá-lo). O hook `commit-msg` dele acrescenta `Co-authored-by: <requester>` a uma mensagem de commit que não o tenha e depois roda o hook do próprio repositório com esse nome; todos os outros hooks do lado do cliente são um despachante que roda os do repositório (em `.git/hooks`, ou no `core.hooksPath` que o repositório define, como o husky faz). `git commit --no-verify` o ignora, como ignora todo hook de commit. O prompt da tarefa só diz que a identidade já está definida e que um hook acrescenta o trailer.
+
+**Limites.** O checkout e o fetch de um crewmate isolado usam um token de instalação só naquele processo do git (no ambiente limpo do spawn helper), e uma tarefa dessas não espera pelo login do `gh` quando o app cobre o projeto. Um crewmate que não é isolado tem o checkout feito pelo git do próprio hostd, que ainda usa o login do `gh` para clonar. O link do `gh` no diretório de engines é o que um crewmate isolado executa; um servidor instalado antes dele precisa de `atlas crew install` de novo.
 
 ### GitHub: entrada e saída
 

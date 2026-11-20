@@ -30,7 +30,7 @@ test("the folder of a language is its URL segment, English included", () => {
 
 test("long titles get a smaller size, never below what fits three lines", () => {
 	expect(titleSize("Get Atlas.")).toBeGreaterThan(titleSize("Put AI agents to work. Keep the final say."));
-	expect(titleSize("x".repeat(200))).toBeGreaterThanOrEqual(100);
+	expect(titleSize("x".repeat(200))).toBeGreaterThanOrEqual(80);
 });
 
 test("the layout carries the title, the subtitle, the address and the words of the language", () => {

@@ -40,10 +40,10 @@ export interface OgCard {
 	ground: "cobalt" | "paper";
 }
 
-/** Font size of a title so it fits in at most three lines of the extra-condensed display face. */
+/** Font size of a title so title + two subtitle lines + footer fit the 630 px card (two lines of about 18 characters at 124 px, of about 34 at 96 px). */
 export function titleSize(title: string): number {
 	const n = [...title].length;
-	return n <= 12 ? 200 : n <= 20 ? 160 : n <= 60 ? 124 : 100;
+	return n <= 12 ? 200 : n <= 20 ? 160 : n <= 30 ? 124 : n <= 64 ? 96 : 80;
 }
 
 /** A satori element (the subset of React elements it reads: `{ type, props }`). */

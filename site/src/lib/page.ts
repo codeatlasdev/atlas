@@ -156,6 +156,26 @@ if (!calm) {
 		});
 	});
 
+	// The idea: the four stations come in along the route, left to right, the way the voyage reads. Once, when the route enters.
+	$$<HTMLElement>("[data-route]").forEach((route) => {
+		const tl = gsap.timeline({ scrollTrigger: once(route, "top 80%") });
+		tl.from(route.querySelector(".sea"), { opacity: 0, duration: 0.5 });
+		tl.from(route.querySelectorAll(".st"), { opacity: 0, y: 18, duration: 0.5, stagger: 0.18, ease: "power2.out" }, 0.1);
+	});
+
+	// The night: each step lights up in time order, and the question that waits for you settles last.
+	$$<HTMLElement>("[data-night]").forEach((fig) => {
+		const steps = fig.querySelectorAll(".nt");
+		const tl = gsap.timeline({ scrollTrigger: once(fig, "top 78%") });
+		tl.from(steps, { opacity: 0, x: -12, duration: 0.45, stagger: 0.35, ease: "power2.out" });
+		tl.from(fig.querySelector(".badge"), { scale: 0.6, opacity: 0, duration: 0.35, ease: "back.out(2)" }, 0.35 * 2 + 0.2);
+	});
+
+	// Grand Line: the routes between the islands appear one after the other.
+	$$<SVGElement>("[data-ocean]").forEach((sea) => {
+		gsap.from(sea.querySelectorAll(".routes path"), { opacity: 0, duration: 0.6, stagger: 0.25, scrollTrigger: once(sea.closest("section")!, "top 70%") });
+	});
+
 	// Logs river speeds up with scroll velocity, then settles.
 	const lenis = scroller();
 	const fast = document.querySelector<HTMLElement>("[data-fast] .strip");

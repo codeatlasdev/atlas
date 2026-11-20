@@ -1,8 +1,8 @@
 {
 	"home_floor_app": "Title of a basics item: the desktop app.",
 	"home_floor_app_text": "Text of the desktop app item. {platforms} is the list of operating systems formatted for the language.",
-	"home_floor_cli": "Title of a basics item: the terminal dashboard and command line.",
-	"home_floor_cli_text": "Text of the command-line item; the code spans are a command and its flags.",
+	"home_floor_cli": "Title of a basics item: the terminal dashboard and command line. i18n-allow dnt:engine (a generic engine, \"motor\" in pt-BR, not a crewmate's engine)",
+	"home_floor_cli_text": "Text of the command-line item; the code spans are a command and its flags. i18n-allow dnt:engine (a generic engine, \"motor\" in pt-BR)",
 	"home_floor_lang": "Title of a basics item: languages.",
 	"home_floor_lang_text": "Text of the language item.",
 	"home_floor_lead": "Paragraph under the heading of the basics chapter.",

@@ -253,7 +253,7 @@ const next = [m.home_grand_next_phone(), m.home_grand_next_company(), m.home_gra
 				{faq.map((f) => (
 					<details>
 						<summary>{f.q}</summary>
-						<p>{f.parts ? <Rich parts={f.parts} tags={f.tags} /> : f.plain}</p>
+						<p>{f.parts ? <Rich parts={f.parts} tags={f.tags ?? {}} /> : f.plain}</p>
 					</details>
 				))}
 			</div>

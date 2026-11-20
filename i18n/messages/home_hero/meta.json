@@ -6,6 +6,5 @@
 	"home_hero_lead_short": "Shorter line under the h1 on phones (replaces the long paragraph).",
 	"home_hero_meta_description": "Meta description of the home page (search results and link previews), about 160 characters.",
 	"home_hero_meta_title": "<title> and og:title of the home page.",
-	"home_hero_play_film": "Label of the button that opens the product film, shown before JavaScript loads; the film's length follows it.",
 	"home_hero_title": "The h1 of the home page: the whole promise of Atlas in one line. Two short sentences."
 }

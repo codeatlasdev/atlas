@@ -8,7 +8,7 @@
 	"home_crew_night": "Uma noite de exemplo",
 	"home_crew_step_approve": "Você lê o resultado e o diff e responde: permitir uma vez, permitir nesta tarefa ou negar com um comentário.",
 	"home_crew_step_ask": "Ele quer rodar algo arriscado. Para e pergunta, e a pergunta espera por você.",
-	"home_crew_step_ask_badge": "Esperando por você",
+	"home_crew_step_ask_badge": "Aguardando você",
 	"home_crew_step_leave": "Você deixa uma tarefa, por texto ou por voz, no Atlas Desktop ou no Telegram.",
 	"home_crew_step_work": "Um crewmate reproduz o bug, escreve um teste que falha e depois corrige.",
 	"home_crew_title": "Deixe uma tarefa à noite. Acorde com o trabalho feito, e a prova.",

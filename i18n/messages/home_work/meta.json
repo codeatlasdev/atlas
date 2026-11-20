@@ -3,7 +3,7 @@
 	"home_work_agents_more": "Small print of the agents chapter; the link opens the agent setup docs.",
 	"home_work_agents_shot_alt": "Alt text of the screenshot in the agents chapter.",
 	"home_work_agents_title": "Heading of the chapter about running several coding agents at once.",
-	"home_work_branches_alt": "Accessible description of the branch drawing.",
+	"home_work_branches_alt": "Accessible description of the branch drawing. i18n-allow dnt:branch (\"branches into\" is the verb: main splits)",
 	"home_work_mcp_lead": "Paragraph of the MCP chapter.",
 	"home_work_mcp_more": "Small print of the MCP chapter; MCP is a protocol name; the link opens the MCP docs.",
 	"home_work_mcp_title": "Heading of the chapter about agents reading the running project through MCP.",

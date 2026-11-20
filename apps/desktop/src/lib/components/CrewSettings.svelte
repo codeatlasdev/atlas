@@ -9,6 +9,11 @@
 	import PairQr from "#lib/components/PairQr.svelte";
 	import BrowsersRow from "#lib/crew/settings/BrowsersRow.svelte";
 	import TelegramRow from "#lib/crew/settings/TelegramRow.svelte";
+	import VoiceRows from "#lib/crew/settings/VoiceRows.svelte";
+	import { DICTATION_STROKE } from "#lib/crew/voice/key.ts";
+	import { dictationKey, setMode } from "#lib/crew/voice/mode.svelte.ts";
+	import type { KeyMode } from "#lib/crew/voice/dictation.svelte.ts";
+	import { IS_MAC, label as keyLabel } from "#lib/keys.ts";
 	import { secondsLeft, type PairStart } from "#lib/settings/mobile.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import {
@@ -280,6 +285,7 @@
 			</Row>
 			<BrowsersRow hostKey={h.key} />
 			<TelegramRow hostKey={h.key} />
+			<VoiceRows hostKey={h.key} />
 		{/if}
 
 		<Row
@@ -337,6 +343,24 @@
 				updates.open = false;
 			}}>{m.settings_agents_crew_open_workspace()}</Button
 		>
+	</Row>
+</Group>
+
+<Group title={m.crew_voice_settings_title()}>
+	<Row
+		id="crew-dictation-key"
+		label={m.crew_voice_key()}
+		description={m.crew_voice_key_hint({ shortcut: keyLabel(DICTATION_STROKE, IS_MAC) })}
+	>
+		<select
+			class="input mode-select"
+			value={dictationKey.mode}
+			aria-label={m.crew_voice_key()}
+			onchange={(e) => setMode((e.currentTarget as HTMLSelectElement).value as KeyMode)}
+		>
+			<option value="hold">{m.crew_voice_key_hold()}</option>
+			<option value="tap">{m.crew_voice_key_tap()}</option>
+		</select>
 	</Row>
 </Group>
 

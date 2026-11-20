@@ -1,7 +1,7 @@
 ---
 title: "Contribuir"
 source: contributing.md
-source_sha: "53577707d65ae0bd02e3cd54da7fa267b30ced75"
+source_sha: "eea4d7b3d2287a498aa9dfaae6134711e0b03c7a"
 translation: machine
 ---
 
@@ -40,8 +40,8 @@ WebKitGTK 4.1 e as suas dependências de build para o Atlas Desktop (o `bun run 
 
 ```bash
 sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module libappindicator-gtk3 librsvg xdotool   # Arch
-sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev   # Debian/Ubuntu
-sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel   # Fedora
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libasound2-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev   # Debian/Ubuntu
+sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel alsa-lib-devel   # Fedora
 ```
 
 Os terminais usam xterm.js. As instâncias de agente (`bun run desktop:agent`) rodam em um sway headless próprio e em um barramento de sessão D-Bus próprio, então precisam de `sway`, `grim` e `dbus-daemon` (Arch: `pacman -S sway grim`; Debian/Ubuntu: `apt install sway grim dbus`); a gravação também precisa de `ffmpeg` (com libx264). O Atlas Lab, o espelho, o `debug shot` e o `debug record` funcionam nelas (veja "Lacunas no Linux e no Windows" abaixo). O roadmap do Linux é a #289.

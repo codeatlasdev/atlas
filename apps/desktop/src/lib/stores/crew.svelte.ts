@@ -279,7 +279,7 @@ class CrewStore {
 
 	// ─── tasks ────────────────────────────────────────────────────────────────
 
-	async sendTask(prompt: string, images: PendingImage[] = [], ui = false): Promise<void> {
+	async sendTask(prompt: string, images: PendingImage[] = [], ui = false, dictated = false): Promise<void> {
 		if (!this.selected) return;
 		const { hostKey, crewmateId } = this.selected;
 		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -297,6 +297,8 @@ class CrewStore {
 			tz,
 			attachments,
 			...(ui ? { ui } : {}),
+			// Part of the prompt was spoken: hostd tells the agent to expect homophones.
+			...(dictated ? { dictated } : {}),
 		});
 		await this.refreshHost(hostKey);
 		await this.loadTasks();

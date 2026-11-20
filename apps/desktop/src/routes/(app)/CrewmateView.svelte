@@ -4,7 +4,7 @@
 	 * crewmate) or the task thread and composer. The parts live in lib/crew/chat; this wires them to the stores.
 	 * Approval is inline in the thread; Telegram and Pair phone live in the settings dialog.
 	 */
-	import { onMount } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
@@ -23,6 +23,7 @@
 	import ModePicker from "#lib/crew/chat/ModePicker.svelte";
 	import SetupConversation from "#lib/crew/chat/SetupConversation.svelte";
 	import { ChatState } from "#lib/crew/chat/chat.svelte.ts";
+	import { voiceStatus } from "#lib/crew/voice/status.svelte.ts";
 	import { parseAsk } from "#lib/crew/chat/parseAsk.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -66,10 +67,19 @@
 	);
 	const setupStep = $derived(normalizeStep(crewmate?.setup_step));
 
-	// Reset approvedReqs when the selected crewmate changes
+	// Reset approvedReqs when the selected crewmate changes; a dictation in flight belongs to the one it started
+	// in (its audio goes to that crewmate's server), so it ends here and the microphone is released.
 	$effect(() => {
 		void crew.selected;
 		chat.resetApprovals();
+		// Untracked: `cancel` reads the session's state, which must not re-run (and cancel) this effect.
+		untrack(() => chat.dictation.cancel());
+	});
+
+	// What the selected crew server can do with a voice: the microphone's state in the composer.
+	$effect(() => {
+		const key = hostKey;
+		untrack(() => void voiceStatus.load(key));
 	});
 
 	// Fetch actual hostname for local host so header shows e.g. "Mac" not "This computer"
@@ -173,6 +183,8 @@
 					label={m.crew_workspace_crewmate_view_task_prompt_label()}
 					busy={chat.sending}
 					onfiles={(files) => void chat.attach(files)}
+					dictation={chat.dictation}
+					dictationUnsupported={!!voiceStatus.loaded[hostKey] && !voiceStatus.of(hostKey)}
 					images={chat.images}
 					onremoveimage={(i) => chat.removeImage(i)}
 					queued={queuedCount}

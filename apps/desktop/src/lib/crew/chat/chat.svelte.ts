@@ -6,11 +6,16 @@
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { hostCall } from "#lib/host.ts";
+import { hostTextLoaded } from "#lib/hostText.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import { expandKey, splitUi, withKey } from "./taskView.ts";
 import { m } from "#lib/i18n/m.ts";
 import { addImages, toSent, type PendingImage } from "#lib/crew/attachments.ts";
 import type { ApprovalAnswer } from "#lib/crew/permissionMode.ts";
+import { Dictation } from "#lib/crew/voice/dictation.svelte.ts";
+import { dictationKey } from "#lib/crew/voice/mode.svelte.ts";
+import { nativeMic } from "#lib/crew/voice/native.ts";
+import { voiceStatus } from "#lib/crew/voice/status.svelte.ts";
 
 /** An approval answered in this view: what was answered and when (ms), so the thread keeps saying it. */
 export interface AnsweredApproval extends ApprovalAnswer {
@@ -30,6 +35,21 @@ export class ChatState {
 	composerFocused = $state(false);
 	/** Images waiting to go with the next prompt. */
 	images = $state<PendingImage[]>([]);
+	/** The microphone of the message box: dictation fills `prompt`, never sends it. */
+	readonly dictation = new Dictation({
+		native: nativeMic,
+		// Routed to the selected crewmate at the moment of each call.
+		call: (cmd, args) => hostCall(cmd, { ...hostArgs(), id: crew.selected?.crewmateId, ...args }),
+		status: () => voiceStatus.of(crew.selected?.hostKey ?? ""),
+		coded: (code, args) => hostTextLoaded({ code, args, message: code }),
+		errorText: errText,
+		mode: () => dictationKey.mode,
+		now: () => Date.now(),
+		later: (fn, ms) => {
+			const t = setTimeout(fn, ms);
+			return () => clearTimeout(t);
+		},
+	});
 
 	// approvals answered in this view (req id -> answer); reset when the selected crewmate changes
 	answeredReqs = $state<Record<string, AnsweredApproval>>({});
@@ -56,7 +76,7 @@ export class ChatState {
 	// ─── composer ──────────────────────────────────────────────────────────
 
 	/** Send the composer's prompt, with its pending images unless `withImages` is false. A failure keeps both. */
-	async send(withImages = true): Promise<void> {
+	async send(withImages = true, dictated = this.dictation.dictated): Promise<void> {
 		if (!this.prompt.trim() || this.sending) return;
 		this.sending = true;
 		try {
@@ -67,8 +87,9 @@ export class ChatState {
 				toast.error(m.crew_chat_composer_ui_usage());
 				return;
 			}
-			await crew.sendTask(prompt, withImages ? this.images : [], ui);
+			await crew.sendTask(prompt, withImages ? this.images : [], ui, dictated);
 			this.prompt = "";
+			this.dictation.draftChanged("");
 			if (withImages) this.images = [];
 		} catch (e) {
 			toast.error(errText(e));
@@ -92,7 +113,8 @@ export class ChatState {
 	 *  Images pending for something the user is still typing are not part of an answer or a retry: they stay. */
 	sendText(text: string): Promise<void> {
 		this.prompt = text;
-		return this.send(false);
+		// A button's answer or a retry is not what was dictated into the box.
+		return this.send(false, false);
 	}
 
 	// ─── approvals ─────────────────────────────────────────────────────────

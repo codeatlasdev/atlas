@@ -31,8 +31,8 @@ done
 if [[ "$(uname -s)" == Linux ]] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
   die "WebKitGTK 4.1 development files not found (needed by Atlas Desktop). Install them:
   Arch:          sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module libappindicator-gtk3 librsvg xdotool
-  Debian/Ubuntu: sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-  Fedora:        sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel
+  Debian/Ubuntu: sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libasound2-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  Fedora:        sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel alsa-lib-devel
   (the CLI alone builds without them: cargo build --release -p atlas-cli)"
 fi
 

@@ -20,6 +20,7 @@ pub(crate) fn send_task(
     tz: Option<String>,
     images: Vec<Sent>,
     ui: bool,
+    dictated: bool,
 ) -> Result<Value, String> {
     let store = &hub.crew.store;
     // Whatever refuses the task also drops the pieces its images were uploaded in.
@@ -43,6 +44,7 @@ pub(crate) fn send_task(
     let mut task = Task::new(source, prompt);
     task.tz = tz;
     task.ui = ui;
+    task.dictated = dictated;
     let incoming = match attachments::resolve(store, &id, &images) {
         Ok(v) => v,
         Err(e) => return refuse(e),

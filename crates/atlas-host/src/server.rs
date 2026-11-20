@@ -1185,6 +1185,14 @@ pub(crate) async fn answer(
         HostCmd::CrewmateSetApproval { id, mode } => {
             crate::crew::approval::set_approval(hub, &id, &mode, &hub.origin_of(conn_id))
         }
+        // Dictation fails with codes a client writes its own sentence from (`crew.voice.*`).
+        cmd @ (HostCmd::CrewVoiceStatus {}
+        | HostCmd::CrewVoiceSet { .. }
+        | HostCmd::CrewmateVoicePut { .. }
+        | HostCmd::CrewmateTranscribe { .. }) => {
+            let origin = hub.origin_of(conn_id);
+            crate::crew::voice::handle(hub, cmd, &origin).await
+        }
         cmd => handle(hub, cmd, conn_id).await.map_err(Failure::Text),
     }
 }
@@ -1530,7 +1538,11 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
         | HostCmd::CrewGithubAppManifest { .. }
         | HostCmd::CrewGithubAppConvert { .. }
         | HostCmd::CrewGithubAppStatus {}
-        | HostCmd::CrewGithubAppRemove {} => Err("handled by connection".into()),
+        | HostCmd::CrewGithubAppRemove {}
+        | HostCmd::CrewVoiceStatus {}
+        | HostCmd::CrewVoiceSet { .. }
+        | HostCmd::CrewmateVoicePut { .. }
+        | HostCmd::CrewmateTranscribe { .. } => Err("handled by connection".into()),
     }
 }
 

@@ -59,7 +59,7 @@
 			{/snippet}
 			<DropdownMenuLabel>{m.crew_permission_picker_menu_label()}</DropdownMenuLabel>
 			{#each modes as option (option)}
-				<DropdownMenuItem onclick={() => void pick(option)}>
+				<DropdownMenuItem class="mode-option" onclick={() => void pick(option)}>
 					<span class="option">
 						<span class="option-top">
 							<ModeBadge mode={option} size={13} />
@@ -124,6 +124,11 @@
 		gap: 2px;
 		max-width: 280px;
 		white-space: normal;
+	}
+	/* The kit's item is one control-height line; a mode and its hint are two, so this menu's items size to them. */
+	:global(.ca-dropdown-item.mode-option) {
+		height: auto;
+		padding-block: 6px;
 	}
 	.option-top {
 		display: flex;

@@ -101,6 +101,129 @@ pub(crate) fn rail(call: &Call) -> Option<&'static str> {
     hit.then_some("protected_path")
 }
 
+/// Whether a call destroys data the way a person must see before it runs (#648): a spoken "allow" never approves
+/// one, only a tap does. Word-based like [`rail`]: every command of every string of the input is read (split where
+/// a shell chains them), so `ls && rm -rf build` counts and `git status` does not. An edit tool names files, it
+/// does not run commands, so what it writes is never read as one.
+///
+/// `rm -r`/`-rf`, `git push --force`/`-f`/`--force-with-lease` (or a `+ref`), `git reset --hard`, `git clean -f`,
+/// `git branch -D`, `DROP TABLE|DATABASE`, `TRUNCATE`, `mkfs`, `dd of=`, `chmod -R 777`, a redirect into `/dev/sd*`
+/// (and its NVMe, IDE and virtio kin). Over-matching only asks for a tap, which is the safe side.
+pub(crate) fn destructive(call: &Call) -> bool {
+    if is_edit_tool(call.tool) {
+        return false;
+    }
+    let mut hit = false;
+    commands_of(call.input, &mut |s| {
+        hit = hit
+            || s.split(['\n', ';', '|', '&', '(', ')', '`'])
+                .any(destructive_command);
+    });
+    hit
+}
+
+/// Every string in `v` that could be a command line: each string, and a list of strings joined as an argv
+/// (`["rm", "-rf", "x"]` is one command).
+fn commands_of(v: &Value, f: &mut dyn FnMut(&str)) {
+    match v {
+        Value::String(s) => f(s),
+        Value::Array(a) => {
+            let argv: Option<Vec<&str>> = a.iter().map(Value::as_str).collect();
+            if let Some(argv) = argv {
+                f(&argv.join(" "));
+            }
+            a.iter().for_each(|x| commands_of(x, f));
+        }
+        Value::Object(o) => o.values().for_each(|x| commands_of(x, f)),
+        _ => {}
+    }
+}
+
+/// `cmd` without the `NAME=value` words that start it (`FOO=1 rm -rf x` runs rm).
+fn skip_assignments(cmd: &str) -> &str {
+    let mut rest = cmd.trim_start();
+    while let Some((first, tail)) = rest.split_once(char::is_whitespace) {
+        let is_assignment = first.split_once('=').is_some_and(|(name, _)| {
+            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        });
+        if !is_assignment {
+            break;
+        }
+        rest = tail.trim_start();
+    }
+    rest
+}
+
+/// One command of a chain: [`destructive`] for the words between two separators.
+fn destructive_command(cmd: &str) -> bool {
+    const DEVICES: [&str; 4] = ["/dev/sd", "/dev/nvme", "/dev/hd", "/dev/vd"];
+    if cmd
+        .split('>')
+        .skip(1)
+        .any(|after| DEVICES.iter().any(|d| after.trim_start().starts_with(d)))
+    {
+        return true;
+    }
+    let cmd = skip_assignments(cmd);
+    let toks: Vec<&str> = words(cmd).collect();
+    // The program names, whatever folder they are run from, in any case.
+    let names: Vec<String> = toks
+        .iter()
+        .map(|t| t.rsplit('/').next().unwrap_or(t).to_ascii_lowercase())
+        .collect();
+    // `n` is what runs: the first word, or behind wrappers (`sudo`, `sh -c`, `xargs`, `find -exec`) and their
+    // options. `grep -rn rm src` names rm; it does not run it.
+    const WRAPPERS: [&str; 19] = [
+        "sudo", "doas", "env", "nohup", "time", "nice", "xargs", "exec", "command", "builtin",
+        "ionice", "timeout", "sh", "bash", "zsh", "dash", "eval", "-exec", "-execdir",
+    ];
+    let runs = |n: &str| {
+        names.iter().enumerate().any(|(i, t)| {
+            t == n
+                && (i > 0 && matches!(names[i - 1].as_str(), "-exec" | "-execdir")
+                    || toks[..i].iter().zip(&names).all(|(raw, w)| {
+                        WRAPPERS.contains(&w.as_str())
+                            || raw.starts_with('-')
+                            || raw.chars().all(|c| c.is_ascii_digit())
+                    }))
+        })
+    };
+    let has = |n: &str| names.iter().any(|t| t == n);
+    let flags = || toks.iter().filter(|t| t.starts_with('-') && t.len() > 1);
+    // `-rf`, `-fr`, `-R`: a short flag cluster that holds the letter (case matters: `-D` is not `-d`).
+    let short = |c: char| flags().any(|t| !t.starts_with("--") && t[1..].contains(c));
+    let long = |name: &str| flags().any(|t| t.starts_with(name));
+    if runs("rm") && (short('r') || short('R') || long("--recursive")) {
+        return true;
+    }
+    if runs("git") {
+        let forced = short('f') || long("--force");
+        let pushed_ref = toks.iter().any(|t| t.starts_with('+') && t.len() > 1);
+        if (has("push") && (forced || pushed_ref))
+            || (has("reset") && toks.contains(&"--hard"))
+            || (has("clean") && forced)
+            || (has("branch") && (short('D') || ((short('d') || long("--delete")) && forced)))
+        {
+            return true;
+        }
+    }
+    if names
+        .windows(2)
+        .any(|w| w[0] == "drop" && (w[1] == "table" || w[1] == "database"))
+    {
+        return true;
+    }
+    if runs("truncate") || names.iter().any(|n| n.starts_with("mkfs") && runs(n)) {
+        return true;
+    }
+    if runs("dd") && has("of") {
+        return true;
+    }
+    runs("chmod")
+        && (short('R') || long("--recursive"))
+        && toks.iter().any(|t| t.trim_start_matches('0') == "777")
+}
+
 /// Whether `tool` writes files by name.
 fn is_edit_tool(tool: &str) -> bool {
     matches!(
@@ -561,7 +684,8 @@ pub(crate) async fn decide(
                   device: Option<&str>,
                   rail: Option<&str>,
                   comment: Option<&str>,
-                  req: Option<&str>| {
+                  req: Option<&str>,
+                  voice: Option<&str>| {
         let mut f = Map::new();
         if let Some(r) = req {
             f.insert("req".into(), json!(r));
@@ -587,6 +711,11 @@ pub(crate) async fn decide(
         if let Some(c) = comment {
             f.insert("comment".into(), json!(c));
         }
+        // Spoken, not tapped: the transcript is what was heard, so an audit can tell what the owner said.
+        if let Some(t) = voice {
+            f.insert("via".into(), json!("voice"));
+            f.insert("transcript".into(), json!(t));
+        }
         hub.crew
             .audit
             .record(Some(&crewmate_id), "approval_decision", Value::Object(f));
@@ -595,7 +724,7 @@ pub(crate) async fn decide(
     let mut reply;
     match classify_pane(hub, pane, payload) {
         Auto::Allow(source) => {
-            record(true, source, None, None, None, None);
+            record(true, source, None, None, None, None, None);
             reply = Reply {
                 allow: Some(true),
                 message: None,
@@ -606,7 +735,7 @@ pub(crate) async fn decide(
             let Some(prompt) = hub.agents.open(pane, agent, payload, can_approve, rail) else {
                 // Nobody is there to ask. A rail refused it on its own; otherwise nobody answered.
                 let source = if rail.is_some() { "rail" } else { "timeout" };
-                record(false, source, None, rail, None, None);
+                record(false, source, None, rail, None, None, None);
                 notify_unanswered(hub, &crewmate_id, &task_id, &tool);
                 return finish(
                     hub,
@@ -643,6 +772,7 @@ pub(crate) async fn decide(
                                     scope: ApproveScope::Once,
                                     comment: None,
                                     source,
+                                    voice: None,
                                 },
                             );
                         }
@@ -680,6 +810,7 @@ pub(crate) async fn decide(
                         rail,
                         comment.as_deref(),
                         Some(&req),
+                        a.voice.as_deref(),
                     );
                     reply = if a.allow {
                         Reply {
@@ -699,7 +830,7 @@ pub(crate) async fn decide(
                     };
                 }
                 None => {
-                    record(false, "timeout", None, rail, None, Some(&req));
+                    record(false, "timeout", None, rail, None, Some(&req), None);
                     notify_unanswered(hub, &crewmate_id, &task_id, &tool);
                     reply = Reply::unanswered(
                         "nobody answered the approval request in time (the owner was told). Do not retry the same call: ask the user, or find another way.".into(),
@@ -1158,5 +1289,90 @@ mod tests {
             ..c
         };
         assert_eq!(classify(Mode::Edits, &c, |_| false), Auto::Allow("mode"));
+    }
+
+    fn bash(command: &str) -> bool {
+        let input = json!({"command": command});
+        destructive(&call("Bash", &input, false))
+    }
+
+    // #648: a spoken allow never approves these; one miss is a destructive command approved by voice, one false
+    // hit only asks for a tap.
+    #[test]
+    fn destructive_calls_are_the_ones_that_destroy_data() {
+        for cmd in [
+            "rm -rf build",
+            "rm -r dir",
+            "rm -fr x",
+            "rm -Rf x",
+            "rm --recursive x",
+            "sudo rm -rf /",
+            "FOO=1 rm -rf x",
+            "sh -c \"rm -rf x\"",
+            "find . -name '*.o' -exec rm -rf {} \\;",
+            "ls | xargs rm -r",
+            "nice -n 10 rm -rf x",
+            "git -C repo push --force",
+            "/bin/rm -rf x",
+            "RM -RF x",
+            "ls && rm -rf build",
+            "echo ok; rm -r x",
+            "cd x\nrm -rf .",
+            "git push --force",
+            "git push -f origin main",
+            "git push --force-with-lease origin main",
+            "git push origin +main",
+            "git reset --hard HEAD~1",
+            "git clean -fd",
+            "git clean -f",
+            "git branch -D old",
+            "git branch --delete --force old",
+            "psql -c 'DROP TABLE users'",
+            "mysql -e \"drop database prod\"",
+            "TRUNCATE users",
+            "mkfs.ext4 /dev/sda1",
+            "dd if=/dev/zero of=/dev/sda",
+            "chmod -R 777 /",
+            "echo x > /dev/sda",
+            "cat img >/dev/nvme0n1",
+        ] {
+            assert!(bash(cmd), "{cmd:?} is destructive");
+        }
+        for cmd in [
+            "git status",
+            "git push origin main",
+            "git push -u origin feature/x",
+            "git reset --soft HEAD~1",
+            "git clean -n",
+            "git branch -d merged",
+            "git branch -a",
+            "git log --format=%h",
+            "rm file.txt",
+            "rm -i file.txt",
+            "chmod 777 file",
+            "chmod -R 755 dir",
+            "cargo test -p thing",
+            "echo hello > /dev/null",
+            "grep -rn rm src",
+            "echo 'rm -rf is dangerous'",
+            "ls rm -r",
+            "ls -R",
+        ] {
+            assert!(!bash(cmd), "{cmd:?} is not destructive");
+        }
+    }
+
+    // The command can hide anywhere in the input: another key, an argv list, an MCP tool. An edit tool only names
+    // files, so what it writes is never read as a command.
+    #[test]
+    fn destructive_reads_every_string_and_argv_but_not_what_an_edit_writes() {
+        let nested = json!({"steps": [{"run": "make && rm -rf dist"}]});
+        assert!(destructive(&call("Custom", &nested, false)));
+        let argv = json!({"cmd": ["rm", "-rf", "x"]});
+        assert!(destructive(&call("Exec", &argv, false)));
+        let safe_argv = json!({"cmd": ["rm", "x"]});
+        assert!(!destructive(&call("Exec", &safe_argv, false)));
+        let write = json!({"file_path": "notes.md", "content": "run rm -rf / to wipe"});
+        assert!(!destructive(&call("Write", &write, false)));
     }
 }

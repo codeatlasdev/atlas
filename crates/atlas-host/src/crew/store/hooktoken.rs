@@ -74,6 +74,7 @@ mod tests {
             project: None,
             setup_step: None,
             short_replies: None,
+            spoken_replies: false,
             created_at: 0,
         }
     }

@@ -1461,6 +1461,36 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
                 },
             )
             .map(|()| json!({})),
+        HostCmd::AgentApproveVoice {
+            pane,
+            req,
+            transcript,
+            lang,
+        } => crate::crew::voice_card::approve(
+            hub,
+            &pane,
+            &req,
+            &transcript,
+            lang.as_deref(),
+            &hub.origin_of(conn_id),
+        ),
+        HostCmd::CrewmateActionAnswerVoice {
+            id,
+            task,
+            transcript,
+            lang: _,
+        } => {
+            if !hub.crew_host {
+                return Err("this computer is not a crew server (atlas crew install)".into());
+            }
+            crate::crew::voice_card::answer_action(
+                hub,
+                &id,
+                &task,
+                &transcript,
+                &hub.origin_of(conn_id),
+            )
+        }
         HostCmd::AgentStatusAll {} => Ok(json!({
             "panes": hub.agents.all(),
             "hook_port": *hub.agents.port.lock(),

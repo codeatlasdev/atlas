@@ -528,7 +528,8 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::GitCommitMessage { .. }
         | C::GitPush { .. }
         | C::GitPrCreate { .. } => Scope::Act,
-        C::AgentApprove { .. } => Scope::Approve,
+        // Answering by voice is answering: the same grant, and hostd still refuses what needs a tap.
+        C::AgentApprove { .. } | C::AgentApproveVoice { .. } => Scope::Approve,
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
@@ -575,7 +576,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::CrewGithubAppRemove {} => return Err("not available on mobile"),
         C::CrewGithubStatus {} | C::CrewGithubLoginPoll {} => Scope::Read,
         C::CrewGithubLoginStart {} | C::CrewGithubLogout {} => Scope::Act,
-        C::CrewmateActionAnswer { .. } | C::CrewGithubConnectResume {} => Scope::Act,
+        C::CrewmateActionAnswer { .. }
+        | C::CrewmateActionAnswerVoice { .. }
+        | C::CrewGithubConnectResume {} => Scope::Act,
         C::CrewPause {} | C::CrewResume {} => Scope::Act,
         C::CrewSettingsGet {} => Scope::Read,
         C::CrewSettingsSet { .. } => Scope::Act,

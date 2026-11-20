@@ -119,6 +119,10 @@ async fn finish_summarized(
         }
         (outcome, _) => outcome,
     };
+    task.spoken = match &outcome {
+        Ok(reply) => super::spoken::agent_line(reply).unwrap_or_default(),
+        Err(_) => String::new(),
+    };
     let (final_outcome, reply_full, was_summarized) =
         maybe_summarize(hub, crewmate, outcome, agent_env).await;
     task.reply_full = reply_full;

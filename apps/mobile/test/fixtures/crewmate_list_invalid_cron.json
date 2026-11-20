@@ -32,6 +32,7 @@
           "prompt": "run r-plus"
         }
       ],
+      "spoken_replies": false,
       "state": "idle",
       "triggers": [
         {

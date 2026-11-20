@@ -26,8 +26,9 @@ impl Lang {
         }
     }
 
-    /// The BCP-47 tag.
-    #[cfg_attr(windows, allow(dead_code, reason = "SAPI picks voices by language id"))]
+    /// The BCP-47 tag. Only AVSpeechSynthesizer picks a voice by tag (SAPI and speech-dispatcher take the
+    /// language their own way).
+    #[cfg(target_os = "macos")]
     pub fn tag(self) -> &'static str {
         match self {
             Self::En => "en",

@@ -1,6 +1,6 @@
 [package]
 name = "atlas-i18n"
-version = "0.1.0"
+version = "1.5.0-alpha.27"
 description = "Atlas display-language catalogs: i18n/messages embedded in the binary at build time, t!"
 edition.workspace = true
 rust-version.workspace = true

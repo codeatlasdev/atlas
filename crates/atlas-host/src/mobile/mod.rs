@@ -553,6 +553,12 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::CrewTelegramSet { .. } | C::CrewTelegramLink {} | C::CrewTelegramStatus {} => {
             return Err("not available on mobile");
         }
+        // The phone recognises speech on the phone and never sends audio to hostd; it only reads whether voice is on
+        // and the replacement table. Switching voice is the owner's, from the desktop.
+        C::CrewVoiceStatus {} => Scope::Read,
+        C::CrewVoiceSet { .. } | C::CrewmateVoicePut { .. } | C::CrewmateTranscribe { .. } => {
+            return Err("not available on mobile");
+        }
         C::CrewmateTriggersSet { .. } => Scope::Act,
         C::CrewmateAnswer { .. } => Scope::Act,
         C::CrewmateUsage { .. } | C::CrewmateAudit { .. } | C::CrewAudit { .. } => Scope::Read,

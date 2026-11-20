@@ -67,5 +67,11 @@
 	"hostd_wire_unreachable": "Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening.",
 	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
 	"hostd_wire_upgrade_failed": "Terminal host upgrade failed ({error}). Terminals keep running on the old host.",
-	"hostd_wire_upgraded": "Terminal host updated"
+	"hostd_wire_upgraded": "Terminal host updated",
+	"hostd_wire_voice_bad_audio": "The recording is not in a format the crew server reads (16 kHz mono 16-bit WAV).",
+	"hostd_wire_voice_engine_failed": "{engine} could not transcribe this. No other engine was tried.",
+	"hostd_wire_voice_forbidden": "Only you can change the voice settings, from Atlas Desktop.",
+	"hostd_wire_voice_not_installed": "No voice engine is installed on this crew server. Run atlas crew voice install.",
+	"hostd_wire_voice_off": "Voice is turned off on this crew. Turn it on in the crew's settings.",
+	"hostd_wire_voice_too_long": "Dictation is limited to {max_seconds} seconds."
 }

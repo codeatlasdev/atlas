@@ -627,6 +627,9 @@ pub enum HostCmd {
         /// The task changes what people see: it needs the agent's own captures to be `done` (`prove_ui`).
         #[serde(default)]
         ui: bool,
+        /// The prompt was (partly) dictated: the agent is told so (`crew::voice`), never shown as user text.
+        #[serde(default)]
+        dictated: bool,
     },
     /// One piece of an image too big for a protocol line, staged for the next `crewmate_task`
     /// that names `upload`. The last piece (`last: true`) completes it.
@@ -695,6 +698,39 @@ pub enum HostCmd {
         token: Option<String>,
     },
     CrewTelegramLink {},
+    /// Dictation on this crew server: whether it is on, the engine in use, the cap, the effective replacements
+    /// (`crew::voice`).
+    CrewVoiceStatus {},
+    /// Turn voice on or off, choose the engine, set the crew's own replacements. Owner only
+    /// (`crew.voice.forbidden`). Replies like `crew_voice_status`.
+    CrewVoiceSet {
+        #[serde(default)]
+        enabled: Option<bool>,
+        #[serde(default)]
+        engine: Option<crate::crew::voice::EngineSetting>,
+        #[serde(default)]
+        replacements: Option<Vec<crate::crew::voice::Replacement>>,
+    },
+    /// One piece of a dictation's WAV (16 kHz mono s16le), at most `crew::attachments::CHUNK` raw bytes. `upload`
+    /// empty opens one; the reply names it. `last` completes it. Audio is deleted after the transcription, and
+    /// after 10 minutes without a piece.
+    CrewmateVoicePut {
+        #[serde(default)]
+        upload: String,
+        piece_b64: String,
+        #[serde(default)]
+        last: bool,
+    },
+    /// Transcribe an upload for crewmate `id` (its hints; the engine of the crew). `partial` listens to the last
+    /// 30 s so far and leaves the upload open; a final one needs the last piece and deletes the audio.
+    CrewmateTranscribe {
+        id: String,
+        upload: String,
+        #[serde(default)]
+        language: Option<String>,
+        #[serde(default)]
+        partial: bool,
+    },
     /// Whether Telegram is configured and how many chats are linked. Never returns the token.
     CrewTelegramStatus {},
     MobileInvite {
@@ -945,6 +981,12 @@ impl From<Failure> for String {
 /// | `crew.github_app.conversion_failed` | `status` (GitHub's HTTP status, 0 when it was not reached) | GitHub refused the conversion |
 /// | `crew.github_app.none` | none | no app is set up |
 /// | `crew.github_app.forbidden` | none | the caller is not the owner |
+/// | `crew.voice.off` | none | voice is turned off on this crew |
+/// | `crew.voice.not_installed` | none | no voice engine is configured or installed |
+/// | `crew.voice.engine_failed` | `engine` (its label), `detail` | `<engine> failed: <detail>` (never retried on another engine) |
+/// | `crew.voice.too_long` | `max_seconds` | the dictation is over the cap |
+/// | `crew.voice.bad_audio` | none | the audio is not 16 kHz mono 16-bit PCM WAV |
+/// | `crew.voice.forbidden` | none | a non-owner changed the voice settings |
 ///
 /// A client reads the code only when it knows it (`client::reply_error`), else it has the text. A new code is added
 /// here, to the desktop's catalog (`apps/desktop/src/lib/hostMessages.ts`) and to its fixture test in one change.
@@ -961,6 +1003,12 @@ pub const REPLY_CODES: &[&str] = &[
     crate::crew::github::app::CONVERSION_FAILED,
     crate::crew::github::app::NONE,
     crate::crew::github::app::FORBIDDEN,
+    crate::crew::voice::OFF,
+    crate::crew::voice::NOT_INSTALLED,
+    crate::crew::voice::ENGINE_FAILED,
+    crate::crew::voice::TOO_LONG,
+    crate::crew::voice::BAD_AUDIO,
+    crate::crew::voice::FORBIDDEN,
 ];
 pub const FS_NOT_FOUND: &str = "fs.not_found";
 pub const FS_IO: &str = "fs.io";
@@ -1193,6 +1241,15 @@ mod tests {
             crate::crew::github::app::conversion_failed(503, "GitHub refused the conversion: down"),
             crate::crew::github::app::none(),
             crate::crew::github::app::forbidden(),
+            crate::crew::voice::off(),
+            crate::crew::voice::not_installed(),
+            crate::crew::voice::engine_failed(
+                "whisper.cpp (small)",
+                "whisper-cli exited with status 1",
+            ),
+            crate::crew::voice::too_long(),
+            crate::crew::voice::bad_audio(),
+            crate::crew::voice::forbidden(),
         ];
         let errors: Vec<Value> = samples
             .iter()

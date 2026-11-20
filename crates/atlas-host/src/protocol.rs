@@ -816,9 +816,12 @@ pub enum HostCmd {
     /// Write crew-level reply-summary settings.
     #[serde(rename = "crew_settings_set")]
     CrewSettingsSet {
-        short_replies: bool,
+        /// Absent leaves it as it is: a client that changes one control sends only that field.
         #[serde(default)]
-        short_replies_model: Option<String>,
+        short_replies: Option<bool>,
+        /// `None` = absent, left as it is; `Some(None)` (`null`) or `""` = clear (the default model); `Some(Some(m))` = set.
+        #[serde(default, deserialize_with = "present")]
+        short_replies_model: Option<Option<String>>,
         /// Agents the server runs at once (at least 1); absent leaves it as it is.
         #[serde(default)]
         max_agents: Option<usize>,

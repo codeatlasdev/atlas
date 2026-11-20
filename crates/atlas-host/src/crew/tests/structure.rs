@@ -92,6 +92,10 @@ const STORE_ONLY: &[(&str, &str)] = &[
 /// through the helper for an isolated crewmate, or hostd's own tool with hostd's own arguments (relative to `src/`).
 const PROGRAMS: &[(&str, &str)] = &[
     (
+        "crew/voice/engine.rs",
+        "whisper-cli and ffmpeg from hostd's own voice dir (installed by `atlas crew voice install`) or the server's ffmpeg, on files hostd wrote in its own scratch dir, with hostd's own arguments",
+    ),
+    (
         "crew/github/app/gh_shim.rs",
         "the crewmate's own `gh`, started by the process that is the crewmate (never by hostd), with a token for that call",
     ),

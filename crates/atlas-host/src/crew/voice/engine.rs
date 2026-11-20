@@ -219,6 +219,7 @@ fn bin_name(name: &str) -> String {
 /// `voice/bin/` when the owner put one there, else the server's own.
 fn ffmpeg_program(voice: &Path) -> PathBuf {
     let own = voice.join("bin").join(bin_name("ffmpeg"));
+    // tree-access: hostd's voice dir (`voice/bin`), which only the owner and `atlas crew voice install` write
     if own.is_file() {
         own
     } else {
@@ -273,11 +274,13 @@ pub(crate) async fn decode_to_pcm(
 /// The engine of a crew that never chose: whisper.cpp with the best model that is installed here. `None` when
 /// the binary or every model is missing.
 pub(crate) fn installed_default(voice: &Path) -> Option<EngineSetting> {
+    // tree-access: the engine hostd installed in its own voice dir
     if !whisper_bin(voice).is_file() {
         return None;
     }
     [DEFAULT_MODEL, "base"].into_iter().find_map(|m| {
         model_path(voice, m)
+            // tree-access: a model file in hostd's own voice dir
             .filter(|p| p.is_file())
             .map(|_| EngineSetting::WhisperCpp { model: m.into() })
     })
@@ -307,11 +310,13 @@ impl EngineStatus {
 pub(crate) fn status(voice: &Path, setting: EngineSetting, has_key: bool) -> EngineStatus {
     let detail = match &setting {
         EngineSetting::WhisperCpp { model } => {
+            // tree-access: the engine and its models in hostd's own voice dir
             if !whisper_bin(voice).is_file() {
                 Some(
                     "whisper.cpp is not installed on this server (run: atlas crew voice install)"
                         .to_string(),
                 )
+            // tree-access: a model file in hostd's own voice dir
             } else if !model_path(voice, model).is_some_and(|p| p.is_file()) {
                 Some(format!(
                     "the {model} model is not installed on this server (run: atlas crew voice install --model {model})"
@@ -371,6 +376,7 @@ pub(crate) async fn transcribe(
         EngineSetting::WhisperCpp { model } => {
             let bin = whisper_bin(voice);
             let weights = model_path(voice, model).ok_or(Failure::NotInstalled)?;
+            // tree-access: the engine and the model hostd installed in its own voice dir
             if !bin.is_file() || !weights.is_file() {
                 return Err(Failure::NotInstalled);
             }

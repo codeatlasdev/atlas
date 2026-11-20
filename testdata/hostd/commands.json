@@ -199,6 +199,18 @@
       "optional": [],
       "required": []
     },
+    "crew_voice_set": {
+      "optional": [
+        "enabled",
+        "engine",
+        "replacements"
+      ],
+      "required": []
+    },
+    "crew_voice_status": {
+      "optional": [],
+      "required": []
+    },
     "crewmate_action_answer": {
       "optional": [
         "attachments"
@@ -322,6 +334,7 @@
     "crewmate_task": {
       "optional": [
         "attachments",
+        "dictated",
         "tz",
         "ui"
       ],
@@ -337,6 +350,16 @@
       ],
       "required": [
         "id"
+      ]
+    },
+    "crewmate_transcribe": {
+      "optional": [
+        "language",
+        "partial"
+      ],
+      "required": [
+        "id",
+        "upload"
       ]
     },
     "crewmate_triggers_set": {
@@ -368,6 +391,15 @@
         "since"
       ],
       "required": []
+    },
+    "crewmate_voice_put": {
+      "optional": [
+        "last",
+        "upload"
+      ],
+      "required": [
+        "piece_b64"
+      ]
     },
     "engine_limits": {
       "optional": [],

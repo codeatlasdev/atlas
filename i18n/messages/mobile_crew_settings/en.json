@@ -1,0 +1,8 @@
+{
+	"mobile_crew_settings_allow_bypass_detail": "Off hides Bypass and moves every crewmate that can ask back to Ask. Protected paths ask in every mode.",
+	"mobile_crew_settings_allow_bypass_title": "Allow Bypass on this crew",
+	"mobile_crew_settings_allow_bypass_unattended": "Crewmates on engines with no approval channel (Codex, OpenCode) always run without asking, so their tasks are refused while Bypass is off.",
+	"mobile_crew_settings_default_mode_detail": "A new crewmate starts in this mode. Crewmates you already have keep theirs.",
+	"mobile_crew_settings_default_mode_title": "Default mode for new crewmates",
+	"mobile_crew_settings_permissions_title": "Permissions"
+}

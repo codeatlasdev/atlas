@@ -1,0 +1,15 @@
+{
+	"mobile_crew_approval_allow_once": "Permitir uma vez",
+	"mobile_crew_approval_allow_task": "Permitir nesta tarefa",
+	"mobile_crew_approval_comment_hint": "Por quê, ou o que fazer no lugar",
+	"mobile_crew_approval_comment_label": "Comentário para o agente (opcional)",
+	"mobile_crew_approval_deny": "Negar",
+	"mobile_crew_approval_failed": "Não foi possível enviar a resposta: {reason}",
+	"mobile_crew_approval_more": "Comentar ou mais opções",
+	"mobile_crew_approval_rail_no_auto": "Esta tarefa pergunta em todos os modos e só pode ser permitida uma vez.",
+	"mobile_crew_approval_rail_protected_path": "Caminho protegido: pergunta em todos os modos e só pode ser permitido uma vez.",
+	"mobile_crew_approval_sheet_title": "Responder a {name}",
+	"mobile_crew_approval_task_note": "Permitir nesta tarefa vale para o mesmo tipo de chamada até a tarefa terminar.",
+	"mobile_crew_approval_wants_to_run": "Quer executar {tool}",
+	"mobile_crew_approval_wants_to_run_unknown": "Quer executar uma ferramenta"
+}

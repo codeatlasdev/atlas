@@ -85,6 +85,8 @@ Future<void> saveCrewSettings(
     throw StateError(resp['error'] as String? ?? 'the server refused');
   }
   ref.invalidate(crewSettingsProvider(device));
+  // Bypass off moves crewmates out of it: their rows are read again.
+  ref.invalidate(crewProvider(device));
 }
 
 /// Whether each engine of [device] is signed in (`crew_engine_status` with `refresh`: hostd runs each engine's

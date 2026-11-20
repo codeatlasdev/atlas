@@ -1,0 +1,16 @@
+{
+	"mobile_crew_audit_a_tool": "uma ferramenta",
+	"mobile_crew_audit_answer_by": "respondido por {by}",
+	"mobile_crew_audit_answer_grant": "por uma permissão da tarefa",
+	"mobile_crew_audit_answer_mode": "pelo modo",
+	"mobile_crew_audit_answer_nobody": "ninguém respondeu",
+	"mobile_crew_audit_answer_phone": "respondido pelo celular {node}…",
+	"mobile_crew_audit_answer_rail": "retido, ninguém pôde responder",
+	"mobile_crew_audit_answer_telegram": "respondido pelo chat do Telegram {chat}",
+	"mobile_crew_audit_decision_allowed": "Permitido: {tool} ({answer})",
+	"mobile_crew_audit_decision_decided": "Decidido: {tool} ({answer})",
+	"mobile_crew_audit_decision_denied": "Negado: {tool} ({answer})",
+	"mobile_crew_audit_decision_timed_out": "Tempo esgotado: {tool} ({answer})",
+	"mobile_crew_audit_kind_mode_changed": "Modo alterado",
+	"mobile_crew_audit_mode_changed": "Modo alterado de {from} para {to} ({answer})"
+}

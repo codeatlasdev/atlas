@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/permission_mode.dart';
 import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/features/crew/board.dart';
 
@@ -34,7 +35,7 @@ CrewmateEntry _makeCrewmate({
   name: name,
   role: '',
   agent: 'omp',
-  approval: 'ask',
+  mode: PermissionMode.ask,
   state: state,
   pendingApproval: pendingApproval,
 );

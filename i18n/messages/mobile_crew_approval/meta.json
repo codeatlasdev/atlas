@@ -1,0 +1,15 @@
+{
+	"mobile_crew_approval_allow_once": "Primary button of a tool approval: allows this one call only.",
+	"mobile_crew_approval_allow_task": "Allows the same kind of call for the rest of this task only. The next task asks again.",
+	"mobile_crew_approval_comment_hint": "Hint inside the comment field of the answer sheet.",
+	"mobile_crew_approval_comment_label": "Label of the comment field in the answer sheet; the agent receives it with the answer.",
+	"mobile_crew_approval_deny": "Button that refuses a tool call.",
+	"mobile_crew_approval_failed": "Snackbar when answering a tool approval fails with a text from the server. {reason} is that text.",
+	"mobile_crew_approval_more": "Text button under a tool approval that opens the answer sheet (comment, Allow for this task).",
+	"mobile_crew_approval_rail_no_auto": "Shown on an approval that a rail held: a GitHub or webhook task that has no allow_auto.",
+	"mobile_crew_approval_rail_protected_path": "Shown on an approval that a rail held: the call touches .git internals, agent config, shell rc files, .env or key files.",
+	"mobile_crew_approval_sheet_title": "Title of the answer sheet of a tool approval. {name} is the crewmate.",
+	"mobile_crew_approval_task_note": "Note in the answer sheet explaining the scope of Allow for this task.",
+	"mobile_crew_approval_wants_to_run": "First line of a tool approval from a crewmate. {tool} is the tool name, such as Bash.",
+	"mobile_crew_approval_wants_to_run_unknown": "First line of a tool approval when hostd sent no tool name."
+}

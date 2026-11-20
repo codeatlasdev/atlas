@@ -73,7 +73,13 @@ class _DemoComputer implements Transport {
         _own(cmd, args);
     final reply = r.error == null
         ? {'id': req['id'], 'ok': true, 'data': r.data}
-        : {'id': req['id'], 'ok': false, 'error': r.error};
+        : {
+            'id': req['id'],
+            'ok': false,
+            'error': r.error,
+            if (r.code != null) 'code': r.code,
+            if (r.code != null) 'args': r.args,
+          };
     scheduleMicrotask(() => bus.emit(reply));
   }
 
@@ -99,7 +105,13 @@ class _DemoComputer implements Transport {
         final pane = args['pane'] as String?;
         final req = args['req'] as String?;
         error = pane != null && pane.startsWith('crew:')
-            ? crew.approve(pane, req)
+            ? crew.approve(
+                pane,
+                req,
+                allow: args['allow'] == true,
+                scope: args['scope'] as String?,
+                comment: args['comment'] as String?,
+              )
             : agents.approve(pane, req, args['allow'] == true);
         data = error == null ? <String, Object?>{} : null;
       case 'git_status':
@@ -136,6 +148,6 @@ class _DemoComputer implements Transport {
       default:
         data = <String, Object?>{};
     }
-    return (data: data, error: error);
+    return DemoReply(data: data, error: error);
   }
 }

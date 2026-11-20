@@ -25,6 +25,7 @@ void main() {
         'task_finished',
         'config_changed',
         'secret_set',
+        'approval_mode_changed',
       });
       final seqs = entries.map((e) => e.seq).toList();
       expect(seqs, [...seqs]..sort((a, b) => b.compareTo(a)));
@@ -48,7 +49,11 @@ void main() {
       expect(by['tool_call']!.summary, 'Bash: cargo test -p atlas-host');
       expect(by['task_queued']!.summary, startsWith('Task queued (test): '));
       expect(by['task_finished']!.summary, 'Task finished: done');
-      expect(by['config_changed']!.summary, 'Changed approval: "auto" → "ask"');
+      expect(by['config_changed']!.summary, 'Changed mode: "bypass" → "ask"');
+      expect(
+        by['approval_mode_changed']!.summary,
+        'Mode changed from Bypass to Ask (answered by owner)',
+      );
       expect(by['secret_set']!.summary, 'Set secret GITHUB_TOKEN');
       final crew = {
         for (final e in parseAudit(_fixture('crew_audit.json'))) e.kind: e,
@@ -69,7 +74,7 @@ void main() {
         final entries = parseAudit(_fixture('crewmate_audit.json'));
         Set<String> kinds(AuditGroup? g) =>
             filterAudit(entries, g).map((e) => e.kind).toSet();
-        expect(kinds(null), hasLength(6));
+        expect(kinds(null), hasLength(7));
         expect(kinds(AuditGroup.tools), {'tool_call'});
         expect(kinds(AuditGroup.tasks), {
           'task_queued',
@@ -77,7 +82,8 @@ void main() {
           'task_finished',
         });
         expect(kinds(AuditGroup.config), {'config_changed', 'secret_set'});
-        expect(kinds(AuditGroup.approvals), isEmpty);
+        // A mode change sits with the approvals, like on the desktop.
+        expect(kinds(AuditGroup.approvals), {'approval_mode_changed'});
       },
     );
 
@@ -250,14 +256,24 @@ void main() {
     test('the request body clears the model with null, like the desktop', () {
       expect(
         const CrewSettings(shortReplies: true, shortRepliesModel: '').toArgs(),
-        {'short_replies': true, 'short_replies_model': null},
+        {
+          'short_replies': true,
+          'short_replies_model': null,
+          'default_approval': 'ask',
+          'allow_bypass': true,
+        },
       );
       expect(
         const CrewSettings(
           shortReplies: false,
           shortRepliesModel: 'haiku',
         ).toArgs(),
-        {'short_replies': false, 'short_replies_model': 'haiku'},
+        {
+          'short_replies': false,
+          'short_replies_model': 'haiku',
+          'default_approval': 'ask',
+          'allow_bypass': true,
+        },
       );
     });
 

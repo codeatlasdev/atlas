@@ -34,6 +34,9 @@ dependencies:
   flutter:
     sdk: flutter
 
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
   flutter_riverpod: ^3.4.3
   go_router: ^18.1.0
   flutter_secure_storage: ^11.2.0
@@ -80,6 +83,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # The localizations class (lib/l10n) comes from the ARB files `scripts/mobile-check.sh` writes from the
+  # one catalog in i18n/messages (docs/mobile.md, "Translations"); `flutter pub get` runs gen-l10n.
+  generate: true
 
   # Plain `flutter run` / `flutter build` make the Atlas Dev app (own id, name and orange icon), never
   # the store app, so a local build cannot replace it. Store builds say `--flavor prod`

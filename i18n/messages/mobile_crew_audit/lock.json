@@ -1,0 +1,18 @@
+{
+  "pt-BR": {
+    "mobile_crew_audit_a_tool": "0cff9d865736",
+    "mobile_crew_audit_answer_by": "18d77e15b5a1",
+    "mobile_crew_audit_answer_grant": "34f304d9d45d",
+    "mobile_crew_audit_answer_mode": "d4ffd3dff69b",
+    "mobile_crew_audit_answer_nobody": "6d37d7959633",
+    "mobile_crew_audit_answer_phone": "d2204cb72761",
+    "mobile_crew_audit_answer_rail": "f86d7ffe4c58",
+    "mobile_crew_audit_answer_telegram": "5e5d3c475a46",
+    "mobile_crew_audit_decision_allowed": "27d5f54259c1",
+    "mobile_crew_audit_decision_decided": "acd43319368e",
+    "mobile_crew_audit_decision_denied": "a36d48130b12",
+    "mobile_crew_audit_decision_timed_out": "af367cf6c37d",
+    "mobile_crew_audit_kind_mode_changed": "57e98ae72ca0",
+    "mobile_crew_audit_mode_changed": "8c3641120917"
+  }
+}

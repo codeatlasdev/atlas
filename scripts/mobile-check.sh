@@ -28,6 +28,10 @@ if command -v cargo >/dev/null; then
     echo "ℹ bindings check skipped: flutter_rust_bridge_codegen ${got:-missing}, need $frb (cargo install flutter_rust_bridge_codegen@$frb --locked)"
   fi
 fi
+# The translations: the ARB files come from the one catalog (i18n/messages, the `mobile` surface) and `flutter pub get`
+# turns them into lib/l10n/app_localizations.dart (pubspec `generate: true`). Nothing of it is committed.
+command -v bun >/dev/null || { echo "✗ bun is needed to write the translations (https://bun.sh)"; exit 1; }
+bun ../../scripts/i18n/generate.ts --surface mobile
 flutter pub get
 flutter analyze --fatal-infos
 flutter test

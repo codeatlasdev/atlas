@@ -35,7 +35,7 @@ void main() {
 
     // Needs-you card shows inline Deny/Allow.
     expect(find.text('Deny'), findsOneWidget);
-    expect(find.text('Allow'), findsOneWidget);
+    expect(find.text('Allow once'), findsOneWidget);
 
     // A working crewmate says so in its row, Telegram's "typing…" style.
     expect(find.text('working…'), findsOneWidget);
@@ -103,7 +103,7 @@ void main() {
   });
 
   // 2. Approve from the list — open Nightly's CrewmateChatScreen, see approval bubble,
-  //    tap Allow, banner goes away.
+  //    tap Allow once, banner goes away.
   testWidgets('approve from the list', (t) async {
     await t.binding.setSurfaceSize(const Size(393, 852));
     await t.pumpWidget(
@@ -113,18 +113,18 @@ void main() {
     );
     await settle(t);
 
-    // Approval bubble shows Allow / Deny.
-    expect(find.text('Allow'), findsOneWidget);
+    // Approval bubble shows Allow once, Allow for this task and Deny.
+    expect(find.text('Allow once'), findsOneWidget);
     expect(find.text('Deny'), findsOneWidget);
 
-    // Tap Allow.
-    await t.tap(find.text('Allow'));
+    // Tap Allow once.
+    await t.tap(find.text('Allow once'));
     for (var i = 0; i < 15; i++) {
       await t.pump(const Duration(milliseconds: 100));
     }
 
     // After answering, the approval bubble is gone.
-    expect(find.text('Allow'), findsNothing);
+    expect(find.text('Allow once'), findsNothing);
 
     await t.pumpWidget(const SizedBox());
     await settle(t);

@@ -10,6 +10,12 @@ import { crew } from "#lib/stores/crew.svelte.ts";
 import { expandKey, splitUi, withKey } from "./taskView.ts";
 import { m } from "#lib/i18n/m.ts";
 import { addImages, toSent, type PendingImage } from "#lib/crew/attachments.ts";
+import type { ApprovalAnswer } from "#lib/crew/permissionMode.ts";
+
+/** An approval answered in this view: what was answered and when (ms), so the thread keeps saying it. */
+export interface AnsweredApproval extends ApprovalAnswer {
+	at: number;
+}
 
 /** Host args for a call on the selected crew server ("" is the local hostd). */
 function hostArgs(): { host?: string } {
@@ -25,8 +31,8 @@ export class ChatState {
 	/** Images waiting to go with the next prompt. */
 	images = $state<PendingImage[]>([]);
 
-	// approvals answered in this view (req ids); reset when the selected crewmate changes
-	approvedReqs = $state<Set<string>>(new Set());
+	// approvals answered in this view (req id -> answer); reset when the selected crewmate changes
+	answeredReqs = $state<Record<string, AnsweredApproval>>({});
 
 	// folded / full / dismissed flags of replies, see expandKey
 	expandedResults = $state<Set<string>>(new Set());
@@ -92,14 +98,14 @@ export class ChatState {
 	// ─── approvals ─────────────────────────────────────────────────────────
 
 	resetApprovals(): void {
-		this.approvedReqs = new Set();
+		this.answeredReqs = {};
 	}
 
-	async approval(paneKey: string, req: string, allow: boolean): Promise<void> {
+	async approval(paneKey: string, req: string, answer: ApprovalAnswer): Promise<void> {
 		await crew
-			.approve(paneKey, req, allow)
+			.approve(paneKey, req, answer)
 			.then(() => {
-				this.approvedReqs = withKey(this.approvedReqs, req, true);
+				this.answeredReqs = { ...this.answeredReqs, [req]: { ...answer, at: Date.now() } };
 			})
 			.catch((e) => toast.error(errText(e)));
 	}

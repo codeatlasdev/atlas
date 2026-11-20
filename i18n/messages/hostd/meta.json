@@ -1,4 +1,7 @@
 {
+	"hostd_wire_approval_bypass_disabled": "Error (code crew.approval.bypass_disabled): a crewmate was asked to switch to Bypass, or created in it, while the crew settings do not allow Bypass.",
+	"hostd_wire_approval_forbidden": "Error (code crew.approval.forbidden): something other than the owner (a crewmate's own process, a task) tried to change a crewmate's permission mode.",
+	"hostd_wire_approval_unsupported_engine": "Error (code crew.approval.unsupported_engine): a permission mode other than Bypass was asked for a crewmate whose engine cannot pause for approval. {engine} is the engine's name (codex, opencode), shown as is.",
 	"hostd_wire_busy": "Error (code hostd.busy): hostd refused the connection because it is overloaded. It is shown in the one toast that folds host failures.",
 	"hostd_wire_cli_not_found": "The app cannot find the atlas command line program that starts the terminal host (code hostd.cli_not_found). {command} is the installer line for this OS, shown as is; the Windows variant says it runs in PowerShell.",
 	"hostd_wire_closed": "A call failed because the terminal host (hostd) closed the connection before it answered (code hostd.closed). Technical: hostd is the process name.",

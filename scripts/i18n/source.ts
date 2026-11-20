@@ -25,7 +25,7 @@ export interface SurfaceDef {
 	areas: string[];
 	/** Directory the Paraglide inputs (`<locale>.json`) are generated into (gitignored). */
 	paraglide?: string;
-	/** Directory the Flutter ARB files are generated into at build time (gitignored); no surface declares it yet. */
+	/** Directory the Flutter ARB files are generated into at build time (gitignored): the mobile surface. */
 	arb?: string;
 	/** Root of the Rust sources. Rust reads the JSON tree itself at build time (crates/atlas-i18n/build.rs): nothing is generated. */
 	rust?: string;

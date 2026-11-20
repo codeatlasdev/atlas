@@ -3,7 +3,6 @@
 	"crew_chat_action_images_group": "Accessible name of the group of screenshots attached to a retry on a refused-work card.",
 	"crew_chat_action_text_answer_submit": "Button that sends the typed answer of an action card.",
 	"crew_chat_approval_prompt_allow": "Button of the approval bubble: lets the crewmate run the tool.",
-	"crew_chat_approval_prompt_allowed_by_you": "Line that replaces the approval bubble once the user allowed the tool; {time} is the local time of the answer.",
 	"crew_chat_approval_prompt_deny": "Button of the approval bubble: refuses the tool.",
 	"crew_chat_approval_prompt_wants_to_run": "Start of the approval bubble title: the crewmate asks permission to run a tool; the tool name follows in bold.",
 	"crew_chat_ask_card_dismiss": {

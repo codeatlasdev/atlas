@@ -1,6 +1,6 @@
-//! Audit entries that come from what the agents report: every tool call (`agent_step`), every
-//! approval asked (`agent_approval`) and how it ended (`agent_approval_done`: allow, deny or
-//! timeout, and who answered). One subscriber sees all crewmate panes, so a task in a terminal and
+//! Audit entries that come from what the agents report: every tool call (`agent_step`) and every approval asked
+//! (`agent_approval`). How an approval ended is `approval_decision`, recorded where it is decided
+//! (`crew::approval`). One subscriber sees all crewmate panes, so a task in a terminal and
 //! one on a headless engine are audited the same way, and no other code path has to remember to.
 
 use std::sync::Weak;
@@ -18,8 +18,6 @@ pub(crate) fn observe(hub_w: Weak<Hub>) {
     let mut rx = h.agents.subscribe();
     drop(h);
     tokio::spawn(async move {
-        // Asked prompts by `req`: the done event does not repeat the tool.
-        let mut asked: std::collections::HashMap<String, Value> = Default::default();
         loop {
             let ev = match rx.recv().await {
                 Ok(v) => v,
@@ -37,12 +35,12 @@ pub(crate) fn observe(hub_w: Weak<Hub>) {
                 Err(RecvError::Closed) => return,
             };
             let Some(h) = hub_w.upgrade() else { return };
-            record_event(&h.crew, &ev, &mut asked);
+            record_event(&h.crew, &ev);
         }
     });
 }
 
-fn record_event(crew: &CrewHub, ev: &Value, asked: &mut std::collections::HashMap<String, Value>) {
+fn record_event(crew: &CrewHub, ev: &Value) {
     let Some(pane_key) = ev["pane_key"]
         .as_str()
         .filter(|p| pane::is_crewmate_pane(p))
@@ -63,35 +61,19 @@ fn record_event(crew: &CrewHub, ev: &Value, asked: &mut std::collections::HashMa
                 "tool_input": ev["tool_input"],
             }),
         ),
-        Some("agent_approval") => {
-            let req = ev["req"].as_str().unwrap_or_default().to_string();
-            crew.audit.record(
-                Some(crewmate_id),
-                "approval_asked",
-                json!({
-                    "task_id": task_id,
-                    "req": req,
-                    "tool_name": ev["tool_name"],
-                    "tool_input": ev["tool_input"],
-                }),
-            );
-            asked.insert(req, ev.clone());
-        }
-        Some("agent_approval_done") => {
-            let req = ev["req"].as_str().unwrap_or_default();
-            let tool = asked.remove(req).unwrap_or_default();
-            crew.audit.record(
-                Some(crewmate_id),
-                "approval_decision",
-                json!({
-                    "task_id": task_id,
-                    "req": req,
-                    "tool_name": tool["tool_name"],
-                    "decision": ev["decision"],
-                    "by": ev["by"],
-                }),
-            );
-        }
+        // How a prompt ended is `approval_decision`, recorded by `crew::approval::decide` where the decision is made
+        // (a person's answer, the mode, a grant, a rail, a timeout), not here.
+        Some("agent_approval") => crew.audit.record(
+            Some(crewmate_id),
+            "approval_asked",
+            json!({
+                "task_id": task_id,
+                "req": ev["req"],
+                "tool_name": ev["tool_name"],
+                "tool_input": ev["tool_input"],
+                "rail": ev["rail"],
+            }),
+        ),
         _ => {}
     }
 }

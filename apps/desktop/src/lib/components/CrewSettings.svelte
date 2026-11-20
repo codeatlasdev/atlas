@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { Button, toast } from "@codeatlasdev/ui";
+	import { Button, Switch, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import Group from "#lib/settings/Group.svelte";
@@ -16,6 +16,8 @@
 		saveCrewSettings,
 		type CrewServerSettings,
 	} from "#lib/crew/settings/crewSettings.ts";
+	import { modeLabel, selectableModes } from "#lib/crew/permissionMode.ts";
+	import type { CrewPolicy } from "#lib/crew/permissionMode.ts";
 	import { replayCrewOnboarding } from "#lib/crew/crewOnboarding.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
@@ -115,6 +117,14 @@
 			toast.error(errText(e));
 		} finally {
 			pausing = { ...pausing, [key]: false };
+		}
+	}
+
+	async function savePolicy(key: string, patch: Partial<CrewPolicy>) {
+		try {
+			await crew.setPolicy(key, patch);
+		} catch (e) {
+			toast.error(errText(e));
 		}
 	}
 
@@ -236,6 +246,38 @@
 		{/if}
 
 		{#if online}
+			{@const policy = crew.policyOf(h.key)}
+			<Row
+				id="crew-default-mode-{h.key}"
+				label={m.crew_permission_default_label()}
+				description={m.crew_permission_default_hint()}
+			>
+				<select
+					class="input mode-select"
+					value={policy.default_approval}
+					aria-label={m.crew_permission_default_label()}
+					onchange={(e) =>
+						void savePolicy(h.key, {
+							default_approval: (e.currentTarget as HTMLSelectElement)
+								.value as CrewPolicy["default_approval"],
+						})}
+				>
+					{#each selectableModes(policy) as mode (mode)}
+						<option value={mode}>{modeLabel(mode)}</option>
+					{/each}
+				</select>
+			</Row>
+			<Row
+				id="crew-allow-bypass-{h.key}"
+				label={m.crew_permission_allow_bypass_label()}
+				description={m.crew_permission_allow_bypass_hint()}
+			>
+				<Switch
+					aria-label={m.crew_permission_allow_bypass_label()}
+					checked={policy.allow_bypass}
+					onchange={(v) => void savePolicy(h.key, { allow_bypass: v })}
+				/>
+			</Row>
 			<BrowsersRow hostKey={h.key} />
 			<TelegramRow hostKey={h.key} />
 		{/if}
@@ -374,6 +416,10 @@
 	}
 	.input::placeholder {
 		color: var(--ca-text-tertiary, var(--ca-text-secondary));
+	}
+	.mode-select {
+		flex: none;
+		min-width: 0;
 	}
 	.short-replies-form {
 		display: flex;

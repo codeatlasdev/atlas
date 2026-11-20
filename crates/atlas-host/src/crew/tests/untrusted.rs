@@ -292,32 +292,42 @@ async fn a_github_prompt_contains_the_title_inside_the_untrusted_wrapper() {
 
 #[test]
 fn a_task_from_github_or_a_webhook_runs_with_the_bypass_flags_only_if_allow_auto() {
-    use crate::crew::store::Approval;
+    use crate::crew::store::Mode;
     use crate::crew::triggers::yolo_for;
 
+    // Only an engine that cannot ask (codex, opencode) is ever launched with its bypass flags: the engines
+    // that can ask stay in ask mode and hostd decides each call (`crew::approval`).
     let mut t = Task::new("trigger", "p");
     assert!(!t.no_auto, "an ordinary task is not marked");
     assert!(
-        yolo_for(Approval::Auto, &t),
-        "auto crewmate, normal task: bypass as configured"
+        yolo_for(Mode::Bypass, &t, false),
+        "bypass crewmate, normal task, engine that cannot ask: bypass as configured"
     );
-    assert!(!yolo_for(Approval::Ask, &t));
+    assert!(!yolo_for(Mode::Ask, &t, false));
+    assert!(!yolo_for(Mode::Edits, &t, false));
+    assert!(
+        !yolo_for(Mode::Bypass, &t, true),
+        "an engine that can ask never gets the bypass flags"
+    );
 
     t.no_auto = true;
     assert!(
-        !yolo_for(Approval::Auto, &t),
+        !yolo_for(Mode::Bypass, &t, false),
         "an untrusted-origin task runs as `ask`"
     );
-    assert!(!yolo_for(Approval::Ask, &t));
+    assert!(!yolo_for(Mode::Ask, &t, false));
 
-    // The argv built for an auto crewmate carries the flag only when yolo_for says so.
-    let def = atlas_core::agents::get("claude").unwrap();
+    // The argv built for a bypass crewmate carries the flag only when yolo_for says so.
+    let def = atlas_core::agents::get("codex").unwrap();
     let with = def.argv(
-        yolo_for(Approval::Auto, &Task::new("trigger", "p")),
+        yolo_for(Mode::Bypass, &Task::new("trigger", "p"), false),
         Some("p"),
     );
-    assert!(with.iter().any(|a| a == "--dangerously-skip-permissions"));
-    let without = def.argv(yolo_for(Approval::Auto, &t), Some("p"));
+    assert!(
+        with.iter()
+            .any(|a| a == "--dangerously-bypass-approvals-and-sandbox")
+    );
+    let without = def.argv(yolo_for(Mode::Bypass, &t, false), Some("p"));
     assert!(
         !without.iter().any(|a| a.starts_with("--dangerously")),
         "{without:?}"

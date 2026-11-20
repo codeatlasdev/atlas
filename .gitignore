@@ -25,6 +25,8 @@ apps/mobile/native/target/
 apps/mobile/ios/Pods/
 apps/mobile/**/*.g.dart
 apps/mobile/**/*.freezed.dart
+# i18n: ARB files and the localizations class are generated from i18n/messages by scripts/mobile-check.sh, never committed
+apps/mobile/lib/l10n/
 
 # ── Secrets and machine-local config ────────────────────────────────────────
 .env

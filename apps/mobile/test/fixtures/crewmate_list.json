@@ -9,6 +9,7 @@
         "text": "review PR",
         "ts": 1700000001
       },
+      "mode": "ask",
       "name": "Reviewer",
       "queued": 0,
       "role": "Reviews PRs",
@@ -29,6 +30,7 @@
         "text": "nightly done",
         "ts": 1700000000
       },
+      "mode": "bypass",
       "name": "Nightly",
       "queued": 0,
       "role": "Nightly checks",
@@ -74,6 +76,7 @@
         "kind": "opencode"
       },
       "id": "crewmate-opencode",
+      "mode": "bypass",
       "name": "Deployer",
       "queued": 0,
       "role": "Deploys releases",

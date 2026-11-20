@@ -1,0 +1,8 @@
+{
+	"mobile_crew_settings_allow_bypass_detail": "Detail under the Allow Bypass switch: turning it off changes crewmates and the default.",
+	"mobile_crew_settings_allow_bypass_title": "Title of the switch that lets crewmates use Bypass.",
+	"mobile_crew_settings_allow_bypass_unattended": "Warning under the Allow Bypass switch about codex and opencode crewmates.",
+	"mobile_crew_settings_default_mode_detail": "Detail under the default mode picker.",
+	"mobile_crew_settings_default_mode_title": "Title of the default permission mode picker in Crew settings.",
+	"mobile_crew_settings_permissions_title": "Heading of the permissions card in Crew settings."
+}

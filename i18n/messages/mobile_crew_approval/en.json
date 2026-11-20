@@ -1,0 +1,15 @@
+{
+	"mobile_crew_approval_allow_once": "Allow once",
+	"mobile_crew_approval_allow_task": "Allow for this task",
+	"mobile_crew_approval_comment_hint": "Why, or what to do instead",
+	"mobile_crew_approval_comment_label": "Comment for the agent (optional)",
+	"mobile_crew_approval_deny": "Deny",
+	"mobile_crew_approval_failed": "Couldn't send the answer: {reason}",
+	"mobile_crew_approval_more": "Comment or more options",
+	"mobile_crew_approval_rail_no_auto": "This task asks in every mode, and can only be allowed once.",
+	"mobile_crew_approval_rail_protected_path": "Protected path: it asks in every mode, and can only be allowed once.",
+	"mobile_crew_approval_sheet_title": "Answer {name}",
+	"mobile_crew_approval_task_note": "Allow for this task covers the same kind of call until the task ends.",
+	"mobile_crew_approval_wants_to_run": "Wants to run {tool}",
+	"mobile_crew_approval_wants_to_run_unknown": "Wants to run a tool"
+}

@@ -144,8 +144,6 @@ pub struct TurnCtx<'a> {
     /// Crewmate-scoped secrets, forwarded as env vars (hostd's `ATLAS_*` always win over them).
     pub extra_env: &'a BTreeMap<String, String>,
     pub work_dir: &'a str,
-    /// Skip interactive permission prompts (auto-approve).
-    pub yolo: bool,
     /// Told of every finished tool call, for engines whose stream carries them (omp RPC).
     pub tools: Option<&'a ToolSink<'a>>,
     /// Fires when the task is cancelled or the crew paused: the turn's process tree ends.

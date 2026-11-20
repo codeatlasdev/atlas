@@ -20,6 +20,7 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/chat_reader.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/computer_state.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/ui/protocol_banner.dart';
 import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
@@ -33,6 +34,10 @@ import 'package:atlas_mobile/features/crew/chat/working_row.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/crew_text.dart';
+import 'package:atlas_mobile/features/crew/permissions/approval_actions.dart';
+import 'package:atlas_mobile/features/crew/permissions/crewmate_mode_control.dart';
+import 'package:atlas_mobile/features/crew/permissions/mode_button.dart';
+import 'package:atlas_mobile/features/crew/permissions/mode_text.dart';
 import 'package:atlas_mobile/features/crew/profile/crewmate_profile_screen.dart';
 
 class CrewmateChatScreen extends ConsumerStatefulWidget {
@@ -58,6 +63,12 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
 
   /// The header's row: back, who you talk to, stop (below the status bar).
   static const _headerRow = 64.0;
+
+  /// The row under it: the crewmate's permission mode, one tap from changing it.
+  static const _modeRow = 48.0;
+
+  /// The whole header, below the status bar: what the thread and the banners clear.
+  static const _chrome = _headerRow + _modeRow;
 
   final _msg = TextEditingController();
   bool _sending = false;
@@ -175,14 +186,23 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     return failure == null;
   }
 
-  /// Allow / Deny on a pending tool approval. Offline, the approval stays pending and this says why.
-  Future<void> _approve(CrewmatePendingApproval pa, bool allow) async {
+  /// The answer to a pending tool approval (Allow once, Allow for this task, Deny, with a comment). Offline, or
+  /// when hostd refuses, the approval stays pending and this says why.
+  Future<void> _approve(CrewmatePendingApproval pa, ApprovalDecision d) async {
     try {
-      await answerApproval(ref, widget.device, pa, allow);
-    } on DeviceUnavailable catch (e) {
+      await answerApproval(
+        ref,
+        widget.device,
+        pa,
+        d.allow,
+        scope: d.scope,
+        comment: d.comment,
+      );
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(approvalFailureText(context.l10n, e))),
+        );
       }
     }
   }
@@ -266,7 +286,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
       backgroundColor: c.ground,
       extendBodyBehindAppBar: true,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(_headerRow),
+        preferredSize: const Size.fromHeight(_chrome),
         // The thread scrolls under the header: its own ground, from the very top (the status bar included).
         child: Stack(
           fit: StackFit.expand,
@@ -274,95 +294,117 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
             const GlassHeaderGround(),
             SafeArea(
               bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Space.md,
-                  Space.sm,
-                  Space.md,
-                  0,
-                ),
-                child: Row(
-                  children: [
-                    GlassRoundButton(
-                      icon: Icons.arrow_back_ios_new_rounded,
-                      label: 'Back',
-                      onTap: () => Navigator.of(context).maybePop(),
-                    ),
-                    const Spacer(),
-                    // Who you are talking to: face and name in one floating pill.
-                    Semantics(
-                      button: true,
-                      label:
-                          '$crewmateName, ${switch (state) {
-                            CrewState.working => 'working',
-                            CrewState.needsYou => 'needs you',
-                            CrewState.offline => 'offline',
-                            CrewState.idle => 'on deck',
-                          }}',
-                      child: Pressable(
-                        onTap: crewmate != null
-                            ? () => _openProfile(crewmate, hostName)
-                            : null,
-                        child: GlassPill(
-                          padding: const EdgeInsets.fromLTRB(
-                            Space.sm,
-                            Space.xs,
-                            Space.lg,
-                            Space.xs,
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: _headerRow,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Space.md,
+                        Space.sm,
+                        Space.md,
+                        0,
+                      ),
+                      child: Row(
+                        children: [
+                          GlassRoundButton(
+                            icon: Icons.arrow_back_ios_new_rounded,
+                            label: 'Back',
+                            onTap: () => Navigator.of(context).maybePop(),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Crewmate(
-                                seed: widget.crewmateId,
-                                look: crewmate?.look,
-                                state: state,
-                                size: 34,
-                              ),
-                              const SizedBox(width: Space.md),
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 170,
+                          const Spacer(),
+                          // Who you are talking to: face and name in one floating pill.
+                          Semantics(
+                            button: true,
+                            label:
+                                '$crewmateName, ${switch (state) {
+                                  CrewState.working => 'working',
+                                  CrewState.needsYou => 'needs you',
+                                  CrewState.offline => 'offline',
+                                  CrewState.idle => 'on deck',
+                                }}',
+                            child: Pressable(
+                              onTap: crewmate != null
+                                  ? () => _openProfile(crewmate, hostName)
+                                  : null,
+                              child: GlassPill(
+                                padding: const EdgeInsets.fromLTRB(
+                                  Space.sm,
+                                  Space.xs,
+                                  Space.lg,
+                                  Space.xs,
                                 ),
-                                child: Text(
-                                  crewmateName,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium!
-                                      .copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        color: c.text,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Crewmate(
+                                      seed: widget.crewmateId,
+                                      look: crewmate?.look,
+                                      state: state,
+                                      size: 34,
+                                    ),
+                                    const SizedBox(width: Space.md),
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 170,
                                       ),
+                                      child: Text(
+                                        crewmateName,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium!
+                                            .copyWith(
+                                              fontWeight: FontWeight.w600,
+                                              color: c.text,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    // While it works: stop it. Otherwise nothing; the pill opens the profile.
-                    AnimatedSwitcher(
-                      duration: Motion.normal,
-                      transitionBuilder: (child, a) => ScaleTransition(
-                        scale: a,
-                        child: FadeTransition(opacity: a, child: child),
-                      ),
-                      child: running != null
-                          ? GlassRoundButton(
-                              key: const ValueKey('stop'),
-                              icon: Icons.stop_rounded,
-                              label: 'Stop $crewmateName',
-                              onTap: () => _cancel(running.id),
-                            )
-                          : const SizedBox.square(
-                              key: ValueKey('none'),
-                              dimension: 48,
                             ),
+                          ),
+                          const Spacer(),
+                          // While it works: stop it. Otherwise nothing; the pill opens the profile.
+                          AnimatedSwitcher(
+                            duration: Motion.normal,
+                            transitionBuilder: (child, a) => ScaleTransition(
+                              scale: a,
+                              child: FadeTransition(opacity: a, child: child),
+                            ),
+                            child: running != null
+                                ? GlassRoundButton(
+                                    key: const ValueKey('stop'),
+                                    icon: Icons.stop_rounded,
+                                    label: 'Stop $crewmateName',
+                                    onTap: () => _cancel(running.id),
+                                  )
+                                : const SizedBox.square(
+                                    key: ValueKey('none'),
+                                    dimension: 48,
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  SizedBox(
+                    height: _modeRow,
+                    child: crewmate == null
+                        ? null
+                        : Center(
+                            child: ModeButton(
+                              crewmate: crewmate,
+                              onTap: () => showModeSheet(
+                                context,
+                                device: widget.device,
+                                crewmateId: widget.crewmateId,
+                              ),
+                            ),
+                          ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -404,7 +446,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                     ),
                     padding: EdgeInsets.fromLTRB(
                       Space.md,
-                      MediaQuery.paddingOf(context).top + _headerRow + Space.sm,
+                      MediaQuery.paddingOf(context).top + _chrome + Space.sm,
 
                       Space.md,
                       // Room for the composer floating over the end of the thread.
@@ -442,8 +484,9 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                               ? _expanded.remove(task.id)
                               : _expanded.add(task.id);
                         }),
-                        onApprove: isApprovalTask
-                            ? (allow) => _approve(pa, allow)
+                        crewmateName: crewmateName,
+                        onAnswer: isApprovalTask
+                            ? (d) => _approve(pa, d)
                             : null,
                       );
                     },
@@ -452,7 +495,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
 
           // The computer's state under the header, over the thread: it comes and goes without moving it.
           Positioned(
-            top: MediaQuery.paddingOf(context).top + _headerRow,
+            top: MediaQuery.paddingOf(context).top + _chrome,
             left: 0,
             right: 0,
             child: ColoredBox(
@@ -504,7 +547,8 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                         child: CrewmateApprovalBubble(
                           look: crewmate?.look,
                           approval: pa,
-                          onApprove: (allow) => _approve(pa, allow),
+                          crewmateName: crewmateName,
+                          onAnswer: (d) => _approve(pa, d),
                         ),
                       ),
 

@@ -1,4 +1,7 @@
 {
+	"hostd_wire_approval_bypass_disabled": "Bypass is turned off for this crew. Turn it on in the crew settings to use it.",
+	"hostd_wire_approval_forbidden": "Only you can change a permission mode, from Atlas Desktop, Atlas Mobile or your linked Telegram chat.",
+	"hostd_wire_approval_unsupported_engine": "{engine} has no approval channel, so it always runs without asking. Only Bypass applies to it.",
 	"hostd_wire_busy": "The terminal host is busy right now. Wait a moment and try again.",
 	"hostd_wire_cli_not_found": [
 		{

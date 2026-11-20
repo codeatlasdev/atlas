@@ -162,10 +162,12 @@ pub(crate) fn author_allowed(authors: &[String], association: Option<&str>) -> b
     authors.iter().any(|a| a == "anyone" || *a == assoc)
 }
 
-/// Whether a task runs with the agent's bypass flags: the crewmate is `auto` and the task is not one
-/// started by a stranger's text from a trigger that did not opt in (`allow_auto`).
-pub(crate) fn yolo_for(approval: crate::crew::store::Approval, task: &Task) -> bool {
-    approval == crate::crew::store::Approval::Auto && !task.no_auto
+/// Whether a task is launched with its agent's bypass flags. Only an engine that cannot ask (codex, opencode:
+/// `can_ask` false) ever is: the crewmate is in `bypass` and the task is not one started by a stranger's text from
+/// a trigger that did not opt in (`allow_auto`). An engine that can ask is always launched in ask mode and hostd
+/// decides each call (`crew::approval`), so no dotfile or flag can escalate it behind hostd's back.
+pub(crate) fn yolo_for(mode: crate::crew::store::Mode, task: &Task, can_ask: bool) -> bool {
+    mode == crate::crew::store::Mode::Bypass && !task.no_auto && !can_ask
 }
 
 /// Tick `Schedule` and `Interval` triggers. Call every ~30 s from a background

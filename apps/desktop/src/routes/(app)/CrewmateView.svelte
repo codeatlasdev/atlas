@@ -15,11 +15,12 @@
 	import { normalizeLook } from "#lib/crew/look.ts";
 	import { firstUnreadIndex } from "#lib/crew/crewLogic.ts";
 	import { githubCrew } from "#lib/crew/githubCrew.svelte.ts";
-	import type { SetupStep } from "#lib/crew/crewSetup.ts";
+	import { normalizeStep } from "#lib/crew/crewSetup.ts";
 	import CrewmateSettingsDialog from "#lib/crew/settings/CrewmateSettingsDialog.svelte";
 	import ChatHeader from "#lib/crew/chat/ChatHeader.svelte";
 	import Lazy from "#lib/components/Lazy.svelte";
 	import Composer from "#lib/crew/chat/Composer.svelte";
+	import ModePicker from "#lib/crew/chat/ModePicker.svelte";
 	import SetupConversation from "#lib/crew/chat/SetupConversation.svelte";
 	import { ChatState } from "#lib/crew/chat/chat.svelte.ts";
 	import { parseAsk } from "#lib/crew/chat/parseAsk.ts";
@@ -42,7 +43,7 @@
 	const queuedCount = $derived(tasks.filter((t) => t.state === "queued").length);
 	/** True when the most recent task has an unanswered ask card. */
 	const hasPendingAsk = $derived(
-		tasks.length > 0 && parseAsk(tasks[0].result) !== null && !chat.approvedReqs.has(tasks[0].id),
+		tasks.length > 0 && parseAsk(tasks[0].result) !== null && !(tasks[0].id in chat.answeredReqs),
 	);
 	const orderedTasks = $derived([...tasks].reverse()); // oldest first
 	const unreadIdx = $derived(firstUnreadIndex(orderedTasks, crew.selectedLastSeen));
@@ -63,7 +64,7 @@
 	const ideProjects = $derived(
 		ws.doc.worktrees.map((w) => ({ id: w.id, name: w.name, path: w.path, branch: w.branch ?? "" })),
 	);
-	const setupStep = $derived(crewmate?.setup_step as SetupStep | undefined);
+	const setupStep = $derived(normalizeStep(crewmate?.setup_step));
 
 	// Reset approvedReqs when the selected crewmate changes
 	$effect(() => {
@@ -176,7 +177,9 @@
 					onremoveimage={(i) => chat.removeImage(i)}
 					queued={queuedCount}
 					onsend={() => void chat.send()}
-				/>
+				>
+					{#snippet footer()}<ModePicker {crewmate} {hostKey} />{/snippet}
+				</Composer>
 			{/if}
 		</div>
 

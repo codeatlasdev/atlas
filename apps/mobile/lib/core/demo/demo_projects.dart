@@ -351,6 +351,6 @@ class DemoProjects {
       default:
         return null;
     }
-    return (data: data, error: error);
+    return DemoReply(data: data, error: error);
   }
 }

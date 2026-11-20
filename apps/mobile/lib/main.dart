@@ -13,6 +13,7 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/backdrop.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
@@ -254,6 +255,8 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
       title: 'Atlas',
       debugShowCheckedModeBanner: false,
       theme: atlasTheme(),
+      localizationsDelegates: atlasLocalizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       routerConfig: _router,
       // The app's ground under every route; tapping a push opens the agent it is about, over whatever tab is
       // showing.

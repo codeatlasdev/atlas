@@ -156,6 +156,10 @@ pub(super) fn finish_task(
     task.finished_at = Some(now_s());
     // Every ending lands here: the commands of this run are no evidence for any other.
     hub.crew.tape.forget(&task.id);
+    // Its grants end with it: the next task asks again.
+    hub.crew
+        .approvals
+        .forget(&crate::crew::pane::key(&crewmate.id, &task.id));
     // A caller with no steps of its own (a conversational turn) keeps the ones the task has.
     if !steps.is_empty() {
         task.steps = steps;

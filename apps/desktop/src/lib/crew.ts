@@ -33,7 +33,12 @@ export interface CrewServer {
 }
 
 export type CrewmateState = "idle" | "working" | "needs_you";
-export type ApprovalMode = "ask" | "auto";
+/** What a crewmate's agent may do without asking (hostd `mode`): nothing, file edits in its tree, or every call but the rails. */
+export type PermissionMode = "ask" | "edits" | "bypass";
+/** How long an "Allow" lasts: this call (default), or the same kind of call for the rest of that task. */
+export type ApprovalScope = "once" | "task";
+/** What forced a question even in Bypass: a protected path, or a task started from GitHub or a webhook. */
+export type ApprovalRail = "protected_path" | "no_auto";
 export type TaskState = "queued" | "running" | "done" | "failed" | "cancelled" | "waiting_action";
 export type TaskSource = "mobile" | "desktop" | "telegram" | "routine" | "trigger";
 
@@ -139,6 +144,8 @@ export interface PendingApproval {
 	tool_name: string;
 	tool_input: unknown;
 	pane_key: string;
+	/** Set when a rail forced the question (no mode would have allowed it). */
+	rail?: ApprovalRail;
 }
 
 export interface CrewmateStep {
@@ -159,7 +166,10 @@ export interface Crewmate {
 	name: string;
 	role: string;
 	agent: string;
-	approval: ApprovalMode;
+	/** Legacy two-value form, kept by hostd: `auto` exactly when `mode` is `bypass`. Read `mode`. */
+	approval: "ask" | "auto";
+	/** The permission mode. Absent on a crew server whose hostd predates permission modes (read it with `modeOf`). */
+	mode?: PermissionMode;
 	state: CrewmateState;
 	queued: number;
 	last?: CrewmateLast;
@@ -177,8 +187,8 @@ export interface Crewmate {
 	triggers?: Trigger[];
 	/**
 	 * Whether this crewmate's engine supports approval prompts.
-	 * Present only when `engine` is set. False for opencode; true for claude/codex/omp.
-	 * When false: approval must be "auto"; UI shows a hint and disables the selector.
+	 * Present only when `engine` is set. False for codex and opencode, whose `mode` is always `bypass`.
+	 * When false: the UI shows the mode fixed, with the reason, and no way to change it.
 	 */
 	approval_supported?: boolean;
 	/**

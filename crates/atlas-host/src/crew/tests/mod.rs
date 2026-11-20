@@ -35,6 +35,8 @@
 //! | `github_out`  | the progress comment: created, edited (throttled), finished, failed      |
 //! | `github_fake` | the `GithubApi` fake both of those run against                           |
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
+//! | `github_hook_events` | GitHub webhook deliveries to tasks: the same task the poll makes, authors, the actions the poll never sees |
+//! | `github_webhook` | `POST /github/webhook` through a real hostd: signature, replays, audit, polling handover, the public URL setting |
 //! | `github_app`  | the GitHub App commands, the desktop fixture, the agent's git env and credential helper |
 //! | `attachments` | images on tasks: stored, staged, refused, fetched, from Telegram, scopes |
 //! | `structure`   | a grep guard: code that touches an isolated crewmate's tree says how it is safe |
@@ -46,6 +48,7 @@
 //! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
+mod github_hook_events;
 mod github_in;
 mod github_out;
 mod payloads;
@@ -82,6 +85,8 @@ mod fixture;
 mod github_app;
 #[cfg(unix)]
 mod github_e2e;
+#[cfg(unix)]
+mod github_webhook;
 #[cfg(unix)]
 mod guards;
 #[cfg(unix)]

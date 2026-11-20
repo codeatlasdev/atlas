@@ -12,6 +12,7 @@
 //! | `helper`   | `atlas crew git-credential`: asks hostd for a token per git operation                 |
 //! | `env`      | the git environment of a crewmate: helper, bot identity (no secret)                   |
 //! | `http`     | the one HTTP door to api.github.com (a fake on loopback under test)                   |
+//! | `webhook`  | `POST /github/webhook`'s parts: signature, replayed ids, hook state, hook config, redelivery |
 //!
 //! Wire contract: `docs/crew.md` ("GitHub App").
 
@@ -31,6 +32,7 @@ mod service;
 #[cfg(test)]
 mod tests;
 mod tokens;
+pub(crate) mod webhook;
 
 use std::sync::Arc;
 
@@ -64,6 +66,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, origin: &str) -> Result<Valu
         return Err(service::forbidden().into());
     }
     let app = &hub.crew.github_app;
+    // The public URL setting: the webhook the app is made with, and the one its status reports.
+    let url = hub.crew.store.load_crew_settings().public_url;
     let out = match cmd {
         HostCmd::CrewGithubAppManifest {
             owner_kind,
@@ -74,10 +78,16 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, origin: &str) -> Result<Valu
             let server = server_name
                 .filter(|s| !s.trim().is_empty())
                 .unwrap_or_else(crate::server::hostname);
-            app.manifest(&owner_kind, org.as_deref(), workflows, &server)
+            app.manifest(
+                &owner_kind,
+                org.as_deref(),
+                workflows,
+                &server,
+                url.as_deref(),
+            )
         }
-        HostCmd::CrewGithubAppConvert { code } => app.convert(&code).await,
-        HostCmd::CrewGithubAppStatus {} => app.status().await,
+        HostCmd::CrewGithubAppConvert { code } => app.convert(&code, url.as_deref()).await,
+        HostCmd::CrewGithubAppStatus {} => app.status(url.as_deref()).await,
         HostCmd::CrewGithubAppRemove {} => app.remove().await,
         _ => return Err("not a GitHub App command".into()),
     };

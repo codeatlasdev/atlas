@@ -10,7 +10,13 @@
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import { CrewGithubApp } from "#lib/crew/githubApp.svelte.ts";
-	import { clock, permissionLabel, permissionList, validOrgLogin } from "#lib/crew/githubApp.ts";
+	import {
+		clock,
+		permissionLabel,
+		permissionList,
+		validOrgLogin,
+		webhookState,
+	} from "#lib/crew/githubApp.ts";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -130,6 +136,44 @@
 				</div>
 			{/snippet}
 		</Row>
+		<Row
+			id="crew-github-webhook-{hostKey}"
+			label={m.crew_github_app_webhook_title()}
+			description={m.crew_github_app_webhook_hint()}
+			stack
+		>
+			{@const state = webhookState(app.webhook)}
+			<div class="webhook">
+				<!-- i18n-ignore: an address used as an example, not prose -->
+				<TextField
+					size="sm"
+					label={m.crew_github_app_webhook_url_label()}
+					placeholder="https://crew.example.com"
+					autocomplete="off"
+					spellcheck={false}
+					bind:value={flow.publicUrl}
+					error={flow.urlError || undefined}
+					onkeydown={(e) => e.key === "Enter" && void flow.savePublicUrl()}
+				/>
+				<Button
+					size="sm"
+					variant="ghost"
+					disabled={flow.savingUrl || flow.publicUrl.trim() === (app.webhook.url ?? "")}
+					onclick={() => void flow.savePublicUrl()}>{m.common_action_save()}</Button
+				>
+			</div>
+			<p class="muted" class:warn={state === "failing"} role="status">
+				{state === "off"
+					? m.crew_github_app_webhook_off()
+					: state === "unsynced"
+						? m.crew_github_app_webhook_unsynced()
+						: state === "pending"
+							? m.crew_github_app_webhook_pending()
+							: state === "failing"
+								? m.crew_github_app_webhook_failing()
+								: m.crew_github_app_webhook_live()}
+			</p>
+		</Row>
 	{:else}
 		<Row
 			id="crew-github-app-{hostKey}"
@@ -228,6 +272,28 @@
 		font-size: 12px;
 		color: var(--ca-text-secondary);
 		line-height: 1.45;
+	}
+	.muted.warn {
+		color: var(--ca-semantic-warning);
+	}
+	/* The field's label, box and hint are the grid's rows (the field itself is `display: contents`), so Save sits on
+	   the box's row whatever the label's height and whether a hint or an error is shown under it. */
+	.webhook {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		column-gap: 8px;
+		align-items: center;
+		width: 100%;
+	}
+	.webhook :global(.ca-tf) {
+		display: contents;
+	}
+	.webhook :global(.ca-tf > *) {
+		grid-column: 1;
+	}
+	.webhook > :global(button) {
+		grid-column: 2;
+		grid-row: 2;
 	}
 	.wait-title,
 	.status {

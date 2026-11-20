@@ -26,6 +26,52 @@ export interface GithubApp {
 	installations: AppInstallation[];
 	/** GitHub could not be asked for the installations (the app itself is still known). */
 	installationsError: string | null;
+	webhook: AppWebhook;
+}
+
+/** `crew_github_app_status.app.webhook` (#645): where GitHub delivers, and how that is going. */
+export interface AppWebhook {
+	/** The crew's public URL; `null`: no webhook, events come from the 2-minute poll. */
+	url: string | null;
+	/** GitHub's hook config points at `url`. */
+	synced: boolean;
+	/** Installations that delivered a correctly signed event: their repos are no longer polled. */
+	verifiedInstallations: number;
+	/** Deliveries are failing and every repo is polled again. */
+	failing: boolean;
+}
+
+export type WebhookState = "off" | "unsynced" | "pending" | "live" | "failing";
+
+/** What the card says about the webhook, in the order hostd decides: no URL, GitHub not told, failing, no signed
+ * delivery yet, live. */
+export function webhookState(w: AppWebhook): WebhookState {
+	if (!w.url) return "off";
+	if (!w.synced) return "unsynced";
+	if (w.failing) return "failing";
+	return w.verifiedInstallations > 0 ? "live" : "pending";
+}
+
+export type PublicUrl = { ok: true; url: string | null } | { ok: false; reason: "https" | "url" | "long" };
+
+/** The public URL as hostd keeps it (`crew::store::normalize_public_url`), checked here so a refused one is never
+ * sent: blank is off; otherwise `https://` with a host and no user, password, query or fragment, at most 200
+ * characters, without a trailing slash. hostd checks again and is the authority. */
+export function publicUrl(raw: string): PublicUrl {
+	const s = raw.trim();
+	if (!s) return { ok: true, url: null };
+	if (s.length > 200) return { ok: false, reason: "long" };
+	let u: URL;
+	try {
+		u = new URL(s);
+	} catch {
+		return { ok: false, reason: "url" };
+	}
+	if (u.protocol !== "https:") return { ok: false, reason: "https" };
+	if (!u.hostname || u.username || u.password || u.search || u.hash || s.includes("?") || s.includes("#")) {
+		return { ok: false, reason: "url" };
+	}
+	return { ok: true, url: u.href.replace(/\/+$/, "") };
 }
 
 /** The manifest reply: `manifest` goes to the loopback listener untouched, `postUrl` is GitHub's "new app" page. */
@@ -61,6 +107,18 @@ export function parseStatus(raw: unknown): GithubApp | null {
 			repositorySelection: str(i.repository_selection),
 		})),
 		installationsError: str(app.installations_error) || null,
+		webhook: parseWebhook(app.webhook),
+	};
+}
+
+/** An older hostd sends no `webhook`: it reads as off. */
+function parseWebhook(raw: unknown): AppWebhook {
+	const w = isObject(raw) ? raw : {};
+	return {
+		url: str(w.url) || null,
+		synced: w.synced === true,
+		verifiedInstallations: typeof w.verified_installations === "number" ? w.verified_installations : 0,
+		failing: w.failing === true,
 	};
 }
 

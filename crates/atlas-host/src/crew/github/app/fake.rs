@@ -175,6 +175,14 @@ pub(crate) fn github(
                         .to_string(),
                 )
             }
+            // The webhook: the hook config is accepted, and no delivery has been made yet.
+            ("PATCH", "/app/hook/config") => (
+                200,
+                r#"{"content_type":"json","insecure_ssl":"0","url":"https://crew.example.com/github/webhook"}"#
+                    .into(),
+            ),
+            ("GET", p) if p.starts_with("/app/hook/deliveries") => (200, "[]".into()),
+            ("POST", p) if p.starts_with("/app/hook/deliveries/") => (202, "{}".into()),
             ("GET", "/repos/acme/web/issues/5") => (200, r#"{"number":5,"title":"hi"}"#.into()),
             ("POST", "/repos/acme/web/issues/5/comments") => (201, r#"{"id":321}"#.into()),
             _ => (500, r#"{"message":"unexpected"}"#.into()),

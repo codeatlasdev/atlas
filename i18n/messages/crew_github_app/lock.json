@@ -39,6 +39,17 @@
     "crew_github_app_title": "befcdc6e785c",
     "crew_github_app_waiting_body": "5504f7300781",
     "crew_github_app_waiting_title": "5b3106ab780b",
+    "crew_github_app_webhook_bad_https": "a0a282e58aa7",
+    "crew_github_app_webhook_bad_url": "c83cd8c9375a",
+    "crew_github_app_webhook_failing": "4f2bcc450441",
+    "crew_github_app_webhook_hint": "3e3f856c241f",
+    "crew_github_app_webhook_live": "badea8d03072",
+    "crew_github_app_webhook_off": "8ef4c0e7eb6d",
+    "crew_github_app_webhook_pending": "c686241adc16",
+    "crew_github_app_webhook_title": "e1d9a3cdf0b8",
+    "crew_github_app_webhook_too_long": "51d85f95c34d",
+    "crew_github_app_webhook_unsynced": "a7e7c07caf53",
+    "crew_github_app_webhook_url_label": "a61660103f7b",
     "crew_github_app_workflows_label": "f3dd9e235019",
     "crew_github_app_workflows_reason": "a761d9c88196"
   }

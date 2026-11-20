@@ -41,7 +41,8 @@ use crate::protocol::{Failure, HostCmd};
 use crate::server::Hub;
 
 pub(crate) use api::Routed;
-#[cfg(test)]
+// Only the Unix-only `crew::tests::github_app` reaches it from outside; on Windows it would be an unused import.
+#[cfg(all(test, unix))]
 pub(crate) use http::TEST_API_BASE;
 pub(crate) use service::{
     AppService, CODE_EXPIRED, CONVERSION_FAILED, EXISTS, FORBIDDEN, NONE, TokenError,

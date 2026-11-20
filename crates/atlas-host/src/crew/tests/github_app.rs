@@ -45,7 +45,14 @@ fn fixture(name: &str, live: &Value) {
         .join("../../apps/desktop/src/lib/__fixtures__")
         .join(name);
     if std::env::var_os("UPDATE_FIXTURES").is_some() {
-        std::fs::write(&path, serde_json::to_string_pretty(live).unwrap() + "\n").unwrap();
+        // Tab-indented, as `prettier --check src` (useTabs) wants the committed file.
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(live, &mut ser).unwrap();
+        std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
     }
     let stored: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_else(|_| {
         panic!("{name} missing: run UPDATE_FIXTURES=1 cargo test -p atlas-host crew::tests::github_app")

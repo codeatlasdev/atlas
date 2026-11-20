@@ -7,6 +7,7 @@
     "available": false,
     "reason": "crewmates do not run as their own users here (no spawn helper)"
   },
+  "public_url": null,
   "short_replies": false,
   "short_replies_model": "haiku"
 }

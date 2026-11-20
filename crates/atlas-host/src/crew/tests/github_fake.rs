@@ -46,7 +46,8 @@ impl FakeGithub {
         self.writes.lock().clone()
     }
 
-    /// How many times the poll read `repo`'s events.
+    /// How many times the poll read `repo`'s events. Only the Unix-only `github_webhook` tests ask.
+    #[cfg(unix)]
     pub(crate) fn reads_of(&self, repo: &str) -> usize {
         self.event_reads
             .lock()

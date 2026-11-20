@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/permission_mode.dart';
+import 'package:atlas_mobile/core/protocol/voice_verdict.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 
@@ -89,6 +90,55 @@ Future<void> answerApproval(
     ),
   );
   if (resp['ok'] != true) throw HostRefusal.fromReply(resp);
+}
+
+/// Sends what was heard for a pending approval (`agent_approve_voice`) and returns hostd's verdict. The phone
+/// never decides what the words mean: a [VoiceVerdictKind.allow] / [VoiceVerdictKind.deny] means hostd already
+/// answered; every other verdict decided nothing. Throws like [answerApproval].
+Future<VoiceVerdict> answerApprovalByVoice(
+  WidgetRef ref,
+  MacDevice device,
+  CrewmatePendingApproval approval,
+  String transcript,
+  String lang,
+) async {
+  final mux = await requireMuxOf(ref, device);
+  final resp = await mux.call('agent_approve_voice', {
+    'pane': approval.paneKey,
+    'req': approval.req,
+    'transcript': transcript,
+    'lang': lang,
+  });
+  if (resp['ok'] != true) throw HostRefusal.fromReply(resp);
+  final verdict = VoiceVerdict.fromJson(resp['data']);
+  if (verdict.kind.decided) ref.invalidate(crewProvider(device));
+  return verdict;
+}
+
+/// Sends what was heard for the card a task waits on (`crewmate_action_answer_voice`) and returns hostd's
+/// verdict; a [VoiceVerdictKind.choice] means hostd already answered the card with that option.
+Future<VoiceVerdict> answerActionByVoice(
+  WidgetRef ref,
+  MacDevice device,
+  String crewmateId,
+  String taskId,
+  String transcript,
+  String lang,
+) async {
+  final mux = await requireMuxOf(ref, device);
+  final resp = await mux.call('crewmate_action_answer_voice', {
+    'id': crewmateId,
+    'task': taskId,
+    'transcript': transcript,
+    'lang': lang,
+  });
+  if (resp['ok'] != true) throw HostRefusal.fromReply(resp);
+  final verdict = VoiceVerdict.fromJson(resp['data']);
+  if (verdict.kind.decided) {
+    ref.invalidate(crewmateTasksProvider((device, crewmateId)));
+    ref.invalidate(crewProvider(device));
+  }
+  return verdict;
 }
 
 /// Switches a crewmate's permission mode (`crewmate_set_approval`, `approve` scope). Returns the crewmate as hostd

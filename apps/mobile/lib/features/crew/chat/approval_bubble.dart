@@ -9,6 +9,7 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
+import 'package:atlas_mobile/features/crew/chat/voice_answer.dart';
 import 'package:atlas_mobile/features/crew/permissions/approval_actions.dart';
 import 'package:atlas_mobile/features/crew/widgets/approval_parts.dart';
 
@@ -19,12 +20,16 @@ class CrewmateApprovalBubble extends StatelessWidget {
     required this.approval,
     required this.crewmateName,
     required this.onAnswer,
+    this.voiceAnswer,
   });
 
   final Map<String, dynamic>? look;
   final CrewmatePendingApproval approval;
   final String crewmateName;
   final ApprovalAnswerer onAnswer;
+
+  /// Voice answer to this approval (hostd decides what the words mean); null when the crew has voice off.
+  final VoiceAnswerer? voiceAnswer;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +71,7 @@ class CrewmateApprovalBubble extends StatelessWidget {
                     approval: approval,
                     crewmateName: crewmateName,
                     onAnswer: onAnswer,
+                    voiceAnswer: voiceAnswer,
                   ),
                 ],
               ),

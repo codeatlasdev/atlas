@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/permission_mode.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/l10n.dart';
+import 'package:atlas_mobile/features/crew/chat/voice_answer.dart';
 import 'package:atlas_mobile/features/crew/widgets/approval_parts.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
@@ -36,6 +37,7 @@ class ApprovalActions extends StatelessWidget {
     required this.approval,
     required this.crewmateName,
     required this.onAnswer,
+    this.voiceAnswer,
     this.hPad = 14,
     this.vPad = 5,
     this.gap = 6,
@@ -44,15 +46,20 @@ class ApprovalActions extends StatelessWidget {
   final CrewmatePendingApproval approval;
   final String crewmateName;
   final ApprovalAnswerer onAnswer;
+
+  /// Sends what the person said to hostd, which decides what it means. Null: no "Answer by voice" (the crew has
+  /// voice off, or the card is not answerable from here).
+  final VoiceAnswerer? voiceAnswer;
   final double hPad;
   final double vPad;
   final double gap;
 
-  Future<void> _more(BuildContext context) async {
+  Future<void> _more(BuildContext context, {String? comment}) async {
     final decision = await showApprovalAnswerSheet(
       context,
       approval: approval,
       crewmateName: crewmateName,
+      comment: comment,
     );
     if (decision != null) await onAnswer(decision);
   }
@@ -100,6 +107,14 @@ class ApprovalActions extends StatelessWidget {
           onPressed: () => _more(context),
           child: Text(l.mobile_crew_approval_more),
         ),
+        // The words are only a comment to confirm: the sheet opens with them in the note, and nothing is
+        // decided until a button in it is tapped.
+        if (voiceAnswer != null)
+          VoiceAnswer(
+            kind: VoiceCardKind.approval,
+            answer: voiceAnswer!,
+            onComment: (text) => _more(context, comment: text),
+          ),
       ],
     );
   }
@@ -111,25 +126,37 @@ Future<ApprovalDecision?> showApprovalAnswerSheet(
   BuildContext context, {
   required CrewmatePendingApproval approval,
   required String crewmateName,
+  String? comment,
 }) => showModalBottomSheet<ApprovalDecision>(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
   showDragHandle: true,
-  builder: (_) => _AnswerSheet(approval: approval, crewmateName: crewmateName),
+  builder: (_) => _AnswerSheet(
+    approval: approval,
+    crewmateName: crewmateName,
+    comment: comment,
+  ),
 );
 
 class _AnswerSheet extends StatefulWidget {
-  const _AnswerSheet({required this.approval, required this.crewmateName});
+  const _AnswerSheet({
+    required this.approval,
+    required this.crewmateName,
+    this.comment,
+  });
   final CrewmatePendingApproval approval;
   final String crewmateName;
+
+  /// What was said by voice, put in the note for the person to read and confirm.
+  final String? comment;
 
   @override
   State<_AnswerSheet> createState() => _AnswerSheetState();
 }
 
 class _AnswerSheetState extends State<_AnswerSheet> {
-  final _comment = TextEditingController();
+  late final _comment = TextEditingController(text: widget.comment);
 
   @override
   void dispose() {

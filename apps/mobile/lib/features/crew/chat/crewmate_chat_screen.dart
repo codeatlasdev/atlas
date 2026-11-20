@@ -23,12 +23,16 @@ import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/ui/protocol_banner.dart';
 import 'package:atlas_mobile/core/ui/route_page.dart';
+import 'package:atlas_mobile/core/voice/dictation.dart';
+import 'package:atlas_mobile/core/voice/platform_speech.dart';
+import 'package:atlas_mobile/core/voice/read_aloud.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/composer.dart';
 import 'package:atlas_mobile/features/crew/chat/glass.dart';
+import 'package:atlas_mobile/features/crew/chat/read_aloud_toggle.dart';
 import 'package:atlas_mobile/features/crew/chat/task_thread.dart';
 import 'package:atlas_mobile/features/crew/chat/working_row.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
@@ -75,6 +79,9 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   bool _sending = false;
   final Set<String> _expanded = {};
 
+  /// Which finished tasks are new to this chat: only those are read aloud, never the history.
+  final _spokenReplies = SpokenReplies();
+
   /// Where the reader is above the end of the thread, and the thread as they left it.
   late final _reader = ChatReader<List<CrewmateTask>>(
     onChanged: () => setState(() {}),
@@ -115,6 +122,14 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     // A thread this phone already read is on screen at once, and is read again behind it.
     final thread = crewmateTasksProvider((widget.device, widget.crewmateId));
     if (ref.read(thread.exists)) ref.invalidate(thread);
+    // A reply that finishes while this chat is open is read aloud (when the switch is on). A thread that is being
+    // read again is skipped: the cached copy shown meanwhile must not become "the history" the new one is
+    // compared with.
+    ref.listenManual(thread, fireImmediately: true, (_, next) {
+      if (next.isLoading || !next.hasValue) return;
+      final text = _spokenReplies.observe(next.requireValue);
+      if (text.isNotEmpty && ref.read(readAloudProvider)) _speak(text);
+    });
     if (widget.scrollToTaskId != null) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _scrollToTask(widget.scrollToTaskId!),
@@ -210,6 +225,47 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     }
   }
 
+  /// The switch: this phone only. Turning it on also asks hostd to have this crewmate write a line for listening
+  /// (`spoken_replies`); turning it off silences the voice and leaves the crewmate's setting alone (other
+  /// phones may still read it, and the crewmate's settings own it). A refusal is said, the voice stays on: hostd
+  /// then speaks the first sentences of the reply.
+  Future<void> _setReadAloud(bool on, CrewmateEntry? crewmate) async {
+    final speech = ref.read(speechControllerProvider);
+    await ref.read(readAloudProvider.notifier).set(on);
+    if (!on) {
+      await speech.stop();
+      return;
+    }
+    if (crewmate == null || crewmate.spokenReplies) return;
+    try {
+      final mux = await requireMuxOf(ref, widget.device);
+      final resp = await mux.call('crewmate_update', {
+        'id': widget.crewmateId,
+        'spoken_replies': true,
+      });
+      if (resp['ok'] != true) {
+        throw StateError(resp['error'] as String? ?? 'the server refused');
+      }
+      ref.invalidate(crewProvider(widget.device));
+    } on Object catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.l10n.mobile_voice_read_aloud_flag_failed(errorText(e)),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Reads [text] in the app's language.
+  void _speak(String text) {
+    final tag = dictationLocaleTag(Localizations.localeOf(context));
+    unawaited(ref.read(speechControllerProvider).speak(text, tag));
+  }
+
   Future<void> _cancel(String taskId) async {
     HapticFeedback.mediumImpact();
     final Multiplexer mux;
@@ -239,8 +295,15 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     );
   }
 
+  /// Any tap, anywhere, silences the voice that reads replies; the tap itself still does what it was for.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Listener(
+    behavior: HitTestBehavior.translucent,
+    onPointerDown: (_) => unawaited(ref.read(speechControllerProvider).stop()),
+    child: _chat(context),
+  );
+
+  Widget _chat(BuildContext context) {
     final c = AtlasColors.of(context);
 
     // Task pushes are handled by crewmateTasksProvider itself (isTaskPushFor); an answered
@@ -252,6 +315,20 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
         }
       });
     });
+
+    final readAloud = ref.watch(readAloudProvider);
+    final speech = ref.watch(speechControllerProvider);
+    final canSpeak =
+        ref
+            .watch(
+              speechAvailableProvider(
+                dictationLocaleTag(Localizations.localeOf(context)),
+              ),
+            )
+            .value ??
+        false;
+    final voiceOn =
+        ref.watch(crewVoiceProvider(widget.device)).value?.enabled ?? false;
 
     final crewData = ref.watch(crewProvider(widget.device)).value;
     final crewmate = crewData?.crewmates
@@ -396,15 +473,30 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                     height: _modeRow,
                     child: crewmate == null
                         ? null
-                        : Center(
-                            child: ModeButton(
-                              crewmate: crewmate,
-                              onTap: () => showModeSheet(
-                                context,
-                                device: widget.device,
-                                crewmateId: widget.crewmateId,
+                        : Stack(
+                            children: [
+                              Center(
+                                child: ModeButton(
+                                  crewmate: crewmate,
+                                  onTap: () => showModeSheet(
+                                    context,
+                                    device: widget.device,
+                                    crewmateId: widget.crewmateId,
+                                  ),
+                                ),
                               ),
-                            ),
+                              // Only on a phone that has a voice for the app's language.
+                              if (canSpeak)
+                                Positioned(
+                                  right: Space.md,
+                                  top: 0,
+                                  child: ReadAloudButton(
+                                    on: readAloud,
+                                    onChanged: (v) =>
+                                        _setReadAloud(v, crewmate),
+                                  ),
+                                ),
+                            ],
                           ),
                   ),
                 ],
@@ -491,6 +583,15 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                         onAnswer: isApprovalTask
                             ? (d) => _approve(pa, d)
                             : null,
+                        voiceAnswer: isApprovalTask && voiceOn
+                            ? (words, lang) => answerApprovalByVoice(
+                                ref,
+                                widget.device,
+                                pa,
+                                words,
+                                lang,
+                              )
+                            : null,
                       );
                     },
                   ),
@@ -552,6 +653,15 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                           approval: pa,
                           crewmateName: crewmateName,
                           onAnswer: (d) => _approve(pa, d),
+                          voiceAnswer: voiceOn
+                              ? (words, lang) => answerApprovalByVoice(
+                                  ref,
+                                  widget.device,
+                                  pa,
+                                  words,
+                                  lang,
+                                )
+                              : null,
                         ),
                       ),
 
@@ -574,18 +684,16 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                             ),
                     ),
 
+                    // Not the red dot of a live microphone: a speaker, while a reply is being read.
+                    SpeakingIndicator(speech: speech),
+
                     // ── composer ──────────────────────────────────────────────────
                     ChatComposer(
                       controller: _msg,
                       sending: _sending,
                       online: online,
                       queued: queued,
-                      voice:
-                          ref
-                              .watch(crewVoiceProvider(widget.device))
-                              .value
-                              ?.enabled ??
-                          false,
+                      voice: voiceOn,
                       onSend: _send,
                     ),
                   ],

@@ -32,7 +32,12 @@ pub(crate) fn launch_argv(
     task: &Task,
     prompt: &str,
 ) -> Vec<String> {
-    def.argv(triggers::yolo_for(mode, task, def.can_ask), Some(prompt))
+    let yolo = triggers::yolo_for(mode, task, def.can_ask);
+    let mut argv = def.argv(yolo, Some(prompt));
+    if !yolo {
+        argv.splice(1..1, def.ask_args.iter().cloned());
+    }
+    argv
 }
 
 pub(super) async fn run_one_pty(hub: &Hub, crewmate: &Crewmate, mut task: Task) {

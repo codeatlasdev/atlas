@@ -30,7 +30,9 @@ pub(super) async fn prepare_task(
     task: &mut Task,
 ) -> Option<Prepared> {
     // Pre-task: if this is a GitHub project and gh is not logged in, park and wait.
-    if let Some(reason) = needs_github_auth(crewmate).await
+    // A repo the GitHub App covers is reached with installation tokens: no `gh` login to wait for.
+    if !crate::crew::github::app::reaches_project(hub, &crewmate.id).await
+        && let Some(reason) = needs_github_auth(crewmate).await
         && let Some(hub_arc) = hub.crew.hub_arc()
     {
         park_task(hub, crewmate, task, TaskAction::ConnectGithub { reason });
@@ -72,12 +74,22 @@ pub(super) async fn prepare_task(
         task,
         std::path::Path::new(&work_dir),
     );
+    // With the GitHub App, say which identity commits and who is credited (the identity itself is in the env).
+    let commits = if crate::crew::github::app::agent_env(hub, &crewmate.id)
+        .await
+        .is_empty()
+    {
+        String::new()
+    } else {
+        let who = task.origin.as_ref().and_then(|o| o.requester.as_ref());
+        crate::crew::github::app::commit_note(who.map(|u| (u.login.as_str(), u.id)))
+    };
     let prompt = task_prompt(
         crewmate,
         &work_dir,
         &memory,
         &format!(
-            "{}{}",
+            "{}{commits}{}",
             attachments::prompt_block(&staged),
             with_branch_instruction(task)
         ),
@@ -123,9 +135,11 @@ async fn prepare_work_dir(
         // Inside the task's own life: a cancel (the store says `cancelled`) ends the checkout at once, and the dropped
         // git calls take their process trees with them (`proc::run_bounded`); each call also has its own deadline.
         let git = hub.crew.store.git_for_checkout(&crewmate.id, &work);
+        let git = crate::crew::github::app::with_project_token(hub, &crewmate.id, git).await;
         let mirror = crate::crew::mirror::mirror_for(proj, iso.as_ref(), &git);
         let checkout = async {
             let p = project::prepare(proj, &crewmate.id, &hub.crew.dir, iso.clone(), &git).await?;
+            crate::crew::github::app::use_project_origin(hub, &crewmate.id, &git, &p).await;
             // non-fatal; an isolated checkout is fetched by the crewmate itself (from hostd's mirror unless it has a
             // GitHub token of its own), never by hostd
             let _ = project::fetch(&p, &git, mirror.as_ref()).await;
@@ -374,6 +388,7 @@ mod tests {
             comment_id: None,
             branch: Some(b.into()),
             reply_comment_id: None,
+            requester: None,
         };
         t.origin = Some(origin("feat/x"));
         let p = with_branch_instruction(&t);

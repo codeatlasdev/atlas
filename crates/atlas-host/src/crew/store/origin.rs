@@ -36,4 +36,15 @@ pub struct GithubOrigin {
     /// editing it instead of posting a second one).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_comment_id: Option<u64>,
+    /// Who set the event off (the feed's `actor`): credited with a `Co-authored-by:` trailer on the commits the
+    /// crewmate makes as the GitHub App's bot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requester: Option<GithubUser>,
+}
+
+/// A GitHub account: the login and the numeric id its noreply email is built from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GithubUser {
+    pub login: String,
+    pub id: u64,
 }

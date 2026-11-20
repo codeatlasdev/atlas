@@ -112,6 +112,7 @@ fn github_origin_fixture_is_real_payload() {
         comment_id: Some(200),
         branch: Some("feat/parser".into()),
         reply_comment_id: Some(9001),
+        requester: None,
     });
     let trigger: Trigger = serde_json::from_value(json!({
         "id": "gh", "enabled": true, "prompt": "Handle this: {{event}}",

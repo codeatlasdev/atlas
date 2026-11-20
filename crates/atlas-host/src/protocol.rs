@@ -758,6 +758,32 @@ pub enum HostCmd {
     /// If gh is already logged in, wake any connect_github waiters immediately.
     #[serde(rename = "crew_github_connect_resume")]
     CrewGithubConnectResume {},
+    /// The manifest to POST to GitHub to create this crew server's GitHub App, and where to POST it (owner only).
+    #[serde(rename = "crew_github_app_manifest")]
+    CrewGithubAppManifest {
+        /// `user` or `org`.
+        owner_kind: String,
+        /// The organization's login, for `owner_kind: "org"`.
+        #[serde(default)]
+        org: Option<String>,
+        /// Also ask for the Workflows permission (edit `.github/workflows`). Off by default.
+        #[serde(default)]
+        workflows: bool,
+        /// The server's name, for the app's name (`atlas-crew-<server>`); this machine's host name when absent.
+        #[serde(default)]
+        server_name: Option<String>,
+    },
+    /// Exchange the one-time `code` GitHub redirected back with for the app's credentials, kept on this server only.
+    #[serde(rename = "crew_github_app_convert")]
+    CrewGithubAppConvert {
+        code: String,
+    },
+    /// The app (never its key) and the installations that can reach it, or `{app: null}`.
+    #[serde(rename = "crew_github_app_status")]
+    CrewGithubAppStatus {},
+    /// Delete the stored app key.
+    #[serde(rename = "crew_github_app_remove")]
+    CrewGithubAppRemove {},
     /// The kill switch: cancel every running crewmate task, hold every queue, stop automations.
     #[serde(rename = "crew_pause")]
     CrewPause {},
@@ -883,11 +909,26 @@ impl From<Failure> for String {
 /// | `fs.not_found` | `path` | `not_found` |
 /// | `fs.io` | `kind` (`permission_denied` \| `not_a_directory` \| `is_a_directory` \| `already_exists` \| `other`), `path`, `detail` (the OS's own text, `other` only) | the OS's text, e.g. `Permission denied (os error 13)` |
 /// | `exec.spawn_failed` | `program`, `reason` (`not_found` \| `permission_denied` \| `other`), `detail` (the OS's own text, `other` only) | `<program>: <the OS's text>` |
-/// | `hostd.invalid_argument` | `field`, `reason` (`bad_base64` \| `empty` \| `no_parent`) | what it always said |
+/// | `hostd.invalid_argument` | `field`, `reason` (`bad_base64` \| `empty` \| `no_parent` \| `invalid`) | what it always said |
+/// | `crew.github_app.exists` | none | an app is already set up |
+/// | `crew.github_app.code_expired` | none | the manifest code is used or past its hour |
+/// | `crew.github_app.conversion_failed` | `status` (GitHub's HTTP status, 0 when it was not reached) | GitHub refused the conversion |
+/// | `crew.github_app.none` | none | no app is set up |
+/// | `crew.github_app.forbidden` | none | the caller is not the owner |
 ///
 /// A client reads the code only when it knows it (`client::reply_error`), else it has the text. A new code is added
 /// here, to the desktop's catalog (`apps/desktop/src/lib/hostMessages.ts`) and to its fixture test in one change.
-pub const REPLY_CODES: &[&str] = &[FS_NOT_FOUND, FS_IO, EXEC_SPAWN_FAILED, INVALID_ARGUMENT];
+pub const REPLY_CODES: &[&str] = &[
+    FS_NOT_FOUND,
+    FS_IO,
+    EXEC_SPAWN_FAILED,
+    INVALID_ARGUMENT,
+    crate::crew::github::app::EXISTS,
+    crate::crew::github::app::CODE_EXPIRED,
+    crate::crew::github::app::CONVERSION_FAILED,
+    crate::crew::github::app::NONE,
+    crate::crew::github::app::FORBIDDEN,
+];
 pub const FS_NOT_FOUND: &str = "fs.not_found";
 pub const FS_IO: &str = "fs.io";
 pub const EXEC_SPAWN_FAILED: &str = "exec.spawn_failed";
@@ -1107,6 +1148,12 @@ mod tests {
             crate::fs::write("/work/a.txt", "***", None).unwrap_err(),
             crate::fs::write("/", "", None).unwrap_err(),
             empty_argv,
+            invalid_argument("org", "invalid", "org: not a GitHub login"),
+            crate::crew::github::app::exists(),
+            crate::crew::github::app::code_expired(),
+            crate::crew::github::app::conversion_failed(503, "GitHub refused the conversion: down"),
+            crate::crew::github::app::none(),
+            crate::crew::github::app::forbidden(),
         ];
         let errors: Vec<Value> = samples
             .iter()

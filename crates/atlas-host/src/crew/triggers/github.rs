@@ -182,7 +182,10 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
             return;
         }
         seen.insert(id.to_string());
-        if let Some(fired) = fired {
+        if let Some(mut fired) = fired {
+            if let Some(origin) = &mut fired.origin {
+                origin.requester = actor_of(ev);
+            }
             super::fire(
                 hub,
                 &crewmate.id,
@@ -195,6 +198,17 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
             );
         }
     }
+}
+
+/// The account that set an event off: the feed's `actor`.
+fn actor_of(ev: &serde_json::Value) -> Option<crate::crew::store::GithubUser> {
+    Some(crate::crew::store::GithubUser {
+        login: ev["actor"]["login"]
+            .as_str()
+            .filter(|l| !l.is_empty())?
+            .to_string(),
+        id: ev["actor"]["id"].as_u64()?,
+    })
 }
 
 fn load_seen(path: &std::path::Path) -> HashSet<String> {

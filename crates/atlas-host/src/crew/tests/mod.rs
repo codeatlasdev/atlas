@@ -35,6 +35,7 @@
 //! | `github_out`  | the progress comment: created, edited (throttled), finished, failed      |
 //! | `github_fake` | the `GithubApi` fake both of those run against                           |
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
+//! | `github_app`  | the GitHub App commands, the desktop fixture, the agent's git env and credential helper |
 //! | `attachments` | images on tasks: stored, staged, refused, fetched, from Telegram, scopes |
 //! | `structure`   | a grep guard: code that touches an isolated crewmate's tree says how it is safe |
 //! | `time_contract` | cron and time zone semantics (DST included) pinned across the date-time crate swap |
@@ -75,6 +76,8 @@ mod engine_stop;
 mod engines;
 #[cfg(unix)]
 mod fixture;
+#[cfg(unix)]
+mod github_app;
 #[cfg(unix)]
 mod github_e2e;
 #[cfg(unix)]

@@ -110,6 +110,30 @@
       ],
       "required": []
     },
+    "crew_github_app_convert": {
+      "optional": [],
+      "required": [
+        "code"
+      ]
+    },
+    "crew_github_app_manifest": {
+      "optional": [
+        "org",
+        "server_name",
+        "workflows"
+      ],
+      "required": [
+        "owner_kind"
+      ]
+    },
+    "crew_github_app_remove": {
+      "optional": [],
+      "required": []
+    },
+    "crew_github_app_status": {
+      "optional": [],
+      "required": []
+    },
     "crew_github_connect_resume": {
       "optional": [],
       "required": []

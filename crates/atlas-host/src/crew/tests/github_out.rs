@@ -18,6 +18,7 @@ fn origin(branch: Option<&str>) -> GithubOrigin {
         comment_id: Some(100),
         branch: branch.map(String::from),
         reply_comment_id: None,
+        requester: None,
     }
 }
 

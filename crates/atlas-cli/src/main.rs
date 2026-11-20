@@ -249,6 +249,9 @@ async fn run() -> Result<()> {
     // MCP is a long-lived stdio protocol and hooks are machine-to-machine (stdout is parsed
     // by the agent): no update check, no notices.
     let is_mcp = matches!(
+        &command,
+        Commands::Crew(a) if matches!(a.command, commands::crew::CrewCommands::GitCredential(_))
+    ) || matches!(
         command,
         Commands::Mcp(_)
             | Commands::Hook(_)

@@ -556,6 +556,12 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::MobileInvite { .. } => return Err("not available on mobile"),
         C::MobileInvites {} => Scope::Read,
         C::MobileInviteDismiss { .. } => Scope::Act,
+        // The crew server's GitHub App is the owner's to set up: its key never leaves the server, and a phone
+        // neither creates nor removes it (nor reads which repositories it reaches).
+        C::CrewGithubAppManifest { .. }
+        | C::CrewGithubAppConvert { .. }
+        | C::CrewGithubAppStatus {}
+        | C::CrewGithubAppRemove {} => return Err("not available on mobile"),
         C::CrewGithubStatus {} | C::CrewGithubLoginPoll {} => Scope::Read,
         C::CrewGithubLoginStart {} | C::CrewGithubLogout {} => Scope::Act,
         C::CrewmateActionAnswer { .. } | C::CrewGithubConnectResume {} => Scope::Act,

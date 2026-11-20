@@ -130,6 +130,7 @@ const QUICK: &[&str] = &[
     "agent_send",
     "agent_status_all",
     "crew_audit",
+    "crew_github_app_manifest",
     "crew_github_connect_resume",
     "crew_pause",
     "crew_resume",
@@ -206,6 +207,10 @@ const LONG: &[&str] = &[
     "agent_tree",
     "agent_integrations",
     "agent_launch",
+    // Talk to GitHub (a conversion, the installations of the app, revoking its tokens), and read or write the key file.
+    "crew_github_app_convert",
+    "crew_github_app_status",
+    "crew_github_app_remove",
     "crew_github_status",
     "crew_github_login_start",
     "crew_github_login_poll",

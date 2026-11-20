@@ -72,6 +72,23 @@ pub enum CrewCommands {
     Pair(pair::PairArgs),
     /// Install or check the browsers behind the crewmates' `capture` tool (Playwright chromium + webkit)
     Browsers(browsers::BrowsersArgs),
+    /// The git credential helper of a crewmate: asks hostd for an installation token of the GitHub App
+    #[command(hide = true, name = "git-credential")]
+    GitCredential(GitCredentialArgs),
+}
+
+/// `atlas crew git-credential <get|store|erase>`: git's credential helper protocol (stdin and stdout are git's).
+/// Run by git itself from the crewmate's environment, never by a person.
+#[derive(Debug, Args)]
+pub struct GitCredentialArgs {
+    /// What git asks: `get` answers, `store` and `erase` do nothing (no credential is kept here)
+    pub op: String,
+}
+
+impl AtlasCommand for GitCredentialArgs {
+    async fn run(self) -> Result<()> {
+        Ok(atlas_host::crew::git_credential::run(&self.op)?)
+    }
 }
 
 impl AtlasCommand for CrewArgs {
@@ -89,6 +106,7 @@ impl AtlasCommand for CrewArgs {
             CrewCommands::Login(a) => a.run().await,
             CrewCommands::Pair(a) => a.run().await,
             CrewCommands::Browsers(a) => a.run().await,
+            CrewCommands::GitCredential(a) => a.run().await,
         }
     }
 }

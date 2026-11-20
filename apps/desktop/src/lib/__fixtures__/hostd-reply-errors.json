@@ -1,5 +1,15 @@
 {
-	"codes": ["fs.not_found", "fs.io", "exec.spawn_failed", "hostd.invalid_argument"],
+	"codes": [
+		"fs.not_found",
+		"fs.io",
+		"exec.spawn_failed",
+		"hostd.invalid_argument",
+		"crew.github_app.exists",
+		"crew.github_app.code_expired",
+		"crew.github_app.conversion_failed",
+		"crew.github_app.none",
+		"crew.github_app.forbidden"
+	],
 	"errors": [
 		{
 			"args": {
@@ -104,6 +114,41 @@
 			},
 			"code": "hostd.invalid_argument",
 			"message": "empty argv"
+		},
+		{
+			"args": {
+				"field": "org",
+				"reason": "invalid"
+			},
+			"code": "hostd.invalid_argument",
+			"message": "org: not a GitHub login"
+		},
+		{
+			"args": {},
+			"code": "crew.github_app.exists",
+			"message": "a GitHub App is already set up on this server: remove it first"
+		},
+		{
+			"args": {},
+			"code": "crew.github_app.code_expired",
+			"message": "the code is used or older than an hour: start the setup again"
+		},
+		{
+			"args": {
+				"status": 503
+			},
+			"code": "crew.github_app.conversion_failed",
+			"message": "GitHub refused the conversion: down"
+		},
+		{
+			"args": {},
+			"code": "crew.github_app.none",
+			"message": "no GitHub App is set up on this server"
+		},
+		{
+			"args": {},
+			"code": "crew.github_app.forbidden",
+			"message": "only the owner sets up the GitHub App"
 		}
 	]
 }

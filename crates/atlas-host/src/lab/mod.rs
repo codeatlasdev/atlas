@@ -169,6 +169,10 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewGithubLoginStart {}
         | C::CrewGithubLoginPoll {}
         | C::CrewGithubLogout {}
+        | C::CrewGithubAppManifest { .. }
+        | C::CrewGithubAppConvert { .. }
+        | C::CrewGithubAppStatus {}
+        | C::CrewGithubAppRemove {}
         | C::CrewmateActionAnswer { .. }
         | C::CrewGithubConnectResume {}
         | C::CrewPause {}

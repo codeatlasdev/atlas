@@ -1,0 +1,40 @@
+---
+// Labels: s1, s2, s3, s4, s5, s6, safe, pkgs
+// Moment: the six steps light up one after another, left to right (the resting state has every step lit).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const steps = [labels.s1, labels.s2, labels.s3, labels.s4, labels.s5, labels.s6];
+---
+<div class="art art-a24-update-flow" role="img" aria-label={alt}>
+	<ol class="steps">
+		{steps.map((text, i) => (
+			<li style={`--i:${i}`}>
+				<span class="n part">{i + 1}</span>
+				<span class="t">{text}</span>
+			</li>
+		))}
+	</ol>
+	<p class="safe">
+		<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"></path><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>
+		<span>{labels.safe}</span>
+	</p>
+	<p class="pkgs"><span>{labels.pkgs}</span><span class="tags"><code>pacman</code><code>.deb</code><code>.rpm</code></span></p>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.9rem; font-family: var(--font); color: var(--ink); }
+	.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.7rem; }
+	.steps li { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.7rem; border: 1.5px solid var(--ink); border-radius: 0.4rem; background: var(--paper); }
+	.n { flex: none; display: grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--blue); color: var(--white); font-family: var(--mono); font-size: 0.85rem; font-weight: 700; }
+	.t { font-size: 0.9rem; line-height: 1.25; font-weight: 600; }
+	.safe { margin: 0; display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.7rem 0.9rem; background: var(--ink); color: var(--white); border-radius: 0.4rem; font-size: 0.9rem; line-height: 1.35; }
+	.safe svg { flex: none; margin-top: 0.1rem; color: var(--go); }
+	.pkgs { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.7rem; font-size: 0.9rem; }
+	.tags { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; }
+	.tags code { padding: 0.1rem 0.5rem; border: 1.5px solid var(--ink); border-radius: 0.3rem; background: var(--white); font-family: var(--mono); font-size: 0.8rem; }
+
+	@keyframes a24u-lit { from { background: var(--white); color: var(--ink); } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .n { animation: a24u-lit 0.3s ease-out calc(var(--i) * 0.2s) both; }
+	}
+</style>

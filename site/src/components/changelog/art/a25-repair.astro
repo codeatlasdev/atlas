@@ -1,0 +1,48 @@
+---
+// Labels: title, r1, r2, r3, r4, r5, never, n1, n2, n3
+// Moment: the repair ticks pop in one after another (the resting state has every tick).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const repairs = [labels.r1, labels.r2, labels.r3, labels.r4, labels.r5];
+const kept = [labels.n1, labels.n2, labels.n3];
+---
+<div class="art art-a25-repair" role="img" aria-label={alt}>
+	<p class="title">{labels.title}</p>
+	<ul class="list">
+		{repairs.map((text, i) => (
+			<li style={`--i:${i}`}>
+				<svg class="tick part" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+					<circle cx="12" cy="12" r="11" fill="var(--go)" stroke="var(--ink)" stroke-width="1.5"></circle>
+					<path d="M7 12.5l3.2 3.2L17 8.8" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+				</svg>
+				<span>{text}</span>
+			</li>
+		))}
+	</ul>
+	<div class="never">
+		<p class="never-title">
+			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+			<span>{labels.never}</span>
+		</p>
+		<ul class="kept">
+			{kept.map((text) => <li>{text}</li>)}
+		</ul>
+	</div>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.9rem; font-family: var(--font); color: var(--ink); }
+	.title { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+	.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+	.list li { display: flex; align-items: flex-start; gap: 0.6rem; font-size: 0.95rem; line-height: 1.35; }
+	.tick { flex: none; margin-top: 0.05rem; }
+	.never { border: 1.5px dashed var(--ink); border-radius: 0.5rem; padding: 0.75rem 0.9rem; display: grid; gap: 0.55rem; background: var(--paper); }
+	.never-title { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 700; }
+	.kept { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+	.kept li { border: 1.5px solid var(--ink); border-radius: 999px; padding: 0.2rem 0.7rem; font-size: 0.85rem; font-weight: 600; background: var(--white); }
+
+	@keyframes a25r-pop { from { transform: scale(0); opacity: 0; } 70% { transform: scale(1.2); opacity: 1; } to { transform: scale(1); opacity: 1; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .tick { animation: a25r-pop 0.35s ease-out calc(var(--i) * 0.22s) both; }
+	}
+</style>

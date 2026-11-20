@@ -76,6 +76,10 @@ describe("localeRedirect", () => {
 	test("a saved English choice wins over the country", () => {
 		expect(localeRedirect(req("/", { cookie: "atlas_lang=en" }, "BR"))).toBeNull();
 	});
+	test("a /pt-br/ URL is never redirected, even with ?lang= (a handler shared by both languages must not prefix twice)", () => {
+		expect(localeRedirect(req("/pt-br/changelog/", {}, "BR"))).toBeNull();
+		expect(localeRedirect(req("/pt-br/?lang=pt-BR", {}, "US"))).toBeNull();
+	});
 });
 
 test("every localized page and the docs have a Pages Function that redirects to the Portuguese twin", () => {

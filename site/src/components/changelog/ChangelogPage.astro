@@ -1,0 +1,206 @@
+---
+// /changelog/ and /pt-br/changelog/: the release notes, human first. Each version opens with its release story (src/content/releases) or its
+// summary paragraph; the full technical list (Added, Changed, Fixed) sits behind a disclosure, still in the HTML for search and anchors.
+// The body between the CHANGELOG markers is the offline fallback rendered from the checkout's CHANGELOG.md; the edge function swaps it for the
+// newest published release's changelog and reads this page's words and stories from the shell (functions/_lib/page.ts), so one handler serves both languages.
+import { getCollection } from "astro:content";
+import { experimental_AstroContainer as AstroContainer } from "astro/container";
+import { readFileSync } from "node:fs";
+import Base from "../../layouts/Base.astro";
+import Story from "./Story.astro";
+import { renderChangelog } from "../../../functions/_lib/changelog";
+import { changelogBody, chromeScript, CLOSE, OPEN, type Chrome } from "../../../functions/_lib/page";
+import { m } from "../../lib/paraglide/messages.js";
+import { localizePath, type Locale } from "../../lib/i18n";
+import { storyId } from "../../lib/story";
+
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+
+// Words: written into the page as JSON so the edge can build the same body (placeholders {n} and {tag} stay literal here).
+const chrome: Chrome = {
+	dateLocale: m.changelog_date_locale(),
+	stale: m.changelog_stale({ tag: "{tag}" }),
+	versionsLabel: m.changelog_versions_label(),
+	filterLegend: m.changelog_filter_legend(),
+	filterAll: m.changelog_filter_all(),
+	filterStable: m.changelog_filter_stable(),
+	filterPre: m.changelog_filter_pre(),
+	countOne: m.changelog_count_one(),
+	countMany: m.changelog_count_many({ n: "{n}" }),
+	release: m.changelog_release_link(),
+	latest: m.changelog_latest(),
+	allChanges: m.changelog_all_changes(),
+	technicalNote: m.changelog_technical_note(),
+	added: m.changelog_added({ n: "{n}" }),
+	changed: m.changelog_changed({ n: "{n}" }),
+	fixed: m.changelog_fixed({ n: "{n}" }),
+	badgeAlpha: m.changelog_badge_alpha(),
+	badgeBeta: m.changelog_badge_beta(),
+	badgeRc: m.changelog_badge_rc(),
+	badgePre: m.changelog_badge_pre(),
+};
+
+// Stories of this language, rendered to HTML here (they hold Astro components: the illustrations).
+const container = await AstroContainer.create();
+const alsoLabel = m.changelog_also();
+const artNote = m.changelog_art_note();
+const stories: Record<string, string> = {};
+for (const entry of await getCollection("releases", (e) => e.data.locale === locale)) {
+	const id = storyId(entry.data.version);
+	stories[id] = await container.renderToString(Story, { props: { story: entry.data, id, alsoLabel, artNote } });
+}
+
+const parsed = renderChangelog(readFileSync("../CHANGELOG.md", "utf8"));
+const body = changelogBody(parsed, { tag: "", stale: false, chrome, stories });
+const alternates = { en: "/changelog/", "pt-BR": localizePath("/changelog/", "pt-BR") };
+---
+<Base ground="paper" title={m.changelog_meta_title()} description={m.changelog_meta_description()} alternates={alternates}>
+	<div class="wrap page">
+		<header class="head">
+			<h1 class="display">{m.changelog_title()}</h1>
+			<p class="intro">{m.changelog_intro()}</p>
+			<p class="alpha">{m.changelog_alpha_note()} <a href="https://github.com/codeatlasdev/atlas/issues/new" rel="noopener">{m.changelog_alpha_report()}</a></p>
+		</header>
+		<!-- The edge function replaces everything between the CHANGELOG markers with the latest published release's changelog (and
+		     this page's stories, read from here). What is built is the offline fallback: correct as of the last deploy, never relied on. -->
+		<article class="prose" data-changelog><Fragment set:html={chromeScript(chrome)} /><Fragment set:html={OPEN} /><Fragment set:html={body} /><Fragment set:html={CLOSE} /></article>
+	</div>
+</Base>
+<script>
+	// Filter (All / Stable only / Prereleases). The markup is `hidden` until here, so without JavaScript there is no dead control and every
+	// version shows. Stable only hides a prerelease whose own stable is in the changelog (data-superseded); Prereleases shows prereleases only.
+	// The choice lives in the URL (?show=stable|pre) so it can be linked and survives reload; `all` is the default and leaves the URL clean.
+	const box = document.querySelector<HTMLElement>("[data-cl-filter]");
+	if (box) {
+		const items = document.querySelectorAll<HTMLElement>("[data-changelog] [data-kind]");
+		const radios = box.querySelectorAll<HTMLInputElement>('input[name="cl-filter"]');
+		const apply = (f: string) => {
+			for (const el of items) {
+				const pre = el.dataset.kind !== "stable";
+				el.hidden = f === "stable" ? "superseded" in el.dataset : f === "pre" ? !pre : false;
+			}
+			const status = document.querySelector<HTMLElement>("[data-cl-count]");
+			if (status) {
+				const n = [...items].filter((el) => el.tagName === "SECTION" && !el.hidden).length;
+				status.textContent = (n === 1 ? status.dataset.one : status.dataset.many)?.replace("{n}", String(n)) ?? "";
+			}
+		};
+		const initial = new URLSearchParams(location.search).get("show");
+		const start = initial === "stable" || initial === "pre" ? initial : "all";
+		for (const r of radios) r.checked = r.value === start;
+		box.hidden = false;
+		apply(start);
+		for (const r of radios)
+			r.addEventListener("change", () => {
+				const url = new URL(location.href);
+				if (r.value === "all") url.searchParams.delete("show");
+				else url.searchParams.set("show", r.value);
+				history.replaceState(null, "", url);
+				apply(r.value);
+			});
+	}
+
+	// Release stories: an illustration plays its one moment when it scrolls into view (the CSS only animates under `.play`, and only when
+	// motion is allowed). A hash that points inside a collapsed disclosure opens it.
+	const arts = document.querySelectorAll<HTMLElement>("[data-changelog] .art");
+	if ("IntersectionObserver" in window) {
+		const io = new IntersectionObserver(
+			(entries) => {
+				for (const e of entries)
+					if (e.isIntersecting) {
+						e.target.classList.add("play");
+						io.unobserve(e.target);
+					}
+			},
+			{ threshold: 0.35 },
+		);
+		for (const a of arts) io.observe(a);
+	} else for (const a of arts) a.classList.add("play");
+	const openHash = () => {
+		const target = location.hash.length > 1 ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
+		const box = target?.closest("details");
+		if (box && !box.open) {
+			box.open = true;
+			target?.scrollIntoView();
+		}
+	};
+	openHash();
+	addEventListener("hashchange", openHash);
+</script>
+<style>
+	.page { max-width: 52rem; padding: 7rem 0 4rem; }
+	.head { margin: 0 0 2rem; }
+	.head h1 { font-size: clamp(2.8rem, 7vw, 5rem); margin: 0 0 1rem; }
+	.intro { font-size: clamp(1.1rem, 2vw, 1.3rem); line-height: 1.45; color: var(--fg); max-width: 44ch; margin: 0 0 0.9rem; text-wrap: pretty; }
+	.alpha { margin: 0; font-size: 0.92rem; color: var(--fg-2); }
+	.alpha a { color: var(--fg); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 0.2em; }
+	.prose { min-width: 0; overflow-wrap: break-word; }
+	.prose :global(h2) { font-weight: 800; font-stretch: 75%; font-size: 2rem; line-height: 1.05; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.5rem; }
+	.prose :global(h2 a) { color: var(--fg); }
+	.prose :global(h3:not(.art *)) { font-weight: 800; font-stretch: 80%; font-size: 1.1rem; margin: 2rem 0 0.6rem; }
+	.prose :global(p:not(.art *)), .prose :global(li:not(.art *)) { color: var(--fg-2); font-size: 1rem; line-height: 1.65; }
+	.prose :global(li:not(.art *)) { margin: 0.45rem 0; }
+	.prose :global(strong:not(.art *)) { color: var(--fg); }
+	.prose :global(code:not(.art *)) { background: rgb(12 16 56 / 0.08); color: var(--fg); padding: 0.1em 0.38em; border-radius: 0; font-size: 0.86em; }
+	.prose :global(a:not(.art *)) { color: var(--fg); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 0.2em; }
+	.prose :global(.anchor) { display: none; }
+	.prose :global(:not(pre) > code:not(.art *)) { overflow-wrap: anywhere; }
+	.prose :global(pre) { overflow-x: auto; max-width: 100%; }
+	.prose :global(table) { display: block; overflow-x: auto; max-width: 100%; }
+	.prose :global([hidden]) { display: none; }
+	.prose :global(.cl-stale) { margin: 0 0 1.2rem; padding: 0.6rem 0.9rem; border: 1.5px solid var(--fg); font-size: 0.92rem; }
+
+	/* Filter and the jump list */
+	.prose :global(.cl-filter) { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; margin: 0 0 1rem; padding: 0; border: 0; min-width: 0; }
+	.prose :global(.cl-filter[hidden]) { display: none; }
+	.prose :global(.cl-filter legend) { float: left; margin-right: 0.4rem; padding: 0; font-weight: 700; font-size: 0.9rem; }
+	.prose :global(.cl-filter label) { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.9rem; box-shadow: inset 0 0 0 1.5px var(--paper-line); border-radius: 999px; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
+	.prose :global(.cl-filter input) { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+	.prose :global(.cl-filter label:has(input:checked)) { background: var(--fg); color: var(--bg); box-shadow: none; }
+	.prose :global(.cl-filter label:has(input:focus-visible)) { outline: 2px solid var(--fg); outline-offset: 3px; }
+	.prose :global(.cl-count) { flex-basis: 100%; color: var(--fg-2); font-size: 0.85rem; }
+	.prose :global(.cl-jumpbox) { margin: 0 0 0.5rem; }
+	.prose :global(.cl-jumpbox > summary) { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 44px; cursor: pointer; font-weight: 700; font-size: 0.9rem; }
+	.prose :global(.cl-jumpbox > summary:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+	.prose :global(.cl-jumpbox > .cl-jump) { margin-top: 0.4rem; }
+	.prose :global(.cl-jump) { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; margin: 0 0 0.5rem; padding: 0; list-style: none; }
+	.prose :global(.cl-jump li) { display: inline-flex; align-items: center; margin: 0; }
+	.prose :global(.cl-jump a) { display: inline-block; padding: 0.35rem 0.7rem; box-shadow: inset 0 0 0 1.5px var(--paper-line); text-decoration: none; font-weight: 600; font-size: 0.9rem; border-radius: 999px; }
+	.prose :global(.cl-jump a:hover) { box-shadow: inset 0 0 0 1.5px var(--fg); }
+	.prose :global(.cl-jump .cl-badge) { margin-left: 0.25rem; }
+	@media (pointer: coarse) { .prose :global(.cl-jump a) { display: inline-flex; align-items: center; min-height: 44px; } }
+	.prose :global(.cl-badge) { display: inline-block; vertical-align: middle; padding: 0.2rem 0.55rem; border-radius: 999px; font: 700 0.72rem/1 var(--font); letter-spacing: 0.02em; text-transform: uppercase; box-shadow: inset 0 0 0 1.5px var(--fg); }
+	.prose :global(.cl-badge-alpha) { background: var(--fg); color: var(--bg); }
+
+	/* One version: a header row, then its story or summary, then the disclosure */
+	.prose :global(.cl-entry) { margin: 3.2rem 0 0; padding-top: 1rem; border-top: 2px solid var(--fg); scroll-margin-top: 5rem; }
+	.prose :global(.cl-entry[data-lead]) { margin-top: 2rem; border-top-width: 0; padding-top: 0; }
+	.prose :global(.cl-entry[data-lead] h2) { font-size: clamp(2.6rem, 8vw, 4.4rem); line-height: 0.95; }
+	.prose :global(.cl-latest) { margin: 0 0 0.5rem; font: 700 0.78rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue); }
+	.prose :global(.cl-meta) { display: flex; flex-wrap: wrap; gap: 0.2rem 1.2rem; align-items: baseline; margin: 0.35rem 0 1.1rem; color: var(--fg-2); font-size: 0.95rem; }
+	.prose :global(.cl-meta a) { font-weight: 600; display: inline-flex; align-items: center; min-height: 44px; }
+	.prose :global(.cl-summary p) { max-width: 66ch; color: var(--fg); font-size: 1.05rem; text-wrap: pretty; }
+	.prose :global(.cl-all) { margin: 1.4rem 0 0; border: 1.5px solid var(--paper-line); background: color-mix(in srgb, var(--white) 55%, transparent); }
+	.prose :global(.cl-all[open]) { border-color: var(--ink); }
+	.prose :global(.cl-all > summary) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.2rem 1rem; min-height: 44px; padding: 0.55rem 1rem 0.55rem 2.4rem; cursor: pointer; list-style: none; position: relative; font-weight: 700; }
+	.prose :global(.cl-all > summary::-webkit-details-marker) { display: none; }
+	.prose :global(.cl-all > summary::before) { content: ""; position: absolute; left: 1rem; top: 50%; width: 0.5rem; height: 0.5rem; border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink); transform: translateY(-70%) rotate(-45deg); transition: transform 0.15s; }
+	.prose :global(.cl-all[open] > summary::before) { transform: translateY(-40%) rotate(45deg); }
+	.prose :global(.cl-all > summary:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+	.prose :global(.cl-stats) { font: 500 0.8rem/1.3 var(--mono); color: var(--fg-2); }
+	.prose :global(.cl-all > :not(summary)) { margin-inline: 1rem; }
+	.prose :global(.cl-all > .cl-tech-note) { margin-top: 0.4rem; font-size: 0.88rem; }
+	.prose :global(.cl-all > :last-child) { margin-bottom: 1rem; }
+	@media (prefers-reduced-motion: reduce) { .prose :global(.cl-all > summary::before) { transition: none; } }
+	@media (max-width: 760px) {
+		.page { padding: calc(5.5rem + env(safe-area-inset-top)) 0 3rem; }
+		.prose :global(h2) { font-size: 1.75rem; }
+		.prose :global(p:not(.art *)), .prose :global(li:not(.art *)) { font-size: 1.0625rem; line-height: 1.65; }
+		.prose :global(a:not(.art *)) { padding-block: 0.45em; }
+		.prose :global(.cl-jump a) { padding-block: 0.7rem; }
+		.prose :global(li:not(.art *)) { margin: 0.2rem 0; }
+		.prose :global(ul:not(.art *)), .prose :global(ol:not(.art *)) { padding-left: 1.3rem; }
+		.prose :global(ol.hls) { padding-left: 0; }
+	}
+</style>

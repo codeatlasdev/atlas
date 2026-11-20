@@ -76,6 +76,8 @@ export const langCookie = (locale: SiteLocale) => `${LANG_COOKIE}=${locale}; Pat
  */
 export function localeRedirect(request: Request): Response | null {
 	const url = new URL(request.url);
+	// A Portuguese URL is served as asked (a handler may be shared by both languages, like the changelog's).
+	if (url.pathname === "/pt-br" || url.pathname.startsWith("/pt-br/")) return null;
 	const query = url.searchParams.get("lang");
 	const visitor: Visitor = {
 		query,

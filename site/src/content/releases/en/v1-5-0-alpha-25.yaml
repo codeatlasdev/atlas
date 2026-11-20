@@ -1,0 +1,82 @@
+version: "1.5.0-alpha.25"
+locale: en
+title: "Atlas now installs and runs properly on Windows"
+intro: |
+  Atlas Desktop on Windows now installs with one click. Run `Atlas-Setup.exe` and Atlas opens in a window that fits your screen and responds from the first click.
+
+  Updating over an older Windows build also repairs what it left behind, and a folder without an `atlas.yaml` finally shows you what Atlas found.
+highlights:
+  - id: installer
+    title: "Install Atlas on Windows with one click"
+    body: |
+      Run `Atlas-Setup.exe` and a small Atlas window installs the app, then opens it. No admin rights, no WebView2. Removing Atlas asks **Keep your Atlas data?** and names what deleting erases. The installer is not code-signed yet: if Windows says "Windows protected your PC", click **More info**, then **Run anyway**.
+    art:
+      type: a25-installer
+      alt: "Mock-up of the Atlas installer: a small dark window with the Atlas globe, a progress bar that fills and one status line, with notes that it needs no admin rights and no WebView2."
+      caption: "The installer is one small window: a progress bar and one status line."
+      labels:
+        window: "Atlas-Setup.exe"
+        installing: "Installing Atlas…"
+        opening: "Opening Atlas…"
+        noadmin: "No admin rights"
+        nowebview: "No WebView2 needed"
+  - id: window
+    title: "The app works from the first click"
+    body: |
+      Atlas used to open past the edge of small screens, show two title bars and freeze right after launch. Now the window fits (it opens maximized when it would not, like on a 1366×768 laptop), buttons, Settings and dialogs respond, there is one title bar, and the tray icon works.
+    art:
+      type: a25-window-fit
+      alt: "Two small screens side by side. Before: the window runs past the screen edge and has two title bars. After: the window fits above the taskbar with one title bar."
+      labels:
+        before: "Before"
+        after: "After"
+        before_note: "Opens past the screen edge, with two title bars"
+        after_note: "Fits the screen, with one title bar"
+        screen: "1366×768 laptop screen"
+  - id: repair
+    title: "Updating fixes what older builds left behind"
+    body: |
+      If you ran a Windows build from 1.5.0-alpha.21 to alpha.24, installing or updating now cleans up after it: an outdated `atlas` command, an old terminal host, a window position that is off screen, leftover temp files. Your projects, settings and worktrees are never touched.
+    art:
+      type: a25-repair
+      alt: "A checklist of five repairs that run when you install or update, each with a green tick, above a dashed strip saying your projects, settings and worktrees are never touched."
+      labels:
+        title: "Repaired when you install or update"
+        r1: "An old atlas command is brought up to date"
+        r2: "An old terminal host is restarted when no terminal is running"
+        r3: "A saved window position that is off screen is dropped"
+        r4: "The welcome is marked done if you already have projects"
+        r5: "Leftover temp files and a stale update lock are cleared"
+        never: "Never touched"
+        n1: "Your projects"
+        n2: "Your settings"
+        n3: "Your worktrees"
+  - id: detect
+    title: "Open any folder and see what Atlas found"
+    body: |
+      A folder without an `atlas.yaml` used to say "Atlas found nothing to run". Now the panel names the stack it detected (Node, Rust, Go, Python, Django or FastAPI) and offers **Set up services**. Adding a folder tells you what was found too.
+    art:
+      type: a25-detect
+      alt: "Before and after panels for a folder without atlas.yaml. Before: the message Atlas found nothing to run. After: the detected stacks Node, Rust, Go, Python, Django and FastAPI, and a Set up services button."
+      labels:
+        before: "Before"
+        after: "After"
+        folder: "no atlas.yaml"
+        nothing: "Atlas found nothing to run"
+        found: "Atlas found:"
+        c1: "Node"
+        c2: "Rust"
+        c3: "Go"
+        c4: "Python"
+        c5: "Django"
+        c6: "FastAPI"
+        button: "Set up services"
+also:
+  - "`atlas update` works on Atlas Desktop on Windows again. It used to fail while the app, its terminal host or `atlas.exe` was running."
+  - "Installing only Atlas Desktop on Windows now also puts the `atlas` command on your PATH, so `atlas .` works from a new terminal."
+  - "Atlas Desktop on Windows no longer closes right at launch with a WebView2 error (it affected 1.5.0-alpha.24)."
+  - "A crash in Atlas Desktop now leaves a readable report with the backtrace, and the diagnostics summary shows it. On Windows it used to be unreadable."
+  - "The welcome no longer comes back after you add your first folder, and skipping it leaves **Find my projects** and **Add a folder…** on screen."
+  - "npm projects without a `package-lock.json` now start: with no lockfile, Atlas runs `npm install`."
+  - "Windows and Linux no longer show macOS-only settings or wording: no Capture settings, and Ctrl/Alt and \"taskbar\" instead of ⌘/⌥ and \"Dock\"."
+  - "On Windows and Linux the agent dock is off by default, so it no longer sits over the taskbar. Turn it on with Ctrl+Alt+D or in Settings → Agents → Agent dock."

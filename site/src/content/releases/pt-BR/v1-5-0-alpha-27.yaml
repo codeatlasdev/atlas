@@ -1,0 +1,118 @@
+version: "1.5.0-alpha.27"
+locale: pt-BR
+title: "Crewmates pedem permissão, e o Atlas fala português"
+intro: |
+  Agora os crewmates pedem permissão antes de fazer qualquer coisa arriscada, e você decide quanto eles podem fazer sozinhos. O Atlas também fala português do Brasil, das telas do Desktop aos menus nativos e à CLI.
+
+  Dá para ditar uma tarefa por voz, e o seu crew server pode ter o próprio GitHub App. Um passo manual depois de atualizar: rode `atlas crew install <server>` de novo e, se quiser ditar, `atlas crew voice install <server>`.
+highlights:
+  - id: modes
+    title: "Você escolhe quanto o crewmate pode fazer sozinho"
+    body: |
+      Todo crewmate tem um modo: **Perguntar**, **Aceitar edições** ou **Bypass**. Você troca o modo enquanto ele trabalha, e a mudança vale a partir da próxima ação. Alguns itens pedem a sua permissão em qualquer modo: `.git`, `.env*`, arquivos de chaves e tarefas vindas do GitHub ou de webhooks.
+    art:
+      type: a27-modes-dial
+      alt: "Um seletor com três posições, Perguntar, Aceitar edições e Bypass, passando de Perguntar para Aceitar edições. Abaixo, uma faixa fixa lista o que sempre pergunta a você, em qualquer modo: .git, arquivos .env, arquivos de chaves e tarefas do GitHub ou de webhooks."
+      caption: "O modo é seu, e você troca quando quiser. A faixa de baixo nunca muda."
+      labels:
+        working: "Um crewmate está trabalhando"
+        modes_title: "Modo, troque quando quiser"
+        ask: "Perguntar"
+        edits: "Aceitar edições"
+        bypass: "Bypass"
+        rails_title: "Sempre pergunta, em qualquer modo"
+        rail_keys: "Arquivos de chaves"
+        rail_tasks: "Tarefas do GitHub ou de webhooks"
+  - id: approval
+    title: "O crewmate para e pergunta, com um card para você responder"
+    body: |
+      Quando um crewmate chega a algo que não deve fazer sozinho, aparece um card **Precisa de você**. Escolha **Permitir uma vez**, **Permitir nesta tarefa** ou **Negar**, e deixe uma observação se quiser. O agente lê o que você escreveu e continua. O card é o mesmo no Atlas Desktop e no Atlas Mobile.
+    art:
+      type: a27-approval-timeline
+      alt: "Uma linha do tempo de uma tarefa. Um crewmate trabalha, chega a um arquivo protegido, e um card pergunta a você com três botões: Permitir uma vez, Permitir nesta tarefa e Negar, mais uma observação opcional. O agente recebe a observação e continua."
+      labels:
+        step_work: "Um crewmate trabalha em uma tarefa."
+        step_rail: "Ele chega a um arquivo protegido, e uma proteção segura a ação:"
+        step_ask: "Um card pergunta a você."
+        step_reply: "O agente recebe a sua observação e continua."
+        needs_you: "Precisa de você"
+        wants: "Quer editar"
+        allow_once: "Permitir uma vez"
+        allow_task: "Permitir nesta tarefa"
+        deny: "Negar"
+        note: "Observação"
+        note_text: "Use o .env.example"
+  - id: github-app
+    title: "O crewmate acessa o GitHub como um bot, não como você"
+    body: |
+      O seu crew server agora pode ter o próprio GitHub App, criado com um clique. Os crewmates usam tokens de curta duração e agem como um bot, então o seu login do `gh` continua só seu. Com uma URL pública no crew, os eventos do GitHub chegam na hora, em vez de serem verificados a cada 2 minutos.
+    art:
+      type: a27-github-app
+      alt: "Antes e depois. Antes, o crewmate acessa o GitHub com o seu login do gh, age como você e busca novidades a cada 2 minutos. Depois, usa o GitHub App do próprio crew, criado com um clique, age como um bot com tokens de curta duração, e com uma URL pública os eventos chegam na hora."
+      labels:
+        before: "Antes"
+        after: "Depois"
+        crewmate: "Crewmate"
+        github: "GitHub"
+        before_chip: "seu login do gh"
+        after_chip: "GitHub App do crew"
+        before_who: "Age como você, com o seu login"
+        after_who: "Age como um bot, com tokens de curta duração"
+        after_create: "Criado com um clique"
+        before_events: "Busca novidades a cada 2 minutos"
+        after_events: "Com URL pública, os eventos chegam na hora"
+  - id: voice
+    title: "Fale com o crewmate e ouça a resposta"
+    body: |
+      Dite uma tarefa pelo microfone do Atlas Desktop, pelo celular ou pelo Telegram, e ouça a resposta curta do crewmate. Responder um card por voz só funciona onde é seguro: Bypass, caminhos protegidos e comandos destrutivos sempre pedem um toque. O seu áudio fica no celular ou nas suas próprias máquinas.
+    art:
+      type: a27-voice
+      alt: "Uma onda sonora da sua voz e dois exemplos. Dizer permitir autoriza a ação uma vez. Dizer permitir, mas só este arquivo não decide nada e pede que você confirme com um toque. Uma nota diz que Bypass, caminhos protegidos e comandos destrutivos sempre pedem um toque."
+      labels:
+        you_say: "Você diz"
+        phrase_ok: "permitir"
+        out_ok: "Permitido uma vez"
+        phrase_more: "permitir, mas só este arquivo"
+        out_more: "Pede um toque para confirmar"
+        always_tap: "Bypass, caminhos protegidos e comandos destrutivos sempre pedem um toque."
+  - id: portuguese
+    title: "O Atlas agora fala português do Brasil"
+    body: |
+      As telas do Atlas Desktop, os menus nativos e a CLI estão em português do Brasil. No Mac, o menu mostra **Ajustes** e **Sair do Atlas**. Escolha o idioma nas configurações ou rode `atlas config lang pt-BR`. A troca vale na hora, sem reiniciar.
+    art:
+      type: a27-language-menu
+      alt: "O mesmo menu pequeno em inglês e em português: About Atlas, Settings, Hide Atlas e Quit Atlas viram Sobre o Atlas, Ajustes, Ocultar Atlas e Sair do Atlas. Uma linha mostra o comando atlas config lang pt-BR."
+      labels:
+        lang_en: "English"
+        lang_pt: "Português (Brasil)"
+        no_restart: "Troca sem reiniciar"
+        en_about: "About Atlas"
+        en_settings: "Settings…"
+        en_hide: "Hide Atlas"
+        en_quit: "Quit Atlas"
+        pt_about: "Sobre o Atlas"
+        pt_settings: "Ajustes…"
+        pt_hide: "Ocultar Atlas"
+        pt_quit: "Sair do Atlas"
+  - id: signed
+    title: "Chega de aviso do firewall a cada atualização"
+    body: |
+      O Atlas para macOS agora é assinado e notarizado, então o firewall deixa de perguntar se você permite conexões de entrada toda vez que você atualiza. No Linux, o `atlas desktop` agora instala o pacote da sua distribuição, em vez de um AppImage.
+    art:
+      type: a27-signed-update
+      alt: "Antes e depois. Antes, cada uma de três atualizações termina com um aviso do firewall pedindo para permitir conexões de entrada. Depois, as três atualizações passam sem aviso, porque o app é assinado e notarizado."
+      labels:
+        before: "Antes"
+        after: "Depois"
+        update: "Atualização"
+        prompt: "Permitir conexões de entrada?"
+        quiet: "Sem aviso"
+        signed: "Assinado e notarizado"
+also:
+  - "Agentes de IA não podem mais escrever fora da própria worktree, fazer push na `main` nem force-push."
+  - "Uma página de captura podia abrir qualquer app no seu Mac, e um crewmate Claude headless rodava ferramentas que ninguém aprovou. Os dois problemas foram corrigidos. Os links agora só abrem como http, https ou mailto."
+  - "No Windows, a última saída de um terminal não se perde mais, uma stack rodando não aparece mais como parada por um instante, e o `install.ps1` funciona no PowerShell 5.1."
+  - "O Atlas Desktop avisa quando fechou de forma inesperada da última vez e deixa você revisar o relatório do erro. Nada é enviado sozinho."
+  - "Um `workspace.json` ilegível não impede mais o Atlas Desktop de abrir. O arquivo antigo fica guardado ao lado, e um aviso diz onde."
+  - "Ao adicionar um crew server, o Atlas lista os servidores do seu `~/.ssh/config`, e você não precisa digitar tudo de novo."
+  - "Uma pasta comum abre como pasta comum, e não como um projeto sem `atlas.yaml`."

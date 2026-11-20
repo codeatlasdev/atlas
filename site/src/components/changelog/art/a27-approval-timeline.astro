@@ -1,0 +1,66 @@
+---
+// Labels: step_work, step_rail, step_ask, step_reply, needs_you, wants, allow_once, allow_task, deny, note, note_text
+// Moment: the four steps of one task appear one after another.
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+---
+<div class="art art-a27-approval-timeline" role="img" aria-label={alt}>
+	<ol class="steps">
+		<li class="step part go" style="--i:0">
+			<span class="node"></span>
+			<p>{labels.step_work}</p>
+		</li>
+		<li class="step part wait" style="--i:1">
+			<span class="node"></span>
+			<p>{labels.step_rail} <code>.env</code></p>
+		</li>
+		<li class="step part wait" style="--i:2">
+			<span class="node"></span>
+			<p>{labels.step_ask}</p>
+			<div class="card">
+				<div class="card-head">
+					<span class="pill"><i></i>{labels.needs_you}</span>
+					<span class="what">{labels.wants} <code>.env</code></span>
+				</div>
+				<div class="buttons">
+					<span class="btn primary">{labels.allow_once}</span>
+					<span class="btn">{labels.allow_task}</span>
+					<span class="btn">{labels.deny}</span>
+				</div>
+				<div class="note"><b>{labels.note}</b> <span>{labels.note_text}</span></div>
+			</div>
+		</li>
+		<li class="step part go" style="--i:3">
+			<span class="node"></span>
+			<p>{labels.step_reply}</p>
+		</li>
+	</ol>
+</div>
+
+<style>
+	.art { font-family: var(--font); color: var(--ink); }
+	.steps { list-style: none; margin: 0; padding: 0; }
+	.step { position: relative; padding: 0 0 1.1rem 2rem; }
+	.step:last-child { padding-bottom: 0; }
+	.step::before { content: ""; position: absolute; left: 0.5rem; top: 1.1rem; bottom: -0.1rem; width: 2px; background: var(--paper-line); }
+	.step:last-child::before { display: none; }
+	.node { position: absolute; left: 0; top: 0.2rem; width: 1.05rem; height: 1.05rem; border-radius: 50%; border: 1.5px solid var(--ink); }
+	.go .node { background: var(--go); }
+	.wait .node { background: var(--wait); }
+	p { margin: 0; font-size: 0.95rem; line-height: 1.45; }
+	code { font-family: var(--mono); font-size: 0.85rem; background: var(--paper); border: 1px solid var(--paper-line); border-radius: 3px; padding: 0 0.3rem; }
+	.card { margin-top: 0.6rem; border: 1.5px solid var(--ink); border-radius: 0.5rem; padding: 0.75rem; display: grid; gap: 0.65rem; background: var(--white); box-shadow: 0.25rem 0.25rem 0 var(--ink); }
+	.card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; font-size: 0.9rem; }
+	.pill { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--paper); border: 1px solid var(--ink); border-radius: 999px; padding: 0.1rem 0.6rem; font-weight: 700; font-size: 0.85rem; }
+	.pill i { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--wait); border: 1px solid var(--ink); }
+	.buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+	.btn { border: 1.5px solid var(--ink); border-radius: 0.4rem; padding: 0.35rem 0.75rem; font-size: 0.9rem; font-weight: 600; background: var(--white); }
+	.btn.primary { background: var(--blue); border-color: var(--blue); color: var(--white); }
+	.note { border: 1.5px dashed var(--ink-2); border-radius: 0.4rem; padding: 0.4rem 0.6rem; font-size: 0.85rem; color: var(--ink-2); }
+	.note b { color: var(--ink); font-weight: 700; }
+
+	@keyframes rise { from { opacity: 0; transform: translateY(0.6rem); } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .step { animation: rise 0.45s ease-out both; animation-delay: calc(var(--i) * 0.35s); }
+	}
+</style>

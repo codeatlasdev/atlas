@@ -1,6 +1,6 @@
 // Pure pieces of the changelog engine (no I/O, unit-tested in changelog.test.ts): split CHANGELOG.md into versions,
 // drop [Unreleased], and render each entry to HTML. Anything dynamic (fetching, caching) lives in edge.ts.
-import { marked } from "marked";
+import { marked, Renderer } from "marked";
 import { parseTag, precedence, supersededPrerelease } from "./channels";
 
 export interface Entry {
@@ -68,12 +68,23 @@ export function parseChangelog(md: string): Parsed {
 const slug = (s: string) => s.toLowerCase().replace(/<[^>]+>/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-/** Markdown to HTML with the site's rules: raw HTML is escaped (the source is a public repo, not trusted input),
- * external links open safely, and `###` headings get ids scoped to their version so anchors never collide. */
+/** The site's rules for markdown from a public source: raw HTML is escaped (the repo is not trusted input) and external links open safely. */
+function siteRenderer(): Renderer {
+	const renderer = new Renderer();
+	renderer.html = ({ text }) => esc(text);
+	renderer.link = function ({ href, title, tokens }) {
+		const text = this.parser.parseInline(tokens);
+		const safe = /^(https?:|mailto:|#|\/)/i.test(href) ? href : "#";
+		const ext = /^https?:/i.test(safe) && !safe.startsWith("https://atlas.codeatlas.com.br");
+		return `<a href="${esc(safe)}"${title ? ` title="${esc(title)}"` : ""}${ext ? ' rel="noopener"' : ""}>${text}</a>`;
+	};
+	return renderer;
+}
+
+/** Markdown to HTML with the site's rules, and `###` headings with ids scoped to their version so anchors never collide. */
 export function renderMarkdown(md: string, scope = ""): string {
 	const seen = new Map<string, number>();
-	const renderer = new marked.Renderer();
-	renderer.html = ({ text }) => esc(text);
+	const renderer = siteRenderer();
 	renderer.heading = function ({ tokens, depth }) {
 		const inner = this.parser.parseInline(tokens);
 		const base = `${scope ? scope + "-" : ""}${slug(inner)}`;
@@ -82,20 +93,53 @@ export function renderMarkdown(md: string, scope = ""): string {
 		const id = n === 1 ? base : `${base}-${n}`;
 		return `<h${depth} id="${id}">${inner}</h${depth}>\n`;
 	};
-	renderer.link = function ({ href, title, tokens }) {
-		const text = this.parser.parseInline(tokens);
-		const safe = /^(https?:|mailto:|#|\/)/i.test(href) ? href : "#";
-		const ext = /^https?:/i.test(safe) && !safe.startsWith("https://atlas.codeatlas.com.br");
-		return `<a href="${esc(safe)}"${title ? ` title="${esc(title)}"` : ""}${ext ? ' rel="noopener"' : ""}>${text}</a>`;
-	};
 	return marked.parse(md, { renderer, gfm: true, async: false }) as string;
+}
+
+/** One paragraph of inline markdown (bold, code, links) with no wrapping tag: the words of a release story. */
+export const renderInline = (md: string): string => marked.parseInline(md.trim(), { renderer: siteRenderer(), gfm: true, async: false }) as string;
+
+/** What an entry says about itself, before the technical list: `lead` is the prose above the first `###` heading or the first list minus the standard alpha notice; `rest` is the technical list (Added/Changed/Fixed). */
+export function splitBody(body: string): { lead: string; rest: string } {
+	// The summary ends at whichever comes first: a `###` heading or the first list (older entries have bullets right under the notice).
+	const at = Math.min(...[body.search(/^###\s/m), body.search(/^(?:[-*+]|\d+\.)\s/m)].filter((i) => i >= 0), body.length);
+	const lead = body
+		.slice(0, at)
+		.split(/\n{2,}/)
+		.filter((p) => p.trim() && !/^Atlas is in \*\*(?:alpha|beta)\*\*/.test(p.trim()))
+		.join("\n\n");
+	return { lead, rest: body.slice(at).trim() };
+}
+
+export interface Counts {
+	added: number;
+	changed: number;
+	fixed: number;
+}
+
+/** Top-level bullets under the `### Added`, `### Changed` and `### Fixed` headings: the numbers a collapsed entry can show honestly. */
+export function countChanges(rest: string): Counts {
+	const counts: Counts = { added: 0, changed: 0, fixed: 0 };
+	let current: keyof Counts | null = null;
+	for (const line of rest.split("\n")) {
+		const h = /^###\s+(.*?)\s*$/.exec(line);
+		if (h) current = (h[1].toLowerCase() in counts ? h[1].toLowerCase() : null) as keyof Counts | null;
+		else if (current && /^[-*+]\s/.test(line)) counts[current]++;
+	}
+	return counts;
 }
 
 export interface Rendered {
 	version: string;
 	date: string;
 	id: string;
+	/** The whole entry (summary and technical list), as `/changelog.json` has always served it */
 	html: string;
+	/** The prose above the technical list (empty for entries that have none) */
+	summaryHtml: string;
+	/** The technical list: Added, Changed, Fixed. Heading ids are the same as in `html` */
+	detailsHtml: string;
+	counts: Counts;
 	kind: Kind;
 	/** A prerelease whose own stable release is in the same changelog (hidden by the Stable-only filter) */
 	superseded: boolean;
@@ -110,6 +154,19 @@ export function renderChangelog(md: string): { introHtml: string; entries: Rende
 		introHtml,
 		entries: entries
 			.sort((a, b) => cmpVersionDesc(a.version, b.version))
-			.map((e) => ({ version: e.version, date: e.date, id: e.id, html: renderMarkdown(e.body, e.id), kind: kindOf(e.version), superseded: supersededPrerelease(e.version, versions) })),
+			.map((e) => {
+				const { lead, rest } = splitBody(e.body);
+				return {
+					version: e.version,
+					date: e.date,
+					id: e.id,
+					html: renderMarkdown(e.body, e.id),
+					summaryHtml: lead ? renderMarkdown(lead, e.id) : "",
+					detailsHtml: rest ? renderMarkdown(rest, e.id) : "",
+					counts: countChanges(rest),
+					kind: kindOf(e.version),
+					superseded: supersededPrerelease(e.version, versions),
+				};
+			}),
 	};
 }

@@ -1,0 +1,69 @@
+---
+// Labels: before, after, update, prompt, quiet, signed
+// Moment: in the "after" column the three updates go through one by one, each with a check and no prompt.
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const updates = [1, 2, 3];
+---
+<div class="art art-a27-signed-update" role="img" aria-label={alt}>
+	<section class="panel before">
+		<h4>{labels.before}</h4>
+		<ul>
+			{updates.map((n) => (
+				<li>
+					<span class="upd">{labels.update} {n}</span>
+					<svg class="arrow" viewBox="0 0 24 12" width="24" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M0 6h20M15 1l5 5-5 5"></path></svg>
+					<span class="dialog">
+						<span class="dialog-text">{labels.prompt}</span>
+						<span class="dialog-btns"><i></i><i class="solid"></i></span>
+					</span>
+				</li>
+			))}
+		</ul>
+	</section>
+	<section class="panel after">
+		<h4>{labels.after}</h4>
+		<ul>
+			{updates.map((n, i) => (
+				<li class="part" style={`--i:${i}`}>
+					<span class="upd">{labels.update} {n}</span>
+					<svg class="arrow" viewBox="0 0 24 12" width="24" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M0 6h20M15 1l5 5-5 5"></path></svg>
+					<span class="ok">
+						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>
+						{labels.quiet}
+					</span>
+				</li>
+			))}
+		</ul>
+		<p class="seal">
+			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+			{labels.signed}
+		</p>
+	</section>
+</div>
+
+<style>
+	.art { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.9rem; font-family: var(--font); color: var(--ink); }
+	.panel { border-radius: 0.5rem; padding: 0.9rem; display: grid; gap: 0.8rem; align-content: start; }
+	.before { background: var(--paper); border: 1.5px dashed var(--ink-2); }
+	.after { background: var(--white); border: 2px solid var(--blue); }
+	h4 { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+	.after h4 { color: var(--blue-deep); }
+	ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+	li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+	.arrow { flex: none; color: var(--ink-2); }
+	.upd { border: 1.5px solid var(--ink); border-radius: 0.4rem; background: var(--white); padding: 0.2rem 0.55rem; font-size: 0.85rem; font-weight: 600; }
+	.dialog { flex: 1 1 9rem; border: 1.5px solid var(--ink); border-radius: 0.5rem; background: var(--white); padding: 0.4rem 0.6rem; display: grid; gap: 0.35rem; }
+	.dialog-text { font-size: 0.85rem; line-height: 1.3; }
+	.dialog-btns { display: flex; justify-content: flex-end; gap: 0.35rem; }
+	.dialog-btns i { width: 2rem; height: 0.7rem; border-radius: 0.35rem; border: 1.5px solid var(--ink-2); }
+	.dialog-btns i.solid { background: var(--ink-2); }
+	.ok { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; font-weight: 600; }
+	.ok svg { color: var(--blue); }
+	.seal { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--blue-deep); }
+
+	@keyframes pass { from { opacity: 0; transform: translateX(-0.75rem); } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .after li { animation: pass 0.45s ease-out both; animation-delay: calc(0.2s + var(--i) * 0.4s); }
+	}
+</style>

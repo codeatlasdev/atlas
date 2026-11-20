@@ -1,0 +1,118 @@
+version: "1.5.0-alpha.27"
+locale: en
+title: "Crewmates ask before they act, and Atlas speaks Portuguese"
+intro: |
+  Crewmates now ask you before they do anything risky, and you decide how much they may do on their own. Atlas also speaks Brazilian Portuguese, from the Desktop screens to the menu bar to the CLI.
+
+  You can also dictate a task by voice, and your crew server can have its own GitHub App. One manual step after updating: run `atlas crew install <server>` again, and `atlas crew voice install <server>` if you want dictation.
+highlights:
+  - id: modes
+    title: "You choose how much a crewmate may do alone"
+    body: |
+      Every crewmate has a mode: **Ask**, **Accept edits** or **Bypass**. Switch it while the crewmate works, and it applies from its next action. Some things ask you in every mode: `.git`, `.env*`, key files, and tasks that came from GitHub or a webhook.
+    art:
+      type: a27-modes-dial
+      alt: "A selector with three positions, Ask, Accept edits and Bypass, moving from Ask to Accept edits. Below it, a fixed band lists what always asks you, in every mode: .git, .env files, key files, and tasks from GitHub or webhooks."
+      caption: "The mode is yours to change at any time. The band below never moves."
+      labels:
+        working: "A crewmate is working"
+        modes_title: "Mode, change it any time"
+        ask: "Ask"
+        edits: "Accept edits"
+        bypass: "Bypass"
+        rails_title: "Always asked, in every mode"
+        rail_keys: "Key files"
+        rail_tasks: "Tasks from GitHub or webhooks"
+  - id: approval
+    title: "A crewmate stops and asks, with a card you can answer"
+    body: |
+      When a crewmate reaches something it should not do alone, a **Needs you** card appears. Choose **Allow once**, **Allow for this task** or **Deny**, and add a note if you like. The agent reads your note and keeps going. It is the same card on Atlas Desktop and Atlas Mobile.
+    art:
+      type: a27-approval-timeline
+      alt: "A timeline of one task. A crewmate works, reaches a protected file, and a card asks you with three buttons: Allow once, Allow for this task and Deny, plus an optional note. The agent receives your note and continues."
+      labels:
+        step_work: "A crewmate works on a task."
+        step_rail: "It reaches a protected file, and a rail holds the call:"
+        step_ask: "A card asks you."
+        step_reply: "The agent gets your note and continues."
+        needs_you: "Needs you"
+        wants: "Wants to edit"
+        allow_once: "Allow once"
+        allow_task: "Allow for this task"
+        deny: "Deny"
+        note: "Note"
+        note_text: "Use .env.example instead"
+  - id: github-app
+    title: "Crewmates reach GitHub as a bot, not as you"
+    body: |
+      Your crew server can now have its own GitHub App, created in one click. Crewmates use short-lived tokens and act as a bot, so your own `gh` login stays yours. Give the crew a public URL and GitHub events arrive at once, instead of being checked every 2 minutes.
+    art:
+      type: a27-github-app
+      alt: "Before and after. Before, the crewmate reaches GitHub with your own gh login, acts as you, and checks for news every 2 minutes. After, it uses the crew's own GitHub App, created in one click, acts as a bot with short-lived tokens, and with a public URL events arrive at once."
+      labels:
+        before: "Before"
+        after: "After"
+        crewmate: "Crewmate"
+        github: "GitHub"
+        before_chip: "your gh login"
+        after_chip: "The crew's GitHub App"
+        before_who: "Acts as you, with your login"
+        after_who: "Acts as a bot, with short-lived tokens"
+        after_create: "Created in one click"
+        before_events: "Checks for news every 2 minutes"
+        after_events: "With a public URL, events arrive at once"
+  - id: voice
+    title: "Talk to a crewmate, and hear it answer"
+    body: |
+      Dictate a task with the mic on Atlas Desktop, on your phone or in Telegram, and hear a crewmate's short reply. Answering a card by voice works only where it is safe: Bypass, protected paths and destructive commands always need a tap. Your audio stays on your phone or on your own machines.
+    art:
+      type: a27-voice
+      alt: "A waveform of your voice and two examples. Saying allow allows the action once. Saying allow but only this file decides nothing and asks you to confirm with a tap. A note says Bypass, protected paths and destructive commands always need a tap."
+      labels:
+        you_say: "You say"
+        phrase_ok: "allow"
+        out_ok: "Allowed once"
+        phrase_more: "allow but only this file"
+        out_more: "Needs a tap to confirm"
+        always_tap: "Bypass, protected paths and destructive commands always need a tap."
+  - id: portuguese
+    title: "Atlas now speaks Brazilian Portuguese"
+    body: |
+      Atlas Desktop screens, the native menus and the CLI are in Brazilian Portuguese. On a Mac the menu says **Ajustes** and **Sair do Atlas**. Pick the language in Settings, or run `atlas config lang pt-BR`. It changes at once, without a restart.
+    art:
+      type: a27-language-menu
+      alt: "The same small menu in English and in Portuguese: About Atlas, Settings, Hide Atlas and Quit Atlas become Sobre o Atlas, Ajustes, Ocultar Atlas and Sair do Atlas. A line shows the command atlas config lang pt-BR."
+      labels:
+        lang_en: "English"
+        lang_pt: "Português (Brasil)"
+        no_restart: "Switches without a restart"
+        en_about: "About Atlas"
+        en_settings: "Settings…"
+        en_hide: "Hide Atlas"
+        en_quit: "Quit Atlas"
+        pt_about: "Sobre o Atlas"
+        pt_settings: "Ajustes…"
+        pt_hide: "Ocultar Atlas"
+        pt_quit: "Sair do Atlas"
+  - id: signed
+    title: "No more firewall prompt after every update"
+    body: |
+      Atlas for macOS is now signed and notarized, so the firewall stops asking you to allow incoming connections each time you update. On Linux, `atlas desktop` now installs the package for your distro instead of an AppImage.
+    art:
+      type: a27-signed-update
+      alt: "Before and after. Before, each of three updates ends with a firewall prompt asking to allow incoming connections. After, the three updates go through with no prompt, because the app is signed and notarized."
+      labels:
+        before: "Before"
+        after: "After"
+        update: "Update"
+        prompt: "Allow incoming connections?"
+        quiet: "No prompt"
+        signed: "Signed and notarized"
+also:
+  - "AI agents can no longer write outside their worktree, push to `main` or force-push."
+  - "A capture page could open any app on your Mac, and a headless Claude crewmate could run tools nobody approved. Both are fixed. Links now open only as http, https or mailto."
+  - "On Windows, a terminal's last output is no longer lost, a running stack no longer shows as stopped for an instant, and `install.ps1` works in PowerShell 5.1."
+  - "Atlas Desktop tells you when it closed unexpectedly last time, and lets you review a crash report. Nothing is uploaded on its own."
+  - "A `workspace.json` that cannot be read no longer stops Atlas Desktop from opening. The old file is kept beside it and a notice says where."
+  - "Add a crew server lists the servers from your `~/.ssh/config`, so you do not retype them."
+  - "A plain folder opens as a plain folder, not as a project that is missing its `atlas.yaml`."

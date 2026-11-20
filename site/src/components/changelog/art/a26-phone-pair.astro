@@ -1,0 +1,70 @@
+---
+// Labels: phone, server, command, computer_off, task, image, working
+// Moment: the link between phone and crew server draws, then the task card slides into the server.
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+---
+<div class="art art-a26-phone-pair" role="img" aria-label={alt}>
+	<div class="cmd"><code>{labels.command}</code></div>
+	<div class="stage">
+		<div class="node phone">
+			<div class="phone-body"><span class="notch"></span><span class="bar"></span><span class="bar short"></span><span class="bar"></span></div>
+			<span class="name">{labels.phone}</span>
+		</div>
+		<div class="link"><span class="line part-line"></span></div>
+		<div class="node server">
+			<div class="rack">
+				<span class="unit"><i class="dot"></i></span>
+				<span class="unit"><i class="dot"></i></span>
+				<div class="card part-card">
+					<strong>{labels.task}</strong>
+					<span class="chip">{labels.image}</span>
+					<span class="state"><i class="dot live"></i>{labels.working}</span>
+				</div>
+			</div>
+			<span class="name">{labels.server}</span>
+		</div>
+	</div>
+	<p class="off"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5" /><path d="M8 20h8M12 16v4M3 3l18 18" /></svg>{labels.computer_off}</p>
+</div>
+<style>
+	.art { display: grid; gap: 1.1rem; color: var(--ink); font-family: var(--font); }
+	.cmd code { display: inline-block; font-family: var(--mono); font-size: 0.9rem; padding: 0.4rem 0.7rem; background: var(--paper); border: 1px solid var(--paper-line); overflow-wrap: anywhere; }
+	.stage { display: grid; grid-template-columns: minmax(5.5rem, 8rem) minmax(1.5rem, 1fr) minmax(10rem, 14rem); align-items: center; justify-content: center; gap: 0.5rem; }
+	.node { display: grid; justify-items: center; gap: 0.5rem; }
+	.name { font-weight: 700; font-size: 0.9rem; text-align: center; }
+	.phone-body { width: 4.6rem; height: 8rem; border: 2px solid var(--ink); border-radius: 0.9rem; background: var(--paper); padding: 0.9rem 0.55rem 0.55rem; display: grid; align-content: start; gap: 0.45rem; position: relative; }
+	.notch { position: absolute; top: 0.35rem; left: 50%; width: 1.2rem; height: 0.25rem; margin-left: -0.6rem; background: var(--ink); border-radius: 1rem; }
+	.bar { height: 0.55rem; background: var(--blue); border-radius: 0.2rem; }
+	.bar.short { width: 60%; background: var(--ink-2); }
+	.link { display: flex; align-items: center; min-width: 0; }
+	.line { display: block; width: 100%; height: 0; border-top: 3px dashed var(--blue); transform-origin: left center; }
+	.rack { width: 100%; border: 2px solid var(--ink); background: var(--paper); padding: 0.55rem; display: grid; gap: 0.4rem; border-radius: var(--radius); }
+	.unit { display: flex; justify-content: flex-end; height: 0.9rem; padding: 0 0.35rem; align-items: center; background: var(--white); border: 1px solid var(--paper-line); }
+	.dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--ink-2); }
+	.dot.live { background: var(--go); border: 1px solid var(--ink); margin-right: 0.4rem; }
+	.card { display: grid; gap: 0.35rem; padding: 0.55rem 0.65rem; background: var(--white); border: 1.5px solid var(--ink); font-size: 0.85rem; }
+	.card strong { font-weight: 700; line-height: 1.25; }
+	.chip { justify-self: start; font-family: var(--mono); font-size: 0.8rem; padding: 0.1rem 0.4rem; background: var(--paper); border: 1px solid var(--paper-line); }
+	.state { display: flex; align-items: center; font-size: 0.8rem; color: var(--ink-2); }
+	.off { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: var(--ink-2); }
+	.off svg { width: 1.4rem; height: 1.4rem; flex: none; fill: none; stroke: var(--ink-2); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+	@media (max-width: 30rem) {
+		.stage { grid-template-columns: 1fr; justify-items: center; gap: 0.6rem; }
+		.link { width: 100%; justify-content: center; }
+		.line { width: 0; height: 2.2rem; border-top: 0; border-left: 3px dashed var(--blue); transform-origin: center top; }
+		.rack { min-width: 12rem; }
+	}
+	@keyframes a26pp-draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+	@keyframes a26pp-draw-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+	@keyframes a26pp-slide { from { opacity: 0; transform: translateX(-2.5rem); } to { opacity: 1; transform: none; } }
+	@keyframes a26pp-slide-y { from { opacity: 0; transform: translateY(-1.5rem); } to { opacity: 1; transform: none; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .part-line { animation: a26pp-draw 0.7s ease-out both; }
+		:global(html.js) .art.play .part-card { animation: a26pp-slide 0.6s 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+	}
+	@media (prefers-reduced-motion: no-preference) and (max-width: 30rem) {
+		:global(html.js) .art.play .part-line { animation-name: a26pp-draw-y; }
+		:global(html.js) .art.play .part-card { animation-name: a26pp-slide-y; }
+	}
+</style>

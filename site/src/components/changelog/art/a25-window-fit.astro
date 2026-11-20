@@ -1,0 +1,68 @@
+---
+// Labels: before, after, before_note, after_note, screen
+// Moment: in "after" the window shrinks from overflowing the screen to fitting above the taskbar (the resting state fits).
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+---
+<div class="art art-a25-window-fit" role="img" aria-label={alt}>
+	<p class="screen-name">{labels.screen}</p>
+	<div class="pair">
+		<figure class="panel">
+			<p class="tag"><i class="dot bad"></i>{labels.before}</p>
+			<div class="screen">
+				<div class="window over">
+					<div class="sysbar"><span class="btns"><b></b><b></b><b></b></span></div>
+					<div class="appbar"><span class="btns"><b></b><b></b><b></b></span></div>
+					<div class="content"><div class="side"></div><div class="main"><u></u><u></u><u></u></div></div>
+				</div>
+				<div class="taskbar"></div>
+			</div>
+			<figcaption>{labels.before_note}</figcaption>
+		</figure>
+		<figure class="panel">
+			<p class="tag"><i class="dot good"></i>{labels.after}</p>
+			<div class="screen">
+				<div class="window fit part">
+					<div class="appbar"><span class="btns"><b></b><b></b><b></b></span></div>
+					<div class="content"><div class="side"></div><div class="main"><u></u><u></u><u></u></div></div>
+				</div>
+				<div class="taskbar"></div>
+			</div>
+			<figcaption>{labels.after_note}</figcaption>
+		</figure>
+	</div>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.6rem; font-family: var(--font); color: var(--ink); }
+	.screen-name { margin: 0; font-family: var(--mono); font-size: 0.8rem; color: var(--ink-2); }
+	.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+	.panel { margin: 0; display: grid; gap: 0.5rem; align-content: start; }
+	.tag { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+	.dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; border: 1px solid var(--ink); flex: none; }
+	.dot.bad { background: var(--fail); }
+	.dot.good { background: var(--go); }
+	.screen { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: var(--paper); border: 2px solid var(--ink); border-radius: 0.35rem; }
+	.taskbar { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; height: 10%; background: var(--ink); }
+	.window { position: absolute; display: flex; flex-direction: column; background: var(--white); border: 1.5px solid var(--ink); transform-origin: top left; }
+	.window.over { left: 12%; top: 12%; width: 100%; height: 100%; }
+	.window.fit { left: 3%; top: 5%; width: 94%; height: 82%; }
+	.sysbar, .appbar { flex: none; height: 0.95rem; display: flex; justify-content: flex-end; align-items: center; padding: 0 0.3rem; }
+	.sysbar { background: #cfd3e6; border-bottom: 1px solid var(--ink); }
+	.appbar { background: var(--ink); }
+	.btns { display: flex; gap: 0.25rem; }
+	.btns b { width: 0.4rem; height: 0.4rem; background: var(--paper); }
+	.sysbar .btns b { background: var(--ink-2); }
+	.content { flex: 1; display: grid; grid-template-columns: 22% 1fr; min-height: 0; }
+	.side { background: var(--paper); border-right: 1px solid var(--paper-line); }
+	.main { padding: 0.4rem; display: grid; gap: 0.3rem; align-content: start; }
+	.main u { display: block; height: 0.35rem; border-radius: 2px; background: var(--paper-line); text-decoration: none; }
+	.main u:nth-child(2) { width: 70%; }
+	.main u:nth-child(3) { width: 45%; }
+	figcaption { font-size: 0.9rem; line-height: 1.35; }
+
+	@keyframes a25w-fit { from { transform: translate(8%, 8%) scale(1.2); } to { transform: none; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .fit { animation: a25w-fit 1.2s cubic-bezier(0.4, 0, 0.2, 1) 0.2s both; }
+	}
+</style>

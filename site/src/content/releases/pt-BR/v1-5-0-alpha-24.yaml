@@ -1,0 +1,72 @@
+version: "1.5.0-alpha.24"
+locale: pt-BR
+title: "Fale com seus agentes e capture a tela em qualquer app"
+intro: |
+  O Atlas agora chega até você fora da própria janela. Pressione ⌃⌥Space em qualquer app, digite uma mensagem e ela vai para o seu agente, mesmo com a janela do Atlas fechada.
+
+  A mesma versão traz atalhos para capturas de tela e gravações, deixa você abrir qualquer coisa com `atlas .` sem arquivo de configuração e torna o `atlas update` mais seguro em todo tipo de instalação.
+highlights:
+  - id: dock
+    title: "Mande uma mensagem ao agente sem sair do app"
+    body: |
+      Pressione ⌃⌥Space (muda em Configurações → Agentes → Dock de agentes) para abrir uma pílula sobre o que você estiver fazendo. Digite, aperte Enter e o texto vai para o seu agente, mesmo com o Atlas fechado. Escolha o agente no menu **Para** ou com `@`: `@api`, `@feat-login`, `@claude`. Ela nunca rouba o foco do teclado.
+    art:
+      type: a24-agent-dock
+      alt: "Uma pílula escura flutuando sobre a janela esmaecida de um app. Ela mostra o menu Para com api, um chip @api, uma mensagem curta e a tecla Enter. Abaixo, as teclas Control, Option e Space."
+      labels:
+        to: "Para"
+        mention: "@api"
+        message: "rode os testes"
+        send: "Enter"
+        hint: "Em qualquer app, pressione"
+  - id: capture
+    title: "Capturas de tela e gravações com um atalho"
+    body: |
+      ⌃⌥3 captura a tela, ⌃⌥4 uma região (tirada assim que você solta o mouse), ⌃⌥5 uma janela, ⌃⌥6 grava um mp4 e ⌃⌥7 um GIF. O arquivo vai para `~/Pictures/Atlas Captures` e para a área de transferência, e um cartão rápido oferece **Copiar**, **Salvar…**, **Anotar** e **Enviar ao agente**.
+    art:
+      type: a24-capture-keys
+      alt: "Uma tela em miniatura com um retângulo de seleção tracejado sendo desenhado, acima de cinco teclas: Control Option 3 para a tela, 4 para uma região, 5 para uma janela, 6 para gravar mp4 e 7 para gravar GIF."
+      labels:
+        k3: "Tela"
+        k4: "Região"
+        k5: "Janela"
+        k6: "Gravar mp4"
+        k7: "Gravar GIF"
+        saved: "Salvo em ~/Pictures/Atlas Captures e copiado para a área de transferência, com um cartão rápido: Copiar, Salvar…, Anotar, Enviar ao agente"
+  - id: open
+    title: "Abra qualquer coisa pelo terminal, sem configurar nada"
+    body: |
+      `atlas .`, `atlas <pasta>` e `atlas <arquivo>` abrem o item no Atlas Desktop. O `atlas.yaml` agora é opcional: o Atlas detecta os serviços a partir de `package.json`, `Cargo.toml`, `pyproject.toml` ou `go.mod`. E `atlas -- bun dev` roda qualquer comando como um serviço supervisionado, com logs, teste de porta e reinício.
+    art:
+      type: a24-open-anything
+      alt: "Um terminal com três comandos e o que cada um faz: atlas ponto abre a pasta no Atlas Desktop, atlas arquivo abre o arquivo no projeto dele, atlas traço traço bun dev roda como serviço supervisionado. Abaixo, os arquivos que o Atlas lê para detectar serviços."
+      labels:
+        o1: "Abre esta pasta no Atlas Desktop"
+        o2: "Roda bun dev como serviço supervisionado da stack desta pasta"
+        o3: "Abre o arquivo no projeto a que ele pertence"
+        detect: "Sem atlas.yaml: os serviços vêm destes arquivos"
+  - id: update
+    title: "Atualizações que funcionam em qualquer instalação"
+    body: |
+      O `atlas update` agora também atualiza pacotes do Arch, Debian/Ubuntu e Fedora/openSUSE, e confere o SHA-256 antes de pedir privilégios. Atualizar o Atlas Desktop não deixa mais você sem o app, uma rede instável não escolhe a versão errada e um build de desenvolvimento nunca é sobrescrito.
+    art:
+      type: a24-update-flow
+      alt: "Os passos de uma atualização em ordem: verificar, baixar, verificar o checksum, pedir permissão, instalar, atualizar as skills. Uma nota diz que o app antigo fica guardado até o novo estar no lugar e que pacotes do sistema também são cobertos."
+      labels:
+        s1: "Verificar atualização"
+        s2: "Baixar"
+        s3: "Verificar o checksum"
+        s4: "Pedir permissão"
+        s5: "Instalar"
+        s6: "Atualizar skills"
+        safe: "O app antigo fica guardado até o novo estar no lugar"
+        pkgs: "Pacotes do sistema também:"
+also:
+  - "O Atlas Desktop no Windows agora parece um app do Windows 11: botões próprios de minimizar, maximizar e fechar, e um instalador com a arte do Atlas."
+  - "No Windows e no Linux, os atalhos de aba seguem o Windows Terminal e o VS Code: **Ctrl+Shift+T** abre uma aba de terminal e **Ctrl+Shift+W** fecha a aba."
+  - "**Ctrl+Shift+W** (⇧⌘W no macOS) agora fecha só a aba atual, não todas as abas do painel."
+  - "Novas boas-vindas na primeira abertura: uma sequência curta desenhada no app, sem vídeo. Setas ou Enter avançam, Esc pula."
+  - "O popover da barra de menus foi refeito: uma linha de status, com os agentes que precisam de você primeiro."
+  - "O Atlas abre uma vez só no Windows e no Linux: abrir de novo traz a janela que já está aberta para a frente."
+  - "Chega de janelas de console piscando no Windows."
+  - "O ícone do Atlas na bandeja do Windows voltou a ser o ícone do Atlas, não um ponto preto."

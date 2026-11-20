@@ -10,7 +10,8 @@ export const onRequestGet: PagesFunction = async ({ request }) => {
 	try {
 		const { value, stale } = await resolveChannel("changelog", channel, loadChangelog, wantsFresh(request.url));
 		if (!value) throw new Error(`no published ${channel} release`);
-		const { entries } = renderChangelog(value.markdown);
+		// The documented shape only: the page-only pieces (summary, details, counts) are not part of the data contract.
+		const entries = renderChangelog(value.markdown).entries.map(({ version, date, id, html, kind, superseded }) => ({ version, date, id, html, kind, superseded }));
 		return Response.json({ tag: value.tag, entries }, { headers: edgeHeaders({ "access-control-allow-origin": "*" }, stale) });
 	} catch (err) {
 		return Response.json({ error: "changelog_unavailable", detail: String(err) }, { status: 502, headers: { "cache-control": "no-store" } });

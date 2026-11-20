@@ -1,0 +1,72 @@
+version: "1.5.0-alpha.24"
+locale: en
+title: "Message your agents and capture your screen from any app"
+intro: |
+  Atlas now reaches you outside its own window. Press ⌃⌥Space in any app, type a message, and it goes to your agent, even with the Atlas window closed.
+
+  The same release adds hotkeys for screenshots and recordings, lets you open anything with `atlas .` without a config file, and makes `atlas update` safer for every kind of install.
+highlights:
+  - id: dock
+    title: "Message an agent without leaving your app"
+    body: |
+      Press ⌃⌥Space (change it in Settings → Agents → Agent dock) to open a small pill above whatever you are doing. Type, press Enter, and the text goes to your agent, even with the Atlas window closed. Pick the agent from the **To** menu or with an `@mention`: `@api`, `@feat-login`, `@claude`. It never takes your keyboard focus.
+    art:
+      type: a24-agent-dock
+      alt: "A floating dark pill over a faded app window. It shows the To menu set to api, an @api mention chip, a short message and an Enter key. Below it, the keys Control, Option and Space."
+      labels:
+        to: "To"
+        mention: "@api"
+        message: "run the tests"
+        send: "Enter"
+        hint: "From any app, press"
+  - id: capture
+    title: "Screenshots and recordings from one hotkey"
+    body: |
+      ⌃⌥3 captures the screen, ⌃⌥4 a region (taken the moment you release the mouse), ⌃⌥5 a window, ⌃⌥6 records an mp4 and ⌃⌥7 a GIF. The file lands in `~/Pictures/Atlas Captures` and on your clipboard, and a quick card offers **Copy**, **Save As**, **Annotate** and **Send to agent**.
+    art:
+      type: a24-capture-keys
+      alt: "A mini screen with a dashed selection rectangle being drawn, above five keycaps: Control Option 3 for screen, 4 for region, 5 for window, 6 to record an mp4 and 7 to record a GIF."
+      labels:
+        k3: "Screen"
+        k4: "Region"
+        k5: "Window"
+        k6: "Record mp4"
+        k7: "Record GIF"
+        saved: "Saved to ~/Pictures/Atlas Captures and copied to your clipboard, with a quick card: Copy, Save As, Annotate, Send to agent"
+  - id: open
+    title: "Open anything from the terminal, no setup"
+    body: |
+      `atlas .`, `atlas <folder>` and `atlas <file>` open it in Atlas Desktop. `atlas.yaml` is now optional: Atlas detects services from `package.json`, `Cargo.toml`, `pyproject.toml` or `go.mod`. And `atlas -- bun dev` runs any command as a supervised service, with logs, a port check and restarts.
+    art:
+      type: a24-open-anything
+      alt: "A terminal with three commands and what each does: atlas dot opens the folder in Atlas Desktop, atlas file opens the file in its project, atlas dash dash bun dev runs it as a supervised service. Below, the files Atlas reads to detect services."
+      labels:
+        o1: "Opens this folder in Atlas Desktop"
+        o2: "Runs bun dev as a supervised service of this folder's stack"
+        o3: "Opens the file in its project"
+        detect: "No atlas.yaml needed: services come from these files"
+  - id: update
+    title: "Updates that work for every install"
+    body: |
+      `atlas update` now updates Arch, Debian/Ubuntu and Fedora/openSUSE packages too, and checks the SHA-256 before asking for privileges. Updating Atlas Desktop can no longer leave you without the app, a flaky network cannot pick the wrong release, and a dev build is never overwritten.
+    art:
+      type: a24-update-flow
+      alt: "The steps of an update in order: check, download, verify the checksum, ask permission, install, refresh skills. A note says the old app stays until the new one is in place, and that system packages are covered too."
+      labels:
+        s1: "Check for the update"
+        s2: "Download"
+        s3: "Verify the checksum"
+        s4: "Ask permission"
+        s5: "Install"
+        s6: "Refresh skills"
+        safe: "The old app stays until the new one is in place"
+        pkgs: "System packages too:"
+also:
+  - "Atlas Desktop on Windows now looks like a Windows 11 app: its own minimize, maximize and close buttons, and an installer with Atlas artwork."
+  - "On Windows and Linux, tab shortcuts follow Windows Terminal and VS Code: **Ctrl+Shift+T** opens a terminal tab and **Ctrl+Shift+W** closes the tab."
+  - "**Ctrl+Shift+W** (⇧⌘W on macOS) now closes the current tab only, not every tab in the pane."
+  - "A new first-run welcome: a short deck drawn in the app instead of a video. Arrow keys or Enter move on, Esc skips."
+  - "The menu-bar popover is rebuilt: one status line, with the agents that need you first."
+  - "Atlas runs once on Windows and Linux: opening it again brings the open window forward."
+  - "No more console windows flashing on Windows."
+  - "The Windows tray icon is the Atlas icon again, not a black dot."

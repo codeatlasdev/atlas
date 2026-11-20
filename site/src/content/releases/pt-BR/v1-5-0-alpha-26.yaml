@@ -1,0 +1,102 @@
+version: "1.5.0-alpha.26"
+locale: pt-BR
+title: "Rode o crew pelo celular, com todos os computadores desligados"
+intro: |
+  O Atlas Crew agora funciona só com o celular. Rode `atlas crew pair user@server` e o celular pareia direto com o crew server: seus agentes continuam trabalhando e você continua respondendo a eles, com o notebook fechado.
+
+  Esta versão também faz o trabalho de UI mostrar provas, dá a cada crewmate o próprio usuário Linux e um limite de memória, e deixa a instalação de um crew server mais segura. **Um passo para você: rode `atlas crew install` de novo em cada crew server** para ligar o isolamento. O Atlas Desktop no Linux passou por uma revisão de primeiro uso, e uma versão que não abre em uma distro agora é barrada antes de sair.
+highlights:
+  - id: phone
+    title: "Rode o crew inteiro pelo celular"
+    body: |
+      Rode `atlas crew pair user@server`, leia o QR code e o celular fala direto com o crew server. Envie tarefas com fotos, responda a aprovações e a perguntas do agente, entre na conta de um engine, pause ou cancele. Abra um terminal novo por lá. Em um computador com Atlas, o celular também revisa mudanças, faz commit e push.
+    art:
+      type: a26-phone-pair
+      alt: "Um celular ligado por uma linha a um crew server, com um card de tarefa e uma captura de tela chegando ao servidor, enquanto o seu computador fica desligado."
+      caption: "O celular pareia com o próprio crew server."
+      labels:
+        phone: "Seu celular"
+        server: "Crew server"
+        command: "atlas crew pair user@server"
+        computer_off: "Seu computador pode ficar desligado"
+        task: "Aumente o botão"
+        image: "captura.png"
+        working: "Em andamento"
+  - id: ui-proof
+    title: "Trabalho de UI volta com provas"
+    body: |
+      Uma tarefa de UI só termina como feita quando o crewmate anexa as próprias capturas: WebKit e Chromium, várias larguras, tema claro e escuro. O Atlas também procura sobreposições e identificadores crus na página. Uma barreira recusa trabalho que apaga assertions, adiciona skips ou afrouxa limites, e a tarefa para em um card em que você decide.
+    art:
+      type: a26-ui-proof
+      alt: "Oito miniaturas de captura, dois engines de navegador em largura de celular e de desktop, nos temas claro e escuro, cada uma com um visto, e um card de recusa mostrando uma linha de assertion removida."
+      labels:
+        heading: "Capturas anexadas pelo crewmate"
+        webkit: "WebKit"
+        chromium: "Chromium"
+        phone: "390 px"
+        desktop: "1440 px"
+        light: "claro"
+        dark: "escuro"
+        refused: "Recusado"
+        reason: "Assertion removida"
+        removed_line: "- assert_eq!(total, 3);"
+  - id: isolation
+    title: "Um agente fora de controle não derruba os outros"
+    body: |
+      Cada crewmate agora roda com o próprio usuário Linux e não lê os logins, os segredos nem os arquivos de outro. Cada um também tem um limite de memória. Quando um agente passa dele, o kernel para só aquele agente, e a tarefa falha com um aviso para aumentar `agent_memory_max`. Rode `atlas crew install` de novo para ligar isso.
+    art:
+      type: a26-isolation
+      alt: "Um crew server com quatro caixas de crewmates. Uma delas enche a barra de memória até o limite e é parada, enquanto as outras três continuam rodando."
+      caption: "Só o agente que passou do limite é parado."
+      labels:
+        server: "Crew server"
+        user: "Um usuário Linux por crewmate"
+        crewmate1: "Crewmate 1"
+        crewmate2: "Crewmate 2"
+        crewmate3: "Crewmate 3"
+        crewmate4: "Crewmate 4"
+        cap: "Limite de memória por agente"
+        running: "Rodando"
+        stopped: "Parado: passou do limite de memória"
+        note: "O servidor e os outros crewmates continuam trabalhando."
+  - id: install
+    title: "A instalação de um crew server confirma que deu certo"
+    body: |
+      O `atlas crew install` agora verifica o systemd e cada ferramenta necessária antes de mudar qualquer coisa, e lista tudo o que falta. Depois de instalar, espera até 60 s o servidor responder. Se a versão nova não subir, a antiga volta. Funciona atrás de proxy, offline, com senha de sudo e em outra porta SSH.
+    art:
+      type: a26-install-checks
+      alt: "Um terminal rodando o comando de instalação com quatro verificações marcadas: pré-verificação, download, versão antiga guardada e servidor respondendo. Abaixo, um aviso de que a versão antiga volta se o servidor não responder."
+      labels:
+        command: "atlas crew install user@server"
+        preflight: "Verifica o systemd e cada ferramenta, antes de mudar qualquer coisa"
+        download: "Baixa o release, pelo seu computador se o servidor estiver offline"
+        backup: "Guarda a versão antiga para poder voltar"
+        answers: "Espera o servidor responder"
+        rollback: "Se ele não responder, a versão antiga volta."
+  - id: linux
+    title: "Os pacotes Linux são abertos antes de cada release"
+    body: |
+      No Linux, o Atlas Desktop agora tem uma só linha de título e os links funcionam. O pacote do Arch inicia. Antes de cada release, todo pacote Linux é instalado e aberto em containers de Arch, Fedora, Ubuntu e Debian. Uma versão ruim sai de circulação sem release novo: o Atlas para de oferecê-la e avisa quem a usa o que a substitui.
+    art:
+      type: a26-distros
+      alt: "Quatro blocos para Arch, Fedora, Ubuntu e Debian, cada um com um visto de que abre, e abaixo deles uma versão marcada como retirada apontando para a versão segura mais recente."
+      labels:
+        heading: "Instalado e aberto antes de um release"
+        arch: "Arch"
+        fedora: "Fedora"
+        ubuntu: "Ubuntu"
+        debian: "Debian"
+        opens: "Abre"
+        file: "data/yanked.json"
+        bad: "X.Y.Z"
+        withdrawn: "Retirada"
+        safe: "Versão segura mais recente"
+also:
+  - "O Atlas Mobile envia um push quando um agente no seu Mac termina ou precisa de você, mesmo com a janela do Atlas fechada."
+  - "Cada celular agora pareia com o próprio nome, e Configurações → Mobile distingue seus celulares, com Renomear, Atividade e Desparear."
+  - "Toasts, erros e o card de primeiros passos dividem um só canto inferior direito, em vez de se empilhar."
+  - "`atlas doctor --bundle` gera um relatório de diagnóstico com distro, sessão, GPU e crashes, e funciona mesmo quando o app não abre."
+  - "`atlas run --cache` compartilha o resultado das tarefas entre todas as worktrees, e a gaveta Máquina mostra o que ele economizou."
+  - "No celular, o audit log e o uso de um crewmate ficam a um toque, e as permissões são pedidas só quando você precisa."
+  - "`atlas uninstall` não apaga mais suas configurações, projetos e worktrees, e um pacote instalado se atualiza pelo app, com o comando exato na tela."
+  - "`atlas deploy` não manda mais um commit antigo por cima da produção sem querer, e um `settings.json` danificado não apaga mais suas configurações."

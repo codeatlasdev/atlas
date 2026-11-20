@@ -1,6 +1,7 @@
 import { defineCollection } from "astro:content";
 import { z } from "astro/zod";
 import { glob } from "astro/loaders";
+import { storySchema } from "./lib/story";
 import { ISSUE_URL, MACHINE, PENDING, SOURCE_FILE, SOURCE_SHA } from "./lib/doc-translation";
 
 // Single source of truth: the repository's docs/*.md. Nothing is copied; the
@@ -28,4 +29,11 @@ const docsPtBr = defineCollection({
 		.strict(),
 });
 
-export const collections = { docs, docsPtBr };
+// Hand-written release stories: src/content/releases/<locale>/<id>.yaml, one per version per language (see src/lib/story.ts for the shape
+// and docs/site.md for how to write one). The glob loader's entry id is `<locale>/<id>`.
+const releases = defineCollection({
+	loader: glob({ pattern: "{en,pt-BR}/*.yaml", base: "./src/content/releases" }),
+	schema: storySchema,
+});
+
+export const collections = { docs, docsPtBr, releases };

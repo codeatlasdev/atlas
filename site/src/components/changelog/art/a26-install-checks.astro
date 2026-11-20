@@ -1,0 +1,42 @@
+---
+// Labels: command, preflight, download, backup, answers, rollback
+// Moment: the four checks tick in one after another, the last one being "the server answers".
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const steps = [labels.preflight, labels.download, labels.backup, labels.answers];
+---
+<div class="art art-a26-install-checks" role="img" aria-label={alt}>
+	<div class="term">
+		<p class="cmd"><span class="prompt">$</span> <code>{labels.command}</code></p>
+		<ol>
+			{steps.map((s, i) => (
+				<li class:list={{ last: i === steps.length - 1 }}>
+					<svg class="tick" style={`--i:${i}`} viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" /><path d="M6.5 12.5l3.8 3.8 7.2-8" /></svg>
+					<span>{s}</span>
+				</li>
+			))}
+		</ol>
+	</div>
+	<p class="rollback">
+		<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 4v5h5" /></svg>
+		<span>{labels.rollback}</span>
+	</p>
+</div>
+<style>
+	.art { display: grid; gap: 0.9rem; color: var(--ink); font-family: var(--font); }
+	.term { border: 1.5px solid var(--ink); background: var(--paper); padding: 0.8rem 0.9rem; display: grid; gap: 0.7rem; }
+	.cmd { margin: 0; font-family: var(--mono); font-size: 0.9rem; overflow-wrap: anywhere; }
+	.prompt { color: var(--ink-2); }
+	ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+	li { display: flex; align-items: flex-start; gap: 0.65rem; font-size: 0.95rem; line-height: 1.3; }
+	li.last { font-weight: 700; }
+	.tick { flex: none; width: 1.3rem; height: 1.3rem; margin-top: 0.05rem; }
+	.tick circle { fill: var(--go); stroke: var(--ink); stroke-width: 1.5; }
+	.tick path { fill: none; stroke: var(--ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+	.rollback { margin: 0; display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.6rem 0.8rem; border: 1.5px dashed var(--ink-2); font-size: 0.9rem; color: var(--ink-2); line-height: 1.3; }
+	.rollback svg { flex: none; width: 1.3rem; height: 1.3rem; fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	@keyframes a26ic-tick { from { opacity: 0; transform: scale(0.2); } to { opacity: 1; transform: none; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .tick { animation: a26ic-tick 0.28s calc(var(--i) * 0.3s) cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+	}
+</style>

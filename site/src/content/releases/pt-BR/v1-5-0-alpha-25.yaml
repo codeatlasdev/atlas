@@ -1,0 +1,82 @@
+version: "1.5.0-alpha.25"
+locale: pt-BR
+title: "O Atlas agora instala e roda direito no Windows"
+intro: |
+  O Atlas Desktop no Windows agora instala com um clique. Execute o `Atlas-Setup.exe` e o Atlas abre numa janela que cabe na sua tela e responde desde o primeiro clique.
+
+  Atualizar por cima de uma versão antiga também conserta o que ela deixou para trás, e uma pasta sem `atlas.yaml` finalmente mostra o que o Atlas encontrou.
+highlights:
+  - id: installer
+    title: "Instale o Atlas no Windows com um clique"
+    body: |
+      Execute o `Atlas-Setup.exe` e uma janela do Atlas instala o app e o abre, sem administrador e sem WebView2. Ao remover, ele pergunta se você quer manter seus dados e diz o que seria apagado. Sem assinatura de código por enquanto: se o Windows avisar "O Windows protegeu o computador", clique em **Mais informações** e depois em **Executar assim mesmo**.
+    art:
+      type: a25-installer
+      alt: "Esboço do instalador do Atlas: uma janela pequena e escura com o globo do Atlas, uma barra de progresso que enche e uma linha de status, com avisos de que não precisa de administrador nem de WebView2."
+      caption: "O instalador é uma janela pequena: uma barra de progresso e uma linha de status."
+      labels:
+        window: "Atlas-Setup.exe"
+        installing: "Instalando o Atlas…"
+        opening: "Abrindo o Atlas…"
+        noadmin: "Sem administrador"
+        nowebview: "Sem precisar de WebView2"
+  - id: window
+    title: "O app funciona desde o primeiro clique"
+    body: |
+      Antes, o Atlas podia abrir maior que telas pequenas, mostrar duas barras de título e travar logo depois de abrir. Agora a janela cabe na tela (abre maximizada quando não caberia, como num notebook 1366×768), botões, Configurações e diálogos respondem, há uma só barra de título e o ícone da bandeja funciona.
+    art:
+      type: a25-window-fit
+      alt: "Duas telas pequenas lado a lado. Antes: a janela passa da borda da tela e tem duas barras de título. Depois: a janela cabe acima da barra de tarefas, com uma só barra de título."
+      labels:
+        before: "Antes"
+        after: "Depois"
+        before_note: "Abre além da borda da tela, com duas barras de título"
+        after_note: "Cabe na tela, com uma só barra de título"
+        screen: "Tela de notebook 1366×768"
+  - id: repair
+    title: "Atualizar conserta o que versões antigas deixaram"
+    body: |
+      Se você usou um build do Windows da 1.5.0-alpha.21 até a alpha.24, instalar ou atualizar agora arruma o que ele deixou: um comando `atlas` desatualizado, um host de terminal antigo, uma posição de janela fora da tela e arquivos temporários. Seus projetos, configurações e worktrees nunca são tocados.
+    art:
+      type: a25-repair
+      alt: "Uma lista de cinco consertos feitos ao instalar ou atualizar, cada um com um visto verde, acima de uma faixa tracejada que diz que seus projetos, configurações e worktrees nunca são tocados."
+      labels:
+        title: "Consertado ao instalar ou atualizar"
+        r1: "Comando atlas antigo atualizado"
+        r2: "Host de terminal antigo reiniciado, se nenhum terminal estiver aberto"
+        r3: "Posição de janela salva fora da tela descartada"
+        r4: "Boas-vindas marcadas como concluídas se você já tem projetos"
+        r5: "Arquivos temporários e trava de atualização antigos removidos"
+        never: "Nunca tocados"
+        n1: "Seus projetos"
+        n2: "Suas configurações"
+        n3: "Suas worktrees"
+  - id: detect
+    title: "Abra qualquer pasta e veja o que o Atlas encontrou"
+    body: |
+      Uma pasta sem `atlas.yaml` só mostrava que não havia nada para executar. Agora o painel diz qual stack o Atlas detectou (Node, Rust, Go, Python, Django ou FastAPI) e oferece **Configurar serviços**. Ao adicionar uma pasta, você também vê o que foi encontrado.
+    art:
+      type: a25-detect
+      alt: "Painéis de antes e depois para uma pasta sem atlas.yaml. Antes: a mensagem de que não há nada para executar. Depois: as stacks detectadas Node, Rust, Go, Python, Django e FastAPI e um botão Configurar serviços."
+      labels:
+        before: "Antes"
+        after: "Depois"
+        folder: "sem atlas.yaml"
+        nothing: "Nada para executar"
+        found: "O Atlas encontrou:"
+        c1: "Node"
+        c2: "Rust"
+        c3: "Go"
+        c4: "Python"
+        c5: "Django"
+        c6: "FastAPI"
+        button: "Configurar serviços"
+also:
+  - "O `atlas update` volta a atualizar o Atlas Desktop no Windows. Antes ele falhava enquanto o app, o host de terminal ou o `atlas.exe` estavam abertos."
+  - "Instalar só o Atlas Desktop no Windows agora também coloca o comando `atlas` no PATH, e `atlas .` funciona num terminal novo."
+  - "O Atlas Desktop no Windows não fecha mais logo ao abrir com um erro do WebView2 (isso afetava a 1.5.0-alpha.24)."
+  - "Quando o app trava, ele grava um relatório legível com o backtrace, e o resumo de diagnóstico mostra o conteúdo. No Windows o arquivo antes ficava ilegível."
+  - "As boas-vindas não voltam depois que você adiciona a primeira pasta, e pular a etapa deixa **Encontrar meus projetos** e **Adicionar uma pasta…** na tela."
+  - "Projetos npm sem `package-lock.json` agora iniciam: sem lockfile, o Atlas roda `npm install`."
+  - "Windows e Linux não mostram mais configurações e textos só do macOS: sem opções de Captura, e dicas com Ctrl/Alt e \"barra de tarefas\" no lugar de ⌘/⌥ e \"Dock\"."
+  - "No Windows e no Linux o dock de agentes vem desativado, então ele não fica mais sobre a barra de tarefas. Ative com Ctrl+Alt+D ou em Configurações → Agentes → Dock de agentes."

@@ -1,0 +1,67 @@
+---
+// Labels: heading, webkit, chromium, phone, desktop, light, dark, refused, reason, removed_line
+// Moment: the check marks on the eight captures tick in one after another.
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const engines = [labels.webkit, labels.chromium];
+const cells = [
+	{ w: labels.phone, t: labels.light, narrow: true, dark: false },
+	{ w: labels.phone, t: labels.dark, narrow: true, dark: true },
+	{ w: labels.desktop, t: labels.light, narrow: false, dark: false },
+	{ w: labels.desktop, t: labels.dark, narrow: false, dark: true },
+];
+---
+<div class="art art-a26-ui-proof" role="img" aria-label={alt}>
+	<p class="heading">{labels.heading}</p>
+	<div class="engines">
+		{engines.map((engine, e) => (
+			<section class="engine">
+				<h4>{engine}</h4>
+				<div class="row">
+					{cells.map((c, i) => (
+						<figure class="cell">
+							<div class:list={["shot", { narrow: c.narrow, dark: c.dark }]}>
+								<span class="l a"></span><span class="l b"></span><span class="l c"></span>
+								<svg class="tick" style={`--i:${e * 4 + i}`} viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" /><path d="M6.5 12.5l3.8 3.8 7.2-8" /></svg>
+							</div>
+							<figcaption>{c.w}<br />{c.t}</figcaption>
+						</figure>
+					))}
+				</div>
+			</section>
+		))}
+	</div>
+	<div class="refused">
+		<p class="head"><i class="dot"></i><strong>{labels.refused}</strong><span>{labels.reason}</span></p>
+		<code class="diff">{labels.removed_line}</code>
+	</div>
+</div>
+<style>
+	.art { display: grid; gap: 1.1rem; color: var(--ink); font-family: var(--font); }
+	.heading { margin: 0; font-weight: 700; font-size: 0.95rem; }
+	.engines { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+	.engine h4 { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 700; }
+	.row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; align-items: end; }
+	.cell { margin: 0; display: grid; gap: 0.3rem; justify-items: center; }
+	figcaption { font-size: 0.8rem; line-height: 1.2; text-align: center; color: var(--ink-2); overflow-wrap: anywhere; }
+	.shot { position: relative; width: 100%; aspect-ratio: 4 / 3; border: 1.5px solid var(--ink); background: var(--paper); padding: 0.3rem; display: grid; align-content: start; gap: 0.2rem; }
+	.shot.narrow { width: 58%; aspect-ratio: 9 / 16; }
+	.shot.dark { background: var(--ink); }
+	.l { display: block; height: 0.28rem; background: var(--blue); }
+	.l.b { width: 70%; background: var(--ink-2); }
+	.l.c { width: 45%; background: var(--ink-2); }
+	.shot.dark .l { background: var(--port); }
+	.shot.dark .l.b, .shot.dark .l.c { background: var(--paper-line); }
+	.tick { position: absolute; right: -0.35rem; bottom: -0.35rem; width: 1.1rem; height: 1.1rem; }
+	.tick circle { fill: var(--go); stroke: var(--ink); stroke-width: 1.5; }
+	.tick path { fill: none; stroke: var(--ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+	.refused { border: 1.5px solid var(--ink); border-left: 0.45rem solid var(--fail); padding: 0.6rem 0.8rem; display: grid; gap: 0.45rem; background: var(--white); }
+	.head { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+	.head span { color: var(--ink-2); }
+	.dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--fail); border: 1px solid var(--ink); }
+	.diff { display: block; font-family: var(--mono); font-size: 0.85rem; padding: 0.35rem 0.5rem; background: var(--paper); border-left: 3px solid var(--fail); overflow-wrap: anywhere; }
+	@keyframes a26up-tick { from { opacity: 0; transform: scale(0.2); } to { opacity: 1; transform: none; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .tick { animation: a26up-tick 0.25s calc(var(--i) * 0.1s) cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+	}
+</style>

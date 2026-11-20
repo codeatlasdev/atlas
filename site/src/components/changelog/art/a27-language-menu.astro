@@ -1,0 +1,59 @@
+---
+// Labels: lang_en, lang_pt, no_restart, en_about, en_settings, en_hide, en_quit, pt_about, pt_settings, pt_hide, pt_quit
+// Moment: the Portuguese menu starts in English and each line swaps to Portuguese, top to bottom.
+interface Props { labels: Record<string, string>; alt: string }
+const { labels, alt } = Astro.props;
+const rows = ["about", "settings", "hide", "quit"] as const;
+---
+<div class="art art-a27-language-menu" role="img" aria-label={alt}>
+	<div class="menus">
+		<section class="menu-wrap">
+			<h4>{labels.lang_en}</h4>
+			<ul class="menu">
+				<li class="title"><b>Atlas</b></li>
+				{rows.map((r) => <li class:list={["item", { sep: r === "hide" }]}><span>{labels[`en_${r}`]}</span></li>)}
+			</ul>
+		</section>
+		<svg class="swap" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"></path></svg>
+		<section class="menu-wrap">
+			<h4>{labels.lang_pt}</h4>
+			<ul class="menu">
+				<li class="title"><b>Atlas</b></li>
+				{rows.map((r, i) => (
+					<li class:list={["item", { sep: r === "hide" }]} style={`--i:${i}`}>
+						<span class="pt part">{labels[`pt_${r}`]}</span>
+						<span class="en part" aria-hidden="true">{labels[`en_${r}`]}</span>
+					</li>
+				))}
+			</ul>
+		</section>
+	</div>
+	<div class="foot">
+		<code>atlas config lang pt-BR</code>
+		<span>{labels.no_restart}</span>
+	</div>
+</div>
+
+<style>
+	.art { display: grid; gap: 0.9rem; font-family: var(--font); color: var(--ink); }
+	.menus { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.9rem; }
+	.menu-wrap { flex: 1 1 12rem; max-width: 16rem; display: grid; gap: 0.4rem; }
+	h4 { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+	.swap { flex: none; color: var(--ink-2); }
+	.menu { list-style: none; margin: 0; padding: 0.35rem; border: 1.5px solid var(--ink); border-radius: 0.6rem; background: var(--paper); box-shadow: 0.25rem 0.25rem 0 var(--ink); }
+	.title { padding: 0.3rem 0.6rem 0.4rem; font-size: 0.95rem; border-bottom: 1px solid var(--paper-line); margin-bottom: 0.25rem; }
+	.item { position: relative; padding: 0.3rem 0.6rem; font-size: 0.9rem; border-radius: 0.3rem; }
+	.item.sep { margin-top: 0.3rem; }
+	.item.sep::before { content: ""; position: absolute; left: 0.6rem; right: 0.6rem; top: -0.2rem; border-top: 1px solid var(--paper-line); }
+	.item span { display: block; }
+	.item .en { position: absolute; left: 0.6rem; top: 0.3rem; opacity: 0; }
+	.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.8rem; font-size: 0.9rem; color: var(--ink-2); }
+	code { font-family: var(--mono); font-size: 0.85rem; color: var(--ink); background: var(--paper); border: 1px solid var(--paper-line); border-radius: 3px; padding: 0.1rem 0.4rem; }
+
+	@keyframes show { from { opacity: 0; } }
+	@keyframes hide { from { opacity: 1; } to { opacity: 0; } }
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .art.play .pt { animation: show 0.35s ease-out both; animation-delay: calc(0.3s + var(--i) * 0.25s); }
+		:global(html.js) .art.play .en { animation: hide 0.35s ease-out both; animation-delay: calc(0.3s + var(--i) * 0.25s); }
+	}
+</style>

@@ -1,0 +1,102 @@
+version: "1.5.0-alpha.26"
+locale: en
+title: "Run your crew from your phone, with every computer off"
+intro: |
+  Atlas Crew now works from your phone alone. Run `atlas crew pair user@server` and the phone pairs straight to your crew server, so your agents keep working and you keep answering them while your laptop is closed.
+
+  This release also makes UI work show proof, gives every crewmate its own Linux user and memory cap, and makes installing a crew server safer. **One step for you: re-run `atlas crew install` on every crew server** to turn the isolation on. Atlas Desktop on Linux got a first-user pass, and a release that does not open on a distro is now stopped before it ships.
+highlights:
+  - id: phone
+    title: "Run the whole crew from your phone"
+    body: |
+      Run `atlas crew pair user@server`, scan the QR code, and the phone talks to the crew server directly. Send a task with photos, answer an approval or an agent's question, sign an engine in, pause or cancel. Open a new terminal there too. On a computer running Atlas, the phone can also review changes, commit and push.
+    art:
+      type: a26-phone-pair
+      alt: "A phone linked by a drawn line to a crew server, with a task card carrying a screenshot arriving on the server while your own computer stays off."
+      caption: "The phone pairs with the crew server itself."
+      labels:
+        phone: "Your phone"
+        server: "Crew server"
+        command: "atlas crew pair user@server"
+        computer_off: "Your computer can be off"
+        task: "Make the button bigger"
+        image: "screenshot.png"
+        working: "Working on it"
+  - id: ui-proof
+    title: "UI work comes back with proof"
+    body: |
+      A UI task only ends as done when the crewmate attaches its own captures: WebKit and Chromium, several widths, light and dark. Atlas also checks each page for overlaps and raw identifiers. A guard refuses work that deletes assertions, adds skips or loosens thresholds, and parks the task on a card where you choose **Override** or **Retry with these reasons**.
+    art:
+      type: a26-ui-proof
+      alt: "Eight capture thumbnails, two engines at phone and desktop width in light and dark, each with a check mark, and a refused card showing a removed assertion line."
+      labels:
+        heading: "Captures the crewmate attached"
+        webkit: "WebKit"
+        chromium: "Chromium"
+        phone: "390 px"
+        desktop: "1440 px"
+        light: "light"
+        dark: "dark"
+        refused: "Refused"
+        reason: "Removed assertion"
+        removed_line: "- assert_eq!(total, 3);"
+  - id: isolation
+    title: "One runaway agent no longer takes the others down"
+    body: |
+      Every crewmate now runs as its own Linux user, so one cannot read another's sign-ins, secrets or files. Each also gets a memory cap. When an agent goes past it, the kernel stops that agent alone and its task fails with a message to raise `agent_memory_max`. Re-run `atlas crew install` to turn this on.
+    art:
+      type: a26-isolation
+      alt: "A crew server holding four crewmate boxes. One box fills its memory bar to the cap and is stopped, while the other three keep running."
+      caption: "Only the agent over its cap is stopped."
+      labels:
+        server: "Crew server"
+        user: "One Linux user per crewmate"
+        crewmate1: "Crewmate 1"
+        crewmate2: "Crewmate 2"
+        crewmate3: "Crewmate 3"
+        crewmate4: "Crewmate 4"
+        cap: "Memory cap per agent"
+        running: "Running"
+        stopped: "Stopped: over its memory cap"
+        note: "The server and the other crewmates keep working."
+  - id: install
+    title: "A crew server install tells you if it worked"
+    body: |
+      `atlas crew install` now checks systemd and every tool it needs before changing anything, and lists what is missing. It then waits up to 60 s for the server to answer, and puts the old version back if the new one does not come up. It works behind a proxy, offline, with a sudo password and on another SSH port.
+    art:
+      type: a26-install-checks
+      alt: "A terminal running the install command with four checks ticked: preflight, download, old version kept, server answers. Below, a note that the old version comes back if the server does not answer."
+      labels:
+        command: "atlas crew install user@server"
+        preflight: "Checks systemd and every tool, before changing anything"
+        download: "Gets the release, through your machine if the server is offline"
+        backup: "Keeps the old version as a rollback"
+        answers: "Waits for the server to answer"
+        rollback: "If it does not answer, the old version comes back."
+  - id: linux
+    title: "Linux packages are opened before a release ships"
+    body: |
+      Atlas Desktop on Linux now has one title row and no menu bar, and links work. The Arch package starts. Before each release, every Linux package is installed and opened in Arch, Fedora, Ubuntu and Debian containers. A bad release can be withdrawn without a new one: Atlas stops offering it and tells people on it what replaces it.
+    art:
+      type: a26-distros
+      alt: "Four tiles for Arch, Fedora, Ubuntu and Debian, each with an opens check, and below them a release marked withdrawn pointing to the newest safe release."
+      labels:
+        heading: "Installed and opened before a release"
+        arch: "Arch"
+        fedora: "Fedora"
+        ubuntu: "Ubuntu"
+        debian: "Debian"
+        opens: "Opens"
+        file: "data/yanked.json"
+        bad: "X.Y.Z"
+        withdrawn: "Withdrawn"
+        safe: "Newest safe release"
+also:
+  - "Atlas Mobile sends a push when an agent on your Mac finishes or needs you, even with the Atlas window closed."
+  - "A phone now pairs under its own name, and Settings → Mobile tells your phones apart, with Rename, Activity and Unpair."
+  - "Toasts, errors and the Getting started card share one bottom-right corner instead of piling up."
+  - "`atlas doctor --bundle` writes one diagnostics report with distro, session, GPU and crashes, and works when the app does not open."
+  - "`atlas run --cache` shares task results between every worktree, and the Machine drawer shows what it saved."
+  - "On the phone, a crewmate's audit log and usage are one tap away, and permissions are asked when you need them, not at launch."
+  - "`atlas uninstall` no longer deletes your settings, projects and worktrees, and a package install updates from the app with the exact command shown."
+  - "`atlas deploy` refuses to ship an older commit over production by accident, and a damaged `settings.json` is saved aside instead of wiping your settings."

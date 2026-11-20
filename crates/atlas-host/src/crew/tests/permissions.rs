@@ -1192,3 +1192,57 @@ async fn permission_mode_fixtures_are_real_payloads() {
 fn settings_with(s: &Value) -> Value {
     json!({"default_approval": s["default_approval"], "allow_bypass": s["allow_bypass"]})
 }
+
+// ── the launch of a terminal agent (no engine) ──────────────────────────────
+
+// #642: a terminal claude crewmate used to start with no permission flag at all in ask/edits, so a `defaultMode`
+// of bypass in the user's own settings could widen it behind hostd's back. These are the arguments the PTY runner
+// really starts each agent with (`runner::launch_argv`, what `run_one_pty` calls).
+#[test]
+fn a_terminal_claude_is_launched_in_ask_mode_said_explicitly_in_every_mode() {
+    use crate::crew::store::{Mode, Task};
+    let claude = atlas_core::agents::get("claude").unwrap();
+    for mode in [Mode::Ask, Mode::Edits, Mode::Bypass] {
+        let argv = crate::crew::runner::launch_argv(claude, mode, &Task::new("test", "p"), "do it");
+        assert_eq!(
+            argv,
+            ["claude", "--permission-mode", "default", "do it"],
+            "{mode:?}: ask mode, explicit, no bypass flag, the prompt last"
+        );
+    }
+    // omp has no flag to name (its extension asks hostd), and still never its bypass flag.
+    let omp = atlas_core::agents::get("omp").unwrap();
+    for mode in [Mode::Ask, Mode::Bypass] {
+        let argv = crate::crew::runner::launch_argv(omp, mode, &Task::new("test", "p"), "go");
+        assert!(
+            !argv.iter().any(|a| a == "--auto-approve"),
+            "{mode:?}: {argv:?}"
+        );
+    }
+}
+
+#[test]
+fn an_agent_that_cannot_ask_gets_its_bypass_flag_only_in_bypass_for_a_task_that_is_not_a_strangers()
+{
+    use crate::crew::store::{Mode, Task};
+    let codex = atlas_core::agents::get("codex").unwrap();
+    let argv = |mode, no_auto: bool| {
+        let mut t = Task::new("test", "p");
+        t.no_auto = no_auto;
+        crate::crew::runner::launch_argv(codex, mode, &t, "go")
+    };
+    assert!(
+        argv(Mode::Bypass, false)
+            .contains(&"--dangerously-bypass-approvals-and-sandbox".to_string())
+    );
+    assert!(
+        !argv(Mode::Bypass, true)
+            .iter()
+            .any(|a| a.starts_with("--dangerously"))
+    );
+    assert!(
+        !argv(Mode::Ask, false)
+            .iter()
+            .any(|a| a.starts_with("--dangerously"))
+    );
+}

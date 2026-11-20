@@ -24,6 +24,9 @@ pub struct AgentDef {
     /// The name `atlas setup <name>` takes: it installs the hooks that report this agent's state.
     pub setup: String,
     pub yolo_args: Vec<String>,
+    /// Passed when the agent is NOT launched with `yolo_args`: its ask mode said explicitly, so a user's own
+    /// settings cannot make it bypass permissions on its own (`claude --permission-mode default`).
+    pub ask_args: Vec<String>,
     /// Resume argv; `{session}` is replaced by the session id (or file, for omp).
     pub resume: Vec<String>,
     /// The flag that carries the initial prompt into the TUI, e.g. `--prompt`.
@@ -62,12 +65,14 @@ pub fn by_bin(bin: &str) -> Option<&'static AgentDef> {
 }
 
 impl AgentDef {
-    /// Build argv for launching this agent: [bin, yolo_args?, prompt_args?].
+    /// Build argv for launching this agent: [bin, yolo_args or ask_args, prompt_args?].
     /// Used by the crew runner (atlas-host). Desktop uses prompt_argv() directly.
     pub fn argv(&self, yolo: bool, prompt: Option<&str>) -> Vec<String> {
         let mut v = vec![self.bin.clone()];
         if yolo {
             v.extend(self.yolo_args.iter().cloned());
+        } else {
+            v.extend(self.ask_args.iter().cloned());
         }
         v.extend(prompt_argv(self.prompt_flag.as_deref(), prompt));
         v
@@ -180,5 +185,30 @@ mod tests {
             ["opencode", "--prompt", "hi"]
         );
         assert_eq!(get("omp").unwrap().argv(false, Some("  ")), ["omp"]);
+    }
+
+    // #642: an agent that can ask is launched in ask mode said explicitly (`ask_args`), so a user's own
+    // settings (a `defaultMode` of bypass) cannot widen what a crewmate's terminal agent may do unasked.
+    #[test]
+    fn an_agent_launched_without_bypass_gets_its_ask_flags_and_never_the_yolo_ones() {
+        assert_eq!(
+            get("claude").unwrap().argv(false, Some("hi")),
+            ["claude", "--permission-mode", "default", "hi"]
+        );
+        for a in all() {
+            let v = a.argv(false, Some("hi"));
+            assert!(
+                a.yolo_args.iter().all(|y| !v.contains(y)),
+                "{}: a bypass flag in {v:?}",
+                a.id
+            );
+            assert!(
+                a.ask_args.iter().all(|y| !a.yolo_args.contains(y)),
+                "{}: ask and yolo flags overlap",
+                a.id
+            );
+            // Only an agent that can ask has an ask mode to name.
+            assert!(a.can_ask || a.ask_args.is_empty(), "{}", a.id);
+        }
     }
 }

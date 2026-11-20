@@ -16,7 +16,7 @@ pub(crate) mod jsonl;
 mod origin;
 mod tasklog;
 mod usage;
-pub use origin::{GithubOrigin, GithubOriginKind};
+pub use origin::{GithubOrigin, GithubOriginKind, GithubUser};
 
 /// `<hostd dir>/crew/<id>/`: where a crewmate keeps everything (definition, tasks, memory, work tree).
 pub(crate) fn crewmate_dir_in(base: &Path, id: &str) -> PathBuf {

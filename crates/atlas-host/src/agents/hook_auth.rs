@@ -13,13 +13,15 @@ use crate::crew::pane;
 /// The crew routes (`POST /crew/<id>/<route>`) an agent's MCP server calls with its own token: the one
 /// list, read by [`authorize`]; `hook_server::route_crew` dispatches the same names (a test over a real
 /// socket keeps the two in step). The webhook route is not here: it is for outsiders.
-pub(crate) const AGENT_ROUTES: [&str; 6] = [
+pub(crate) const AGENT_ROUTES: [&str; 7] = [
     "ask",
     "set_profile",
     "capture",
     "locate",
     "ui_gate",
     "set_ui",
+    // The git credential helper of the agent (`atlas crew git-credential`), not its MCP server.
+    "git_credential",
 ];
 
 /// Who the presented token says is calling.
@@ -126,7 +128,8 @@ mod tests {
     // `set_ui`: no UI task could ever prove itself.
     #[test]
     fn a_crewmate_may_call_every_agent_route_only_as_itself() {
-        // The names the MCP server posts to (`crew/mcp.rs`): written out, so shrinking the constant fails here.
+        // The names the agent's tools post to (`crew/mcp.rs`, the git credential helper): written out, so
+        // shrinking the constant fails here.
         let mut routes = AGENT_ROUTES.to_vec();
         routes.sort_unstable();
         assert_eq!(
@@ -134,6 +137,7 @@ mod tests {
             [
                 "ask",
                 "capture",
+                "git_credential",
                 "locate",
                 "set_profile",
                 "set_ui",

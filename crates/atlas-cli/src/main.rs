@@ -145,6 +145,12 @@ async fn main() {
     // with a ready-to-run gh issue command. Skipped when RUST_BACKTRACE is set.
     crash::install_panic_hook();
 
+    // A crewmate's `gh` is a link to this binary (`atlas_host::crew::gh_shim`): before any parsing, so it never
+    // reads like an `atlas` command line.
+    if atlas_host::crew::gh_shim::invoked_as(std::env::args_os().next().as_deref()) {
+        std::process::exit(atlas_host::crew::gh_shim::run());
+    }
+
     if let Err(e) = run().await {
         eprintln!("{} {}", chrome::error(), chrome::error_text(&e));
         for cause in e.chain().skip(1) {
@@ -249,6 +255,9 @@ async fn run() -> Result<()> {
     // MCP is a long-lived stdio protocol and hooks are machine-to-machine (stdout is parsed
     // by the agent): no update check, no notices.
     let is_mcp = matches!(
+        &command,
+        Commands::Crew(a) if matches!(a.command, commands::crew::CrewCommands::GitCredential(_))
+    ) || matches!(
         command,
         Commands::Mcp(_)
             | Commands::Hook(_)

@@ -133,9 +133,25 @@ export function render(code: string, args: Record<string, unknown> = {}): string
 					return m.hostd_wire_invalid_empty();
 				case "no_parent":
 					return m.hostd_wire_invalid_no_parent();
+				case "invalid": {
+					const field = s("field");
+					return field === undefined ? undefined : m.hostd_wire_invalid_value({ field });
+				}
 				default:
 					return undefined;
 			}
+		case "crew.github_app.exists":
+			return m.hostd_wire_github_app_exists();
+		case "crew.github_app.code_expired":
+			return m.hostd_wire_github_app_code_expired();
+		case "crew.github_app.conversion_failed": {
+			const status = typeof args.status === "number" ? String(args.status) : undefined;
+			return status === undefined ? undefined : m.hostd_wire_github_app_conversion_failed({ status });
+		}
+		case "crew.github_app.none":
+			return m.hostd_wire_github_app_none();
+		case "crew.github_app.forbidden":
+			return m.hostd_wire_github_app_forbidden();
 		case "crew.approval.bypass_disabled":
 			return m.hostd_wire_approval_bypass_disabled();
 		case "crew.approval.unsupported_engine": {

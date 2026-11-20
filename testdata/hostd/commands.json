@@ -179,6 +179,7 @@
         "allow_bypass",
         "default_approval",
         "max_agents",
+        "public_url",
         "short_replies",
         "short_replies_model"
       ],

@@ -11,7 +11,8 @@ use crate::protocol::invalid_argument;
 use atlas_core::progress::Coded;
 
 /// Where the app's homepage points, and the (inactive) webhook placeholder: `hook_attributes.url` is required by
-/// GitHub, and without a public webhook URL the hook stays off (`active: false`).
+/// GitHub, and without a public webhook URL the hook stays off (`active: false`). With one (the crew's `public_url`
+/// setting) the hook is on and posts to `<public_url>/github/webhook`.
 const HOME: &str = "https://atlas.codeatlas.com.br";
 /// GitHub refuses an app name over 34 characters.
 const NAME_MAX: usize = 34;
@@ -65,7 +66,14 @@ pub(crate) fn build(
     org: Option<&str>,
     workflows: bool,
     server: &str,
+    webhook_url: Option<&str>,
 ) -> Result<Value, Coded> {
+    let hook = match webhook_url {
+        Some(u) => {
+            json!({"url": format!("{u}{}", crate::crew::store::GITHUB_WEBHOOK_PATH), "active": true})
+        }
+        None => json!({"url": HOME, "active": false}),
+    };
     let post_url = match (owner_kind, org) {
         ("user", _) => "https://github.com/settings/apps/new".to_string(),
         ("org", Some(o)) if valid_login(o) => {
@@ -100,7 +108,7 @@ pub(crate) fn build(
             "url": HOME,
             // i18n-ignore: GitHub's own page shows it, in English, as the app's description
             "description": format!("Atlas Crew on {server}: crewmates that work on the repositories you pick."),
-            "hook_attributes": {"url": HOME, "active": false},
+            "hook_attributes": hook,
             "public": false,
             "default_permissions": perms,
             "default_events": EVENTS,
@@ -115,7 +123,7 @@ mod tests {
     use super::*;
 
     fn manifest(workflows: bool) -> Value {
-        build("user", None, workflows, "my-box").unwrap()["manifest"].clone()
+        build("user", None, workflows, "my-box", None).unwrap()["manifest"].clone()
     }
 
     // The minimum the crew uses, and nothing else: a permission added here widens every token.
@@ -155,6 +163,26 @@ mod tests {
         assert!(m.get("redirect_url").is_none() && m.get("state").is_none());
     }
 
+    // With the public URL setting the app is made with its webhook on, pointing at the verified route; the
+    // secret is GitHub's (returned by the conversion), never part of the manifest.
+    #[test]
+    fn a_public_url_makes_the_webhook_active_on_the_github_route() {
+        let m = build(
+            "user",
+            None,
+            false,
+            "my-box",
+            Some("https://crew.example.com"),
+        )
+        .unwrap()["manifest"]
+            .clone();
+        assert_eq!(
+            m["hook_attributes"],
+            json!({"url": "https://crew.example.com/github/webhook", "active": true})
+        );
+        assert!(!m.to_string().contains("secret"));
+    }
+
     #[test]
     fn workflows_is_opt_in() {
         assert!(
@@ -167,9 +195,9 @@ mod tests {
 
     #[test]
     fn the_post_url_follows_the_owner() {
-        let user = build("user", None, false, "x").unwrap();
+        let user = build("user", None, false, "x", None).unwrap();
         assert_eq!(user["post_url"], "https://github.com/settings/apps/new");
-        let org = build("org", Some("acme-inc"), false, "x").unwrap();
+        let org = build("org", Some("acme-inc"), false, "x", None).unwrap();
         assert_eq!(
             org["post_url"],
             "https://github.com/organizations/acme-inc/settings/apps/new"
@@ -180,10 +208,13 @@ mod tests {
     #[test]
     fn an_org_that_is_not_a_login_is_refused() {
         for org in ["", "a/b", "a b", "evil.com/x?", "..", &"x".repeat(40)] {
-            assert!(build("org", Some(org), false, "x").is_err(), "{org:?}");
+            assert!(
+                build("org", Some(org), false, "x", None).is_err(),
+                "{org:?}"
+            );
         }
-        assert!(build("org", None, false, "x").is_err());
-        assert!(build("team", None, false, "x").is_err());
+        assert!(build("org", None, false, "x", None).is_err());
+        assert!(build("team", None, false, "x", None).is_err());
     }
 
     #[test]

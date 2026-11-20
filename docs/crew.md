@@ -318,12 +318,12 @@ Instead of the `gh` login, a crew server can have its own **GitHub App**. Crewma
 |---|---|
 | `crew_github_app_manifest {owner_kind: "user" \| "org", org?, workflows?, server_name?}` | the manifest to POST to GitHub and where: `{manifest, post_url, server_name}`. The desktop adds `redirect_url` and `state`, because its loopback listener owns them |
 | `crew_github_app_convert {code}` | `POST /app-manifests/{code}/conversions`; keeps the key; answers with the status below |
-| `crew_github_app_status` | `{app: null}`, or `{app: {id, slug, name, owner, permissions, created_at, identity: {name, email}, installations: [{id, account, repository_selection}], installations_error?}}`. It never carries the key or the webhook secret. The installations are read from GitHub with the app's JWT, so a poll shows the install as soon as it happens |
+| `crew_github_app_status` | `{app: null}`, or `{app: {id, slug, name, owner, permissions, created_at, identity: {name, email}, installations: [{id, account, repository_selection}], installations_error?, webhook: {url, synced, verified_installations, failing}}}`. It never carries the key or the webhook secret. The installations are read from GitHub with the app's JWT, so a poll shows the install as soon as it happens |
 | `crew_github_app_remove` | deletes the stored key |
 
 Failures carry a code: `crew.github_app.exists` (an app is already set up; checked before the code is spent), `crew.github_app.code_expired` (used, or past its hour), `crew.github_app.conversion_failed {status}`, `crew.github_app.none`, `crew.github_app.forbidden` (a phone or any non-owner; a phone is refused by its scope as well). A bad `org` or `code` is `hostd.invalid_argument` with `reason: "invalid"`. Fixtures: `apps/desktop/src/lib/__fixtures__/crew-github-app.json`, written by a real hostd (`UPDATE_FIXTURES=1 cargo test -p atlas-host crew::tests::github_app`).
 
-**The manifest** asks for the minimum the crew uses: Contents, Pull requests and Issues write; Checks, Actions and Metadata read. Events: issue comments, issues, pull requests, review comments, check runs, workflow runs, releases. `public: false` (the app belongs to this server), and the webhook is `active: false` with the project homepage as its required URL. **Workflows is opt-in** (`workflows: true` adds `workflows: write`): editing `.github/workflows` needs that separate permission.
+**The manifest** asks for the minimum the crew uses: Contents, Pull requests and Issues write; Checks, Actions and Metadata read. Events: issue comments, issues, pull requests, review comments, check runs, workflow runs, releases. `public: false` (the app belongs to this server). The webhook is off (`active: false`, the project homepage as its required URL) unless the crew has a public URL ([Webhooks](#webhooks)); then it is on and posts to `<public_url>/github/webhook`. **Workflows is opt-in** (`workflows: true` adds `workflows: write`): editing `.github/workflows` needs that separate permission.
 
 **Where the key lives.** `<crew dir>/github-app.json`, owner-only (0600), written atomically by hostd: the app id, client id, slug, private key, webhook secret. Never `secrets.json` (a crewmate's), never an environment variable, never a reply, never the audit log. The desktop only carries the one-time code. GitHub's client secret is not kept.
 
@@ -338,6 +338,27 @@ Failures carry a code: `crew.github_app.exists` (an app is already set up; check
 **Attribution.** A task started by a GitHub event records who set it off (`origin.requester`). The agent's environment then carries `ATLAS_CO_AUTHOR` (`<login> <id>+<login>@users.noreply.github.com`, not a secret) and `core.hooksPath` pointing at a directory hostd writes (`<crewmate dir>/githooks`, or `crew-runtime/githooks` when isolated; the agent cannot change it). Its `commit-msg` hook adds `Co-authored-by: <requester>` to a commit message that lacks it, then runs the repository's own hook of that name; every other client-side hook is a dispatcher that runs the repository's own (from `.git/hooks`, or from the `core.hooksPath` the repository sets, as husky does). `git commit --no-verify` skips it, as it skips every commit hook. The task prompt only says the identity is set and a hook adds the trailer.
 
 **Limits.** An isolated crewmate's checkout and fetch use an installation token for that one git process (in the spawn helper's cleared environment), and such a task does not wait for a `gh` login when the app covers its project. A crewmate that is not isolated is checked out by hostd's own git, which still uses the `gh` login for the clone. The `gh` link in the engine directory is what an isolated crewmate runs; a server installed before it needs `atlas crew install` again.
+
+### Webhooks
+
+By default a GitHub automation polls every 2 minutes. When GitHub can reach the crew server, the App's webhook delivers each event at once instead. Polling stays the default: webhooks are on only when you give the crew a **public URL**.
+
+**The public URL is yours, not Atlas's.** The hook server listens on loopback only and Atlas never exposes it. Put your own HTTPS front in front of it and forward `POST <public_url>/github/webhook` to `http://127.0.0.1:47631/github/webhook` on the server (the hook port, see [Security model](#security-model)): a reverse proxy you already run (Caddy, nginx), a Cloudflare Tunnel, or Tailscale Funnel. Then set it, as the owner: `crew_settings_set {public_url: "https://crew.example.com"}` (blank turns webhooks off). It must be `https://` with a host and no credentials, query or fragment, at most 200 characters: GitHub's payloads cross the internet. hostd then points the App's webhook at it (`PATCH /app/hook/config`, with a secret it makes when the app has none) and `crew_github_app_status` shows `webhook.synced`.
+
+**Not for production:** smee.io (a third party sees every payload) and `gh webhook forward` (a development tool, tied to your login).
+
+**What a delivery goes through**, each step before the next:
+1. The signature: `X-Hub-Signature-256` must be `sha256=` + the hex HMAC-SHA256 of the **raw** body under the webhook secret, compared in constant time. Nothing is parsed, claimed or looked up before it passes. An unsigned or wrongly signed delivery is `401` and an audit line `github_webhook_refused {reason, count}` (at most one per reason a minute, with the count since the last). Without an app or a secret the route is `404`.
+2. The delivery id (`X-GitHub-Delivery`) is claimed in `<crew dir>/github-deliveries.jsonl` (the last 1000, on disk before any work, so a restart does not forget them). A replay is answered `200` and does nothing (`github_webhook_duplicate`).
+3. hostd answers `202` at once and does the work in a task of its own: GitHub counts a reply slower than 10 s as a failure and does not retry it. With the crew paused it answers `503` and claims nothing, so GitHub shows the failure.
+
+**Same event, same task.** A delivery goes through `decide`, the function the poll uses, so it starts exactly the task the poll would have. The payload's `author_association` answers the author check (no REST lookup); authors without write access are ignored unless the automation opts in, as with the poll.
+
+**Polling hands over per repo.** A repo stops being polled only when the webhook covers it: an installation covers the repo and has delivered at least one correctly signed event. Other repos keep their poll. If deliveries fail for 30 minutes, the hook is marked failing and every repo is polled again until a signed delivery arrives; the poll that takes over skips what the webhook already handled. State: `<crew dir>/github-webhook.json` (no secret in it).
+
+**Missed deliveries** are reconciled every 5 minutes: hostd reads `GET /app/hook/deliveries` and redelivers the failed ones from the last 3 days (at most 20 a pass, 5 attempts each, backoff from 5 minutes). A failed delivery from a time the poll covered is not redelivered, so nothing fires twice.
+
+The webhook secret lives in `github-app.json` with the private key (0600) and nowhere else: never in a reply, a log line or an audit entry.
 
 ### GitHub in and out
 

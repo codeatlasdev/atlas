@@ -38,6 +38,17 @@
 	"crew_github_app_title": "Heading of the card that creates the crew server's GitHub App",
 	"crew_github_app_waiting_body": "Body while the user confirms the app in the browser",
 	"crew_github_app_waiting_title": "Heading while the user confirms the app in the browser",
+	"crew_github_app_webhook_bad_https": "Validation error of the public address: not https",
+	"crew_github_app_webhook_bad_url": "Validation error of the public address: not a plain URL",
+	"crew_github_app_webhook_failing": "Webhook status when deliveries fail and polling took over",
+	"crew_github_app_webhook_hint": "Explains the optional webhook under its title",
+	"crew_github_app_webhook_live": "Webhook status when signed deliveries arrive",
+	"crew_github_app_webhook_off": "Webhook status when no public address is set",
+	"crew_github_app_webhook_pending": "Webhook status when GitHub has the address but no correctly signed delivery arrived yet",
+	"crew_github_app_webhook_title": "Group title on the GitHub App card: the optional webhook",
+	"crew_github_app_webhook_too_long": "Validation error of the public address: too long",
+	"crew_github_app_webhook_unsynced": "Webhook status when the address is saved but GitHub's hook config was not updated yet",
+	"crew_github_app_webhook_url_label": "Label of the field for the crew server's public https URL",
 	"crew_github_app_workflows_label": "Label of the switch that adds GitHub's Workflows permission",
 	"crew_github_app_workflows_reason": "Why the Workflows permission is opt-in"
 }

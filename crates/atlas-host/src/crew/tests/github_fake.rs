@@ -18,6 +18,8 @@ pub(crate) enum Write {
 pub(crate) struct FakeGithub {
     pub login: Mutex<String>,
     pub events: Mutex<Vec<Value>>,
+    /// The repo of every `events` call, in order: what the poll asked for.
+    pub event_reads: Mutex<Vec<String>>,
     /// `issues/<n>` by number.
     pub issues: Mutex<HashMap<u64, Value>>,
     /// `issues/comments/<id>` by id.
@@ -43,6 +45,16 @@ impl FakeGithub {
     pub(crate) fn writes(&self) -> Vec<Write> {
         self.writes.lock().clone()
     }
+
+    /// How many times the poll read `repo`'s events. Only the Unix-only `github_webhook` tests ask.
+    #[cfg(unix)]
+    pub(crate) fn reads_of(&self, repo: &str) -> usize {
+        self.event_reads
+            .lock()
+            .iter()
+            .filter(|r| *r == repo)
+            .count()
+    }
 }
 
 fn found(v: Option<Value>, what: String) -> Result<Value, String> {
@@ -54,7 +66,8 @@ impl GithubApi for FakeGithub {
         let l = self.login.lock().clone();
         Box::pin(async move { Ok(l) })
     }
-    fn events(&self, _repo: &str) -> Call<'_, Vec<Value>> {
+    fn events(&self, repo: &str) -> Call<'_, Vec<Value>> {
+        self.event_reads.lock().push(repo.to_string());
         let e = self.events.lock().clone();
         Box::pin(async move { Ok(e) })
     }

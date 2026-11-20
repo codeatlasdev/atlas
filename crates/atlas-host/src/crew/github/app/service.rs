@@ -15,6 +15,7 @@ use super::jwt;
 use super::manifest;
 use super::record::{AppRecord, AppStore, Identity};
 use super::tokens::{Clock, SystemClock, Token, TokenCache};
+use super::webhook::{DeliveryLog, HookStore, Refusals};
 use crate::crew::audit::Audit;
 use crate::protocol::invalid_argument;
 
@@ -98,13 +99,19 @@ pub(crate) fn valid_repo(repo: &str) -> Option<(&str, &str)> {
 }
 
 pub(crate) struct AppService {
-    store: AppStore,
-    http: Http,
-    clock: Arc<dyn Clock>,
-    audit: Arc<Audit>,
+    pub(super) store: AppStore,
+    pub(super) http: Http,
+    pub(super) clock: Arc<dyn Clock>,
+    pub(super) audit: Arc<Audit>,
     tokens: TokenCache,
     /// `owner/name` (lower case) -> (installation id, when it was looked up).
     installs: Mutex<HashMap<String, (Option<u64>, i64)>>,
+    /// The webhook (`webhook`): accepted delivery ids, which installations delivered, refusals, redeliveries.
+    pub(super) deliveries: DeliveryLog,
+    pub(super) hook: HookStore,
+    pub(super) refusals: Refusals,
+    /// Delivery GUID -> (redeliveries made, when the last one was).
+    pub(super) redeliveries: Mutex<HashMap<String, (u32, i64)>>,
 }
 
 impl AppService {
@@ -125,6 +132,10 @@ impl AppService {
             audit,
             tokens: TokenCache::default(),
             installs: Mutex::new(HashMap::new()),
+            deliveries: DeliveryLog::open(dir),
+            hook: HookStore::new(dir),
+            refusals: Refusals::default(),
+            redeliveries: Mutex::new(HashMap::new()),
         }
     }
 
@@ -133,19 +144,25 @@ impl AppService {
         self.store.load()
     }
 
-    /// `crew_github_app_manifest`
+    /// `crew_github_app_manifest`. `webhook_url`: the public URL setting; the app is made with its webhook on.
     pub(crate) fn manifest(
         &self,
         owner_kind: &str,
         org: Option<&str>,
         workflows: bool,
         server_name: &str,
+        webhook_url: Option<&str>,
     ) -> Result<Value, Coded> {
-        manifest::build(owner_kind, org, workflows, server_name)
+        manifest::build(owner_kind, org, workflows, server_name, webhook_url)
     }
 
     /// `crew_github_app_convert`: trade the one-time `code` for the app's credentials and keep them here.
-    pub(crate) async fn convert(&self, code: &str) -> Result<Value, Coded> {
+    /// `webhook_url`: the public URL setting, made the hook's URL right after (see `ensure_hook`).
+    pub(crate) async fn convert(
+        &self,
+        code: &str,
+        webhook_url: Option<&str>,
+    ) -> Result<Value, Coded> {
         // The code goes into a URL path: GitHub's codes are hex, so anything else is not one.
         if code.is_empty()
             || code.len() > 128
@@ -204,11 +221,15 @@ impl AppService {
             "github_app_created",
             json!({"slug": rec.slug, "owner": rec.owner}),
         );
-        Ok(self.status_of(&rec).await)
+        // The app exists whether or not this works: a failure is audited, and the reconciliation loop tries again.
+        if let Some(url) = webhook_url {
+            let _ = self.ensure_hook(url).await;
+        }
+        Ok(self.status_of(&rec, webhook_url).await)
     }
 
     /// `crew_github_app_status`
-    pub(crate) async fn status(&self) -> Result<Value, Coded> {
+    pub(crate) async fn status(&self, webhook_url: Option<&str>) -> Result<Value, Coded> {
         let Some(mut rec) = self.record().map_err(failed_text)? else {
             return Ok(json!({"app": null}));
         };
@@ -219,13 +240,14 @@ impl AppService {
                 let _ = self.store.save(&rec);
             }
         }
-        Ok(self.status_of(&rec).await)
+        Ok(self.status_of(&rec, webhook_url).await)
     }
 
-    async fn status_of(&self, rec: &AppRecord) -> Value {
+    async fn status_of(&self, rec: &AppRecord, webhook_url: Option<&str>) -> Value {
         let id = rec.identity();
         let mut app = rec.public();
         app["identity"] = json!({"name": id.name, "email": id.email});
+        app["webhook"] = self.webhook_status(webhook_url);
         match self.installations(rec).await {
             Ok(list) => app["installations"] = Value::Array(list),
             // The app is there; only the list could not be read (offline, GitHub down). Said, not hidden.
@@ -269,6 +291,7 @@ impl AppService {
         }
         self.tokens.clear().await;
         self.installs.lock().clear();
+        self.hook.remove();
         self.audit.record(None, "github_app_removed", json!({}));
         Ok(json!({}))
     }
@@ -300,7 +323,7 @@ impl AppService {
     }
 
     /// The installation that covers `repo`, `None` when the app is not installed on it.
-    async fn installation_for(
+    pub(super) async fn installation_for(
         &self,
         rec: &AppRecord,
         repo: &str,

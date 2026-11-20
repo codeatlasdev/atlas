@@ -5,8 +5,8 @@
 <h1 align="center">Atlas</h1>
 
 <p align="center">
-  <strong>The developer platform for everyone.</strong><br>
-  <sub>one <code>atlas.yaml</code> runs your whole stack. a native workspace runs your agents. your platform team is a YAML file.</sub>
+  <strong>Put AI agents to work. Keep the final say.</strong><br>
+  <sub>each agent gets its own worktree. a crew keeps working on your own server. anything important waits for your OK.</sub>
 </p>
 
 > [!WARNING]

@@ -1,7 +1,7 @@
 {
 	"home_work_agents_lead": "Each task gets its own worktree: a separate copy of the code on its own branch, with its own ports, and a terminal that keeps running if you close the app. You see who is working, who needs you and who is done.",
 	"home_work_agents_more": "Review the diff, comment on a line, send it back. Works with Claude Code, Codex and omp. {#link}Agents in Atlas{/link}.",
-	"home_work_agents_shot_alt": "Atlas Desktop with three agents side by side, each in its own worktree",
+	"home_work_agents_shot_alt": "Atlas Desktop with a project's worktrees in the sidebar, an agent's terminal open in one of them",
 	"home_work_agents_title": "Three agents on one project, none in another's way.",
 	"home_work_branches_alt": "main branches into three agent worktrees, each with its own ports",
 	"home_work_mcp_lead": "Atlas gives agents a direct line to the running project. Instead of asking you to paste an error, the agent checks the status, searches the logs and restarts a service, and anything destructive still waits for your approval.",

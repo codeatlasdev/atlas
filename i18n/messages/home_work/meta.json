@@ -1,7 +1,7 @@
 {
 	"home_work_agents_lead": "Paragraph of the agents chapter; worktree and branch stay English (git terms).",
 	"home_work_agents_more": "Small print of the agents chapter; the link opens the agent setup docs.",
-	"home_work_agents_shot_alt": "Alt text of the screenshot in the agents chapter.",
+	"home_work_agents_shot_alt": "Alt text of the screenshot in the agents chapter (Atlas Desktop showing a project's worktrees).",
 	"home_work_agents_title": "Heading of the chapter about running several coding agents at once.",
 	"home_work_branches_alt": "Accessible description of the branch drawing. i18n-allow dnt:branch (\"branches into\" is the verb: main splits)",
 	"home_work_mcp_lead": "Paragraph of the MCP chapter.",

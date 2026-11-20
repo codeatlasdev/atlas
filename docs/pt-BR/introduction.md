@@ -1,19 +1,32 @@
 ---
 title: "Introdução"
 source: introduction.md
-source_sha: "e1a3939448d2eed3c50a324bb5e037400ea64a26"
+source_sha: "7ab9690279705d152ca0e223e869f1954d760ece"
 translation: machine
 ---
 
 # Introdução
 
-O Atlas é uma plataforma de desenvolvimento para todo mundo: o caminho direto do `git clone` até uma stack rodando e observável, sem precisar de uma equipe de plataforma. A partir de um único `atlas.yaml`, ele sobe todo o ambiente de desenvolvimento do projeto: infraestrutura em docker, serviços da aplicação em ordem de dependência, reinícios com backoff, health checks e logs com busca. Você tem três formas de controlá-lo, e todas enxergam o mesmo estado ao vivo:
+O Atlas é um espaço de trabalho gratuito e de código aberto para trabalhar com agentes de IA. Ele roda seus projetos, dá a cada agente a própria cópia do código (uma git worktree, com portas e terminal próprios) e mantém uma tripulação de agentes trabalhando num servidor Linux seu, de dia e de noite. O que for importante espera a aprovação de uma pessoa, e cada passo fica registrado.
 
-- **`atlas dev`**: um dashboard no terminal (o [TUI](tui.md)).
-- **Atlas Desktop**: um app nativo para macOS, Windows e Linux com terminal (desenhado na GPU no macOS), git worktrees, agentes de código, revisão de diff e navegador embutido.
-- **`atlas mcp`**: um servidor [Model Context Protocol](mcp.md). Um agente de IA lê o status e os logs, reinicia um serviço e espera até ele ficar saudável enquanto você continua trabalhando.
+A imagem que usamos: para atravessar o oceano, é preciso **mapa**, **navio** e **tripulação**, com um **capitão** que responde pelo resultado.
 
-> **Status.** O Atlas é open source (MIT ou Apache-2.0) e feito para todo mundo. Disponível agora: macOS em Apple silicon, Windows 10/11 x64 e Linux x86_64 (a CLI, a TUI, o servidor MCP e o Atlas Desktop; [baixar](https://atlas.codeatlas.com.br/download/)). Em breve: Macs Intel, Windows em Arm e Linux em Arm.
+| | No Atlas | Leia |
+|---|---|---|
+| O mapa | Como cada projeto funciona, escrito uma vez no `atlas.yaml` (ou detectado sem ele), legível por pessoas e agentes | [Configuração](configuration.md) |
+| Os navios | Seus computadores e servidores: o Atlas Desktop e a CLI na sua máquina, um crew server em Linux, o app de celular | [App desktop](desktop.md), [Atlas Crew](crew.md), [Mobile](mobile.md) |
+| A tripulação | Os agentes que você já usa (Claude Code, Codex, omp, OpenCode), cada um na sua worktree, ou como crewmates com nome, função, fila e memória | [Configuração dos agentes](agents.md), [Atlas Crew](crew.md) |
+| O capitão | Você: modos de permissão, cards de aprovação, um registro do que cada agente fez | [Atlas Crew](crew.md#tasks-and-approvals) |
+
+Para onde ele vai se chama **Grand Line**: cada projeto uma ilha, cada computador um navio, cada tripulação com um capitão, na empresa inteira. O que já existe está abaixo; os planos ficam no [GitHub](https://github.com/codeatlasdev/atlas/issues).
+
+Você controla o mesmo estado ao vivo de três lugares:
+
+- **Atlas Desktop**: um app nativo para macOS, Windows e Linux com projetos, terminais (desenhados na GPU no macOS), git worktrees, agentes de código, Atlas Crew, revisão de diff e navegador embutido.
+- **`atlas dev`**: um painel no terminal (o [TUI](tui.md)), e `--headless` / `--ci` para scripts.
+- **`atlas mcp`**: um servidor [Model Context Protocol](mcp.md). Um agente lê o status e os logs, reinicia um serviço e espera até ele ficar saudável.
+
+> **Status.** O Atlas é de código aberto (MIT ou Apache-2.0) e está em alfa. Disponível agora: macOS em Apple silicon, Windows 10/11 x64 e Linux x86_64 (a CLI, a TUI, o servidor MCP e o Atlas Desktop; [baixar](https://atlas.codeatlas.com.br/pt-br/download/)); crew servers em Linux x86_64 e aarch64. Em breve: desktops em Macs Intel, Windows em Arm e Linux em Arm.
 
 ## O problema que ele resolve
 
@@ -52,6 +65,7 @@ e roda `atlas dev`. O Postgres e o Redis sobem, a migration roda primeiro, a API
 | Runtime | Condições de dependência (`started`, `healthy`, `completed_successfully`, `log_ready`), política de reinício, limpeza de órfãos pelo PID exato, túnel SSH, ações com confirmação | [Runtime](runtime.md) |
 | TUI | Uma aba por serviço, busca nos logs com regex, filtros de nível e de tempo, compactação de logs JSON, suporte a mouse, paleta de comandos | [TUI](tui.md) |
 | Logs | Montagem de linhas que aguenta rajadas, buffers limitados, saltos entre erros e avisos, URLs e `path:line` clicáveis | [Logs](logs.md) |
+| Atlas Crew | Crewmates no seu servidor Linux: modos de permissão, aprovações, automações (horários, GitHub, webhooks), Telegram, voz | [Atlas Crew](crew.md) |
 | Desktop | Um space por projeto, uma worktree por tarefa, terminais persistentes, status e notificações dos agentes, revisão, PRs, navegador | [App desktop](desktop.md) |
 | Terminal GPU | Renderizador Metal a 120 Hz, gráficos Kitty e sixel, ligaduras, integração com o shell | [Terminal GPU](terminal.md) |
 | MCP | Nove ferramentas, três recursos, três prompts | [MCP](mcp.md) |

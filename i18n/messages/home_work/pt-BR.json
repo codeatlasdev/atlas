@@ -1,7 +1,7 @@
 {
 	"home_work_agents_lead": "Cada tarefa ganha a própria worktree: uma cópia separada do código, na sua própria branch, com portas próprias e um terminal que continua rodando se você fechar o app. Você vê quem está trabalhando, quem precisa de você e quem terminou.",
 	"home_work_agents_more": "Revise o diff, comente uma linha e devolva. Funciona com Claude Code, Codex e omp. {#link}Agentes no Atlas{/link}.",
-	"home_work_agents_shot_alt": "O Atlas Desktop com três agentes lado a lado, cada um na sua worktree",
+	"home_work_agents_shot_alt": "O Atlas Desktop com as worktrees de um projeto na barra lateral e o terminal de um agente aberto numa delas",
 	"home_work_agents_title": "Três agentes no mesmo projeto, sem um atrapalhar o outro.",
 	"home_work_branches_alt": "a main se divide em três worktrees de agentes, cada uma com as próprias portas",
 	"home_work_mcp_lead": "O Atlas dá aos agentes uma linha direta com o projeto rodando. Em vez de pedir para você colar um erro, o agente confere o status, busca nos logs e reinicia um serviço, e o que for destrutivo continua esperando a sua aprovação.",

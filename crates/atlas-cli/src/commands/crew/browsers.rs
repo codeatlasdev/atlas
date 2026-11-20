@@ -925,13 +925,24 @@ mod tests {
         let home = std::env::var_os("HOME")
             .map(std::path::PathBuf::from)
             .unwrap_or_default();
+        // The cache stands in for the download of BOTH browsers `status` asks for: a cache that holds only
+        // one (a machine where Playwright fetched webkit alone) would make status rightly say the other is
+        // missing, which is the machine, not the scripts.
+        let has = |dir: &std::path::Path, engine: &str| {
+            std::fs::read_dir(dir).is_ok_and(|rd| {
+                rd.flatten()
+                    .any(|e| e.file_name().to_string_lossy().starts_with(engine))
+            })
+        };
         let Some(cache) = [
             home.join("Library/Caches/ms-playwright"),
             home.join(".cache/ms-playwright"),
         ]
         .into_iter()
-        .find(|p| p.is_dir()) else {
-            return skip("no Playwright browsers cache to stand in for the download");
+        .find(|p| has(p, "chromium") && has(p, "webkit")) else {
+            return skip(
+                "no Playwright browsers cache with both chromium and webkit to stand in for the download",
+            );
         };
         let tmp = tempfile::tempdir().unwrap();
         let bin = tmp.path().join("bin");

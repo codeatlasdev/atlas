@@ -9,16 +9,12 @@
 	import PairQr from "#lib/components/PairQr.svelte";
 	import BrowsersRow from "#lib/crew/settings/BrowsersRow.svelte";
 	import TelegramRow from "#lib/crew/settings/TelegramRow.svelte";
-<<<<<<< HEAD
 	import VoiceRows from "#lib/crew/settings/VoiceRows.svelte";
 	import { DICTATION_STROKE } from "#lib/crew/voice/key.ts";
 	import { dictationKey, setMode } from "#lib/crew/voice/mode.svelte.ts";
 	import type { KeyMode } from "#lib/crew/voice/dictation.svelte.ts";
 	import { IS_MAC, label as keyLabel } from "#lib/keys.ts";
-||||||| 7d6b0dea
-=======
 	import GithubAppCard from "#lib/crew/settings/GithubAppCard.svelte";
->>>>>>> origin/feat/crew-voice
 	import { secondsLeft, type PairStart } from "#lib/settings/mobile.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import {

@@ -1,0 +1,9 @@
+{
+	"seo_og_changelog_subtitle": "Subtitle of the changelog page share image.",
+	"seo_og_docs_subtitle": "Subtitle of a docs page share image when the page has no description of its own (always, for a Portuguese page).",
+	"seo_og_download_subtitle": "Subtitle of the download page share image. {platforms} is the list of operating systems formatted for the language (macOS, Windows and Linux).",
+	"seo_og_footer": "Small line at the bottom right of every share image.",
+	"seo_og_home_subtitle": "Subtitle of the home page share image (Open Graph), under the headline. One line, about 70 characters.",
+	"seo_og_privacy_subtitle": "Subtitle of the privacy policy share image.",
+	"seo_og_signing_subtitle": "Subtitle of the code signing policy share image."
+}

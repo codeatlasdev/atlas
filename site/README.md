@@ -49,9 +49,12 @@ English is the source and lives at `/`; Portuguese lives at `/pt-br/` (Astro i18
 
 The film is built from code by the studio in `../studio/` (`bun studio render atlas-1-0 && bun studio publish atlas-1-0` from the repo root). `publish` copies the video, poster, scrub sprite and captions into `public/media/` and writes `public/media/film-chapters.json` (duration, thumbnail grid, chapters), which is the single source for the player's chapters.
 
-## OG image
+## OG images, SEO and agents
 
-`scripts/og.ts` screenshots the built hero (needs `playwright` in the folder you run it from; it is not a site dependency, `scripts/playwright.d.ts` declares the few calls it makes for the type-check). `apple-touch-icon.png`, `favicon.ico` and `favicon.svg` are generated from `assets/logo.svg` by `bun run icons` at the repo root (white tile for the touch icon); never edit them by hand.
+Share images are generated at build time, one per page and language (`/og/<en|pt-br>/<key>.png`): `src/lib/og.ts` (the key of a page and the layout, pure, tested), `src/lib/og-cards.ts` (the card of every page: titles from the docs and the `seo_og_*` messages), `src/lib/og-render.ts` (satori + sharp) and the endpoint `src/pages/og/[locale]/[...key].png.ts`. The fonts are static Archivo TTFs in `src/assets/fonts/`, instances of `public/fonts/archivo-var.woff2` made by `scripts/og-fonts.sh` (satori reads neither woff2 nor variable axes; needs `pip install fonttools brotli`). `Base.astro` picks the image of the page by default (`image` prop to override). `apple-touch-icon.png`, `favicon.ico` and `favicon.svg` are generated from `assets/logo.svg` by `bun run icons` at the repo root (white tile for the touch icon); never edit them by hand.
+
+- SEO: `Base.astro` (canonical, hreflang, `og:*`, `twitter:*`, manifest, site-wide `Organization` + `WebSite` JSON-LD), `src/lib/seo.ts` (JSON-LD builders), `DocsLayout.astro` (`BreadcrumbList`, `TechArticle`), `public/robots.txt`, the sitemap in `astro.config.mjs`.
+- Agents: `/docs/<slug>.md` and `/pt-br/docs/<slug>.md` (`src/pages/docs/[slug].md.ts`, `src/lib/markdown.ts`), `Accept: text/markdown` at the edge (`functions/_lib/negotiate.ts`, `functions/docs/[[path]].ts`, `functions/pt-br/docs/[[path]].ts`), `/llms.txt`, `/llms-full.txt`, `/pt-br/llms.txt` (`src/lib/llms.ts`; generated, there is no file in `public/`). More in [docs/site.md](../docs/site.md).
 
 ## Constraints
 

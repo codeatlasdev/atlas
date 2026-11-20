@@ -17,6 +17,28 @@
 /fonts/*
   Cache-Control: public, max-age=31536000, immutable
 
+# Markdown for agents (docs pages as /docs/<slug>.md) and the llms files: plain UTF-8 text, never rendered as HTML, indexable.
+# `Vary: Accept` is on the HTML docs pages (functions/docs/[[path]].ts), which can answer with the markdown instead.
+/docs/*.md
+  Content-Type: text/markdown; charset=utf-8
+  Cache-Control: public, max-age=300
+/pt-br/docs/*.md
+  Content-Type: text/markdown; charset=utf-8
+  Cache-Control: public, max-age=300
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=300
+/llms-full.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=300
+/pt-br/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=300
+
+# Share images are rebuilt with every deploy
+/og/*
+  Cache-Control: public, max-age=86400
+
 # Installer: always fresh, served as plain text so browsers never render it
 /install.sh
   Content-Type: text/plain; charset=utf-8

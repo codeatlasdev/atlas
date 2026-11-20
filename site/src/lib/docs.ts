@@ -1,8 +1,11 @@
 import { getCollection, type CollectionEntry } from "astro:content";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { docState, gitBlobSha, type DocState } from "./doc-translation";
 import { docPath, type Locale } from "./i18n";
+import type { LlmsGroup } from "./llms";
+import { docMarkdown } from "./markdown";
 
 const REPO = "https://github.com/codeatlasdev/atlas";
 
@@ -80,4 +83,38 @@ export async function loadNav(locale: Locale = "en"): Promise<{ groups: NavGroup
 /** The /pt-br/ and English URLs of a docs page that exist as real translations (feeds hreflang and the language switch). */
 export function docAlternates(slug: string, state: DocState): Partial<Record<Locale, string>> | undefined {
 	return state === "missing" ? undefined : { en: docPath(slug, "en"), "pt-BR": docPath(slug, "pt-BR") };
+}
+
+/** The markdown of a docs page for agents: the translation's when it exists (pt-BR), else the English page. See lib/markdown.ts. */
+export function markdownOf(entry: DocEntry, translation?: TranslationEntry): string {
+	return docMarkdown((translation ?? entry).body ?? "", translation ? translation.data.title : titleOf(entry), translation ? "pt-BR" : "en");
+}
+
+/** The nav as llms.txt lists it: English group titles, and for pt-BR only the pages that have a translation (with their Portuguese titles). */
+export async function llmsGroups(locale: Locale): Promise<LlmsGroup[]> {
+	const { groups, entries, translations } = await loadNav(locale);
+	const byId = new Map(entries.map((e) => [e.id, e]));
+	return groups.map((g) => ({
+		title: g.title,
+		items: g.items
+			.filter((p) => locale === "en" || translations.get(p.slug)?.translation)
+			.map((p) => ({ slug: p.slug, title: p.title, description: locale === "en" ? byId.get(p.slug)!.data.description : undefined })),
+	}));
+}
+
+const modified = new Map<string, string | undefined>();
+/**
+ * ISO date of the last commit that touched a docs file (`docs/<name>`), for `dateModified`; undefined when git has no history for it
+ * (a new file, a build from an archive). One `git log` per file, cached.
+ */
+export function docModified(name: string): string | undefined {
+	if (!modified.has(name)) {
+		try {
+			const out = execFileSync("git", ["log", "-1", "--format=%cI", "--", docsFile(name)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+			modified.set(name, out || undefined);
+		} catch {
+			modified.set(name, undefined);
+		}
+	}
+	return modified.get(name);
 }

@@ -1,3 +1,6 @@
+# Everything is public: the site is the documentation of an open-source tool. Search engines and AI crawlers (training, search and
+# on-demand agents alike) are welcome on purpose: no AI user agent is blocked. Agents: every docs page is also plain markdown at
+# /docs/<slug>.md (and /pt-br/docs/<slug>.md), and /llms.txt is the index.
 User-agent: *
 Allow: /
 

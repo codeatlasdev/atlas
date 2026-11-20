@@ -1,10 +1,10 @@
 export const SITE = {
 	name: "Atlas",
 	url: "https://atlas.codeatlas.com.br",
-	tagline: "The developer platform for everyone.",
-	title: "Atlas: the developer platform for everyone",
+	tagline: "Put AI agents to work. Keep the final say.",
+	title: "Atlas: put AI agents to work, keep the final say",
 	description:
-		"The developer platform for everyone: one atlas.yaml runs your stack, a native workspace runs your agents.",
+		"Free, open-source workspace for working with AI agents: each agent gets its own copy of your project, a crew keeps working on your own server, and anything important waits for your OK.",
 	github: "https://github.com/codeatlasdev/atlas",
 	releases: "https://github.com/codeatlasdev/atlas/releases/latest",
 	install: "curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh",

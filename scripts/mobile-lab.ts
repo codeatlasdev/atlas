@@ -293,7 +293,14 @@ async function pair(dir: string, alias?: string) {
 	console.log(`Code ${p.code} works once, for 2 minutes. The lab has its own pairing: the store app is untouched.`);
 }
 
+/** The translations are not committed: the ARB files come from the catalog and `flutter pub get` writes the class. */
+async function writeTranslations() {
+	await $`bun ${join(root, "scripts/i18n/generate.ts")} --surface mobile`.quiet();
+	await $`flutter pub get`.cwd(mobile).quiet();
+}
+
 async function install(dev: Dev, a: Args, s: string) {
+	await writeTranslations();
 	const android = dev.platform.startsWith("android");
 	const args = android ? androidBuildArgs(s) : iosBuildArgs(s, dev.emulator);
 	log(`building Atlas Dev for ${dev.name}… (flutter ${args.slice(0, 3).join(" ")})`);

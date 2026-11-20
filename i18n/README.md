@@ -73,8 +73,10 @@ point at that command rather than at hand editing.
 - **Rust reads the same JSON.** `crates/atlas-i18n/build.rs` embeds `i18n/messages/<area>/<locale>.json` for `common*` and
   the areas of the `rust` surface and a small evaluator runs the same subset (variables, `{@refs}`, plural, exact, `os`).
   There is no second format and nothing to regenerate.
-- **The ARB generator is ready for mobile.** A surface with `"arb": "<dir>"` writes ICU plural/select `.arb` files with
-  `@key.description`; no surface declares it yet.
+- **The mobile surface writes ARB.** `"mobile": { "arb": "apps/mobile/lib/l10n" }` makes `i18n:generate` write ICU
+  plural/select `.arb` files with `@key.description`, one per language (`app_en.arb`, `app_pt.arb`: gen_l10n wants a base
+  file for a regional locale, and the one Portuguese is Brazilian). `scripts/mobile-check.sh` generates them, then
+  `flutter pub get` runs gen-l10n; nothing is committed. A mobile area's `area.json` says `"surface": "mobile"`.
 
 ## Message values
 

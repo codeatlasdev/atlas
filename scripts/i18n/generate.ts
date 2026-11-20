@@ -2,7 +2,7 @@
 // Turns the one source tree (i18n/messages/**) into what each build-time consumer reads. Deterministic and sorted.
 // Nothing it writes is committed.
 //   paraglide  <dir>/<locale>.json per locale (apps/desktop/.i18n, site/.i18n): the input of Paraglide's compiler
-//   arb        <dir>/app_<locale>.arb per locale: Flutter ICU messages (the mobile surface, when it declares one)
+//   arb        <dir>/app_<language>.arb per locale: Flutter ICU messages (the mobile surface)
 // Rust has no generator: crates/atlas-i18n/build.rs embeds the same JSON and evaluates it. References (`{@common_os_trash}`)
 // are inlined for Paraglide and ARB, evaluated at run time in Rust.
 //
@@ -10,7 +10,7 @@
 // complete (no svelte imports on this path).
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { arbFile } from "./emit/arb.ts";
+import { arbFile, arbLocale } from "./emit/arb.ts";
 import { MessageError } from "./resolve.ts";
 import { type Source, consumedAreas, loadSource } from "./source.ts";
 import { type Ctx, loadCtx } from "./types.ts";
@@ -39,7 +39,9 @@ export function outputsFor(source: Source, surface: string): Output[] {
 			}
 		}
 		if (def.arb) {
-			for (const l of locales) out.push({ path: `${def.arb}/app_${l.replace("-", "_")}.arb`, content: arbFile(l, messagesOf(l)) });
+			const names = locales.map(arbLocale);
+			if (new Set(names).size !== names.length) throw new Error(`surface ${surface}: two locales of one language (${locales.join(", ")}) would write the same ARB file`);
+			for (const l of locales) out.push({ path: `${def.arb}/app_${arbLocale(l)}.arb`, content: arbFile(l, messagesOf(l)) });
 		}
 	} catch (e) {
 		if (e instanceof MessageError) throw new Error(`surface ${surface}: ${e.message}`);

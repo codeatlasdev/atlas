@@ -1,7 +1,7 @@
 ---
 title: "Atlas Mobile"
 source: mobile.md
-source_sha: "741183b806a5eb243c5b9015819a58e4af30355b"
+source_sha: "8ce370369a41d54af709913955acf1608f10828a"
 translation: machine
 ---
 
@@ -393,6 +393,7 @@ Configuração única no GitHub: o environment `mobile-store` com **Required rev
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` | Chave da API do App Store Connect (papel **App Manager**; o conteúdo do `.p8`). Ela envia o build e o assina (assinatura automática, sem certificados para gerenciar). |
 | `APPLE_TEAM_ID` | O time para o qual o app é assinado. |
 | `TESTFLIGHT_GROUPS` | Opcional (uma variável do CI, não um secret): grupos internos do TestFlight que recebem o build, separados por vírgula. Testers externos precisam da beta review da Apple. |
+| `BETA_FEEDBACK_EMAIL` | Obrigatória junto com `TESTFLIGHT_GROUPS` (uma variável do CI do `mobile-beta`): o e-mail de feedback das informações do app no TestFlight. Sem ele o App Store Connect recusa entregar a build a um grupo. |
 | `PLAY_SERVICE_ACCOUNT_JSON` | JSON da service account do Google Play, convidada no Play Console com direito de release só neste app. |
 | `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | A chave de upload do Play (`base64 -i upload.jks`). Localmente, `android/key.properties` (ignorado pelo git) também serve; sem nenhum dos dois, um build de release é assinado com a chave debug, que o Play recusa. |
 | `GOOGLE_SERVICES_JSON` | `google-services.json` para as notificações push do Firebase no Android, gravado pelo build Android só enquanto ele roda. Definido por `scripts/firebase-mobile-config.sh` ("Colocar o push no ar"). Sem ele, o app compila sem push. |

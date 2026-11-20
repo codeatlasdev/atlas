@@ -86,7 +86,9 @@ export class CrewGithubApp {
 
 	/** The form's choices as hostd takes them; `null` while they are not valid (an organization without a login). */
 	readonly args = $derived(manifestArgs(this.owner, this.org, this.workflows));
-	readonly busy = $derived(this.phase === "preparing" || this.phase === "waiting" || this.phase === "converting");
+	readonly busy = $derived(
+		this.phase === "preparing" || this.phase === "waiting" || this.phase === "converting",
+	);
 
 	private listener: string | null = null;
 	/** The listener's window in minutes, for the "did not answer" sentence. */
@@ -177,7 +179,8 @@ export class CrewGithubApp {
 			this.phase = this.app ? "ready" : "none";
 			if (this.app) await this.openInstall();
 		} else {
-			if (outcome.status === "timed_out") this.error = m.crew_github_app_timed_out({ minutes: this.windowMinutes });
+			if (outcome.status === "timed_out")
+				this.error = m.crew_github_app_timed_out({ minutes: this.windowMinutes });
 			this.deadline = 0;
 			this.phase = "none";
 		}

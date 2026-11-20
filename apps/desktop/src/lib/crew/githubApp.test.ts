@@ -98,7 +98,10 @@ describe("what the card shows", () => {
 
 	test("the installations signature changes when an account or its scope changes, not when the order does", () => {
 		const base = parseStatus(fixture.status);
-		const two = { ...base, installations: [...base.installations, { id: 9, account: "me", repositorySelection: "all" }] };
+		const two = {
+			...base,
+			installations: [...base.installations, { id: 9, account: "me", repositorySelection: "all" }],
+		};
 		const swapped = { ...two, installations: [...two.installations].reverse() };
 		const widened = { ...base, installations: [{ ...base.installations[0], repositorySelection: "all" }] };
 		expect(installationsSignature(two)).toBe(installationsSignature(swapped));

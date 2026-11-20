@@ -14,8 +14,11 @@
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { m } from "#lib/i18n/m.ts";
 
-	let { hostKey, serverName, flow: given }: { hostKey: string; serverName: string; flow?: CrewGithubApp } =
-		$props();
+	let {
+		hostKey,
+		serverName,
+		flow: given,
+	}: { hostKey: string; serverName: string; flow?: CrewGithubApp } = $props();
 
 	// Made once per card (see BrowsersRow): the flow holds the listener and the watch, and dies with the card.
 	// svelte-ignore state_referenced_locally
@@ -61,8 +64,7 @@
 				class="app-link"
 				href={`https://github.com/apps/${encodeURIComponent(app.slug)}`}
 				target="_blank"
-				rel="noreferrer"
-				>{app.name}<ExternalLink size={11} aria-hidden="true" /></a
+				rel="noreferrer">{app.name}<ExternalLink size={11} aria-hidden="true" /></a
 			>
 		</Row>
 		<Row label={m.crew_github_app_app_owner()}><span class="value">{app.owner}</span></Row>
@@ -119,9 +121,7 @@
 						variant={app.installations.length > 0 ? "ghost" : "filled"}
 						onclick={() => void flow.openInstall()}
 					>
-						{app.installations.length > 0
-							? m.crew_github_app_manage()
-							: m.crew_github_app_install()}
+						{app.installations.length > 0 ? m.crew_github_app_manage() : m.crew_github_app_install()}
 					</Button>
 					<Button size="sm" variant="ghost" disabled={flow.refreshing} onclick={() => void flow.refresh()}>
 						{flow.refreshing ? m.crew_github_app_refreshing() : m.crew_github_app_refresh()}
@@ -144,7 +144,8 @@
 					<p class="deadline" aria-live="off">{m.crew_github_app_deadline({ time: clock(left) })}</p>
 					<p class="muted">{m.crew_github_app_deadline_note()}</p>
 					<div class="actions">
-						<Button size="sm" variant="ghost" onclick={() => flow.cancel()}>{m.common_action_cancel()}</Button>
+						<Button size="sm" variant="ghost" onclick={() => flow.cancel()}>{m.common_action_cancel()}</Button
+						>
 					</div>
 				</div>
 			{:else if flow.phase === "converting"}
@@ -179,19 +180,12 @@
 						/>
 					{/if}
 					<div class="workflows">
-						<Switch
-							label={m.crew_github_app_workflows_label()}
-							bind:checked={flow.workflows}
-						/>
+						<Switch label={m.crew_github_app_workflows_label()} bind:checked={flow.workflows} />
 						<p class="muted">{m.crew_github_app_workflows_reason()}</p>
 					</div>
 					{#if flow.error}<p class="error" role="alert">{flow.error}</p>{/if}
 					<div class="actions">
-						<Button
-							size="sm"
-							disabled={flow.busy || !flow.args}
-							onclick={() => void flow.create()}
-						>
+						<Button size="sm" disabled={flow.busy || !flow.args} onclick={() => void flow.create()}>
 							{flow.phase === "preparing" ? m.crew_github_app_preparing() : m.crew_github_app_create()}
 						</Button>
 					</div>

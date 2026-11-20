@@ -55,13 +55,11 @@ export function parseStatus(raw: unknown): GithubApp | null {
 			: {},
 		createdAt: str(app.created_at),
 		identity: identity || `${str(app.slug)}[bot]`,
-		installations: (Array.isArray(app.installations) ? app.installations : [])
-			.filter(isObject)
-			.map((i) => ({
-				id: typeof i.id === "number" ? i.id : 0,
-				account: str(i.account),
-				repositorySelection: str(i.repository_selection),
-			})),
+		installations: (Array.isArray(app.installations) ? app.installations : []).filter(isObject).map((i) => ({
+			id: typeof i.id === "number" ? i.id : 0,
+			account: str(i.account),
+			repositorySelection: str(i.repository_selection),
+		})),
 		installationsError: str(app.installations_error) || null,
 	};
 }
@@ -92,7 +90,8 @@ export function manifestArgs(
 }
 
 /** GitHub's page to install the app on repositories, or to change which ones it reaches. */
-export const installUrl = (slug: string) => `https://github.com/apps/${encodeURIComponent(slug)}/installations/new`;
+export const installUrl = (slug: string) =>
+	`https://github.com/apps/${encodeURIComponent(slug)}/installations/new`;
 
 /** The permissions the card lists: write before read, then by name. */
 export function permissionList(permissions: Record<string, string>): { name: string; level: string }[] {
@@ -113,7 +112,8 @@ export function installationsSignature(app: GithubApp | null): string {
 }
 
 /** Seconds left until `deadline` (ms since the epoch), never negative. */
-export const secondsUntil = (deadline: number, now: number) => Math.max(0, Math.ceil((deadline - now) / 1000));
+export const secondsUntil = (deadline: number, now: number) =>
+	Math.max(0, Math.ceil((deadline - now) / 1000));
 
 /** `m:ss` for a countdown. */
 export function clock(seconds: number): string {

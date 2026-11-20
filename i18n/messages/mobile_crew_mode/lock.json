@@ -1,0 +1,23 @@
+{
+  "pt-BR": {
+    "mobile_crew_mode_applies_next": "0087e00adc8b",
+    "mobile_crew_mode_ask": "5632aefc70eb",
+    "mobile_crew_mode_ask_detail": "a70b2256572a",
+    "mobile_crew_mode_bypass": "5aebb26f969d",
+    "mobile_crew_mode_bypass_detail": "e63a800f9879",
+    "mobile_crew_mode_change": "ccc6a2dcfed9",
+    "mobile_crew_mode_changed": "666b87208b4f",
+    "mobile_crew_mode_edits": "63b3454aa45e",
+    "mobile_crew_mode_edits_detail": "2c9a393ea25f",
+    "mobile_crew_mode_error_bypass_disabled": "da201ae99ae2",
+    "mobile_crew_mode_error_forbidden": "74cfd42f26da",
+    "mobile_crew_mode_error_generic": "c56b59b571e2",
+    "mobile_crew_mode_error_no_access": "7f4bb3d6e502",
+    "mobile_crew_mode_error_unsupported_engine": "080c28fca28a",
+    "mobile_crew_mode_label": "5cea838368c7",
+    "mobile_crew_mode_locked_semantics": "5d670288073e",
+    "mobile_crew_mode_no_channel": "d405aa97ce97",
+    "mobile_crew_mode_semantics": "64f8ab9abb6f",
+    "mobile_crew_mode_sheet_title": "700220fad2d0"
+  }
+}

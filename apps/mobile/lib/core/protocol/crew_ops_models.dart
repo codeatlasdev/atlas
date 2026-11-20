@@ -6,9 +6,15 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/widgets.dart' show Locale;
+
 import 'package:atlas_mobile/core/protocol/agent_registry.dart';
+import 'package:atlas_mobile/core/protocol/permission_mode.dart';
+import 'package:atlas_mobile/l10n/app_localizations.dart';
 
 // ─── audit ────────────────────────────────────────────────────────────────────
+
+final _english = lookupAppLocalizations(const Locale('en'));
 
 /// The desktop's filter groups of the audit kinds (`apps/desktop/src/lib/crew/settings/audit.ts`).
 enum AuditGroup {
@@ -26,6 +32,7 @@ const _auditKinds = <String, (String, AuditGroup)>{
   'tool_call': ('Tool call', AuditGroup.tools),
   'approval_asked': ('Approval asked', AuditGroup.approvals),
   'approval_decision': ('Approval decided', AuditGroup.approvals),
+  'approval_mode_changed': ('Mode changed', AuditGroup.approvals),
   'task_queued': ('Task queued', AuditGroup.tasks),
   'task_started': ('Task started', AuditGroup.tasks),
   'task_finished': ('Task finished', AuditGroup.tasks),
@@ -35,6 +42,12 @@ const _auditKinds = <String, (String, AuditGroup)>{
 };
 
 String auditKindLabel(String kind) => _auditKinds[kind]?.$1 ?? kind;
+
+/// [auditKindLabel] in the app's language for the kinds the permission modes added; the rest keep their English.
+String auditKindLabelIn(AppLocalizations l, String kind) =>
+    kind == 'approval_mode_changed'
+    ? l.mobile_crew_audit_kind_mode_changed
+    : auditKindLabel(kind);
 
 const _listMax = 120;
 String _clip(String s) =>
@@ -51,16 +64,31 @@ String _inputText(Object? input) {
 }
 
 /// Who answered an approval, readable: `desktop`, `phone:<node>`, `telegram:<chat>`, `none`.
-String _answerer(String? by) {
-  if (by == null || by.isEmpty || by == 'none') return 'nobody answered';
+String _answerer(AppLocalizations l, String? by) {
+  if (by == null || by.isEmpty || by == 'none') {
+    return l.mobile_crew_audit_answer_nobody;
+  }
   if (by.startsWith('phone:')) {
     final node = by.substring(6);
-    return 'answered by phone ${node.length > 8 ? node.substring(0, 8) : node}…';
+    return l.mobile_crew_audit_answer_phone(
+      node.length > 8 ? node.substring(0, 8) : node,
+    );
   }
   if (by.startsWith('telegram:')) {
-    return 'answered by Telegram chat ${by.substring(9)}';
+    return l.mobile_crew_audit_answer_telegram(by.substring(9));
   }
-  return 'answered by $by';
+  return l.mobile_crew_audit_answer_by(by);
+}
+
+/// A mode as a person reads it; a value this build does not know shows as sent.
+String _modeName(AppLocalizations l, Object? wire) {
+  final mode = PermissionMode.tryParse(wire);
+  return switch (mode) {
+    PermissionMode.ask => l.mobile_crew_mode_ask,
+    PermissionMode.edits => l.mobile_crew_mode_edits,
+    PermissionMode.bypass => l.mobile_crew_mode_bypass,
+    null => '${wire ?? '?'}',
+  };
 }
 
 /// Who asked for a sign-in, readable: `desktop`, `phone:<node>`, `telegram:<chat>`.
@@ -92,8 +120,11 @@ class AuditEntry {
   String? get taskId => raw['task_id'] as String?;
   AuditGroup? get group => _auditKinds[kind]?.$2;
 
-  /// One line for the list (what the desktop shows).
-  String get summary {
+  /// One line for the list (what the desktop shows), in English.
+  String get summary => summaryIn(_english);
+
+  /// [summary] in the app's language: the approval and mode lines are catalog messages, the rest are English.
+  String summaryIn(AppLocalizations l) {
     String s(String k) => raw[k] as String? ?? '';
     switch (kind) {
       case 'tool_call':
@@ -105,14 +136,30 @@ class AuditEntry {
         final name = raw['tool_name'] as String? ?? '?';
         return _clip('Asked to run $name${input.isEmpty ? '' : ': $input'}');
       case 'approval_decision':
-        final verb = switch (raw['decision']) {
-          'allow' => 'Allowed',
-          'deny' => 'Denied',
-          'timeout' => 'Timed out',
-          _ => 'Decided',
+        // `source` says what decided; a person's answer (an older server's `by`) names the device.
+        final tool = raw['tool'] as String? ?? raw['tool_name'] as String? ?? l.mobile_crew_audit_a_tool;
+        final answer = switch (raw['source']) {
+          'mode' => l.mobile_crew_audit_answer_mode,
+          'grant' => l.mobile_crew_audit_answer_grant,
+          'rail' => l.mobile_crew_audit_answer_rail,
+          'timeout' => _answerer(l, null),
+          _ => _answerer(l, (raw['device'] ?? raw['by']) as String?),
         };
-        final tool = raw['tool_name'] as String? ?? 'a tool';
-        return '$verb $tool (${_answerer(raw['by'] as String?)})';
+        if (raw['source'] == 'timeout') {
+          return l.mobile_crew_audit_decision_timed_out(tool, answer);
+        }
+        return switch (raw['decision']) {
+          'allow' => l.mobile_crew_audit_decision_allowed(tool, answer),
+          'deny' => l.mobile_crew_audit_decision_denied(tool, answer),
+          'timeout' => l.mobile_crew_audit_decision_timed_out(tool, answer),
+          _ => l.mobile_crew_audit_decision_decided(tool, answer),
+        };
+      case 'approval_mode_changed':
+        return l.mobile_crew_audit_mode_changed(
+          _modeName(l, raw['from']),
+          _modeName(l, raw['to']),
+          _answerer(l, raw['device'] as String?),
+        );
       case 'task_queued':
         final src = raw['source'] as String? ?? '?';
         return _clip('Task queued ($src): ${s('prompt')}');
@@ -297,15 +344,40 @@ class EngineLimits {
 
 // ─── crew settings ────────────────────────────────────────────────────────────
 
-/// `crew_settings_get`: the crew-wide reply summary switch and its model (null = hostd's default).
+/// `crew_settings_get`: the crew-wide reply summary switch and its model (null = hostd's default), the mode new
+/// crewmates start in and whether any crewmate may use Bypass.
 class CrewSettings {
-  const CrewSettings({required this.shortReplies, this.shortRepliesModel});
+  const CrewSettings({
+    required this.shortReplies,
+    this.shortRepliesModel,
+    this.defaultMode = PermissionMode.ask,
+    this.allowBypass = true,
+  });
   final bool shortReplies;
   final String? shortRepliesModel;
+
+  /// `default_approval`: the mode a new crewmate starts in (hostd falls back to Ask when Bypass is taken away).
+  final PermissionMode defaultMode;
+
+  /// `allow_bypass`: off takes every crewmate that can ask out of Bypass and hides it from every control.
+  final bool allowBypass;
 
   factory CrewSettings.fromJson(Map<String, dynamic> j) => CrewSettings(
     shortReplies: j['short_replies'] as bool? ?? true,
     shortRepliesModel: j['short_replies_model'] as String?,
+    defaultMode: PermissionMode.tryParse(j['default_approval']) ?? PermissionMode.ask,
+    allowBypass: j['allow_bypass'] as bool? ?? true,
+  );
+
+  CrewSettings copyWith({
+    bool? shortReplies,
+    PermissionMode? defaultMode,
+    bool? allowBypass,
+  }) => CrewSettings(
+    shortReplies: shortReplies ?? this.shortReplies,
+    shortRepliesModel: shortRepliesModel,
+    defaultMode: defaultMode ?? this.defaultMode,
+    allowBypass: allowBypass ?? this.allowBypass,
   );
 
   /// The `crew_settings_set` args; an empty model clears it (hostd falls back to the default).
@@ -314,6 +386,8 @@ class CrewSettings {
     'short_replies_model': (shortRepliesModel ?? '').isEmpty
         ? null
         : shortRepliesModel,
+    'default_approval': defaultMode.wire,
+    'allow_bypass': allowBypass,
   };
 }
 

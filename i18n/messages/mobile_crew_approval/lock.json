@@ -1,0 +1,17 @@
+{
+  "pt-BR": {
+    "mobile_crew_approval_allow_once": "d2ce72fd95f8",
+    "mobile_crew_approval_allow_task": "6a1f87228f44",
+    "mobile_crew_approval_comment_hint": "3d19f77d2bf8",
+    "mobile_crew_approval_comment_label": "45c223800b88",
+    "mobile_crew_approval_deny": "c0456fee0bc0",
+    "mobile_crew_approval_failed": "3415460290ff",
+    "mobile_crew_approval_more": "1982a986b3e0",
+    "mobile_crew_approval_rail_no_auto": "987918e0d1cf",
+    "mobile_crew_approval_rail_protected_path": "8c57d992568e",
+    "mobile_crew_approval_sheet_title": "e5822ce71995",
+    "mobile_crew_approval_task_note": "573b366a1c51",
+    "mobile_crew_approval_wants_to_run": "b035b2282616",
+    "mobile_crew_approval_wants_to_run_unknown": "52cbc33ed516"
+  }
+}

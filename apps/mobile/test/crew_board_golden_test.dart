@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/permission_mode.dart';
 import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/board.dart';
@@ -25,7 +26,7 @@ class _BoardFixture extends StatelessWidget {
         name: 'Reviewer',
         role: '',
         agent: 'omp',
-        approval: 'ask',
+        mode: PermissionMode.ask,
         state: 'working',
       ),
       CrewmateEntry(
@@ -33,7 +34,7 @@ class _BoardFixture extends StatelessWidget {
         name: 'Nightly',
         role: '',
         agent: 'omp',
-        approval: 'ask',
+        mode: PermissionMode.ask,
         state: 'idle',
       ),
       CrewmateEntry(
@@ -41,7 +42,7 @@ class _BoardFixture extends StatelessWidget {
         name: 'Deployer',
         role: '',
         agent: 'omp',
-        approval: 'ask',
+        mode: PermissionMode.ask,
         state: 'idle',
       ),
       CrewmateEntry(
@@ -49,7 +50,7 @@ class _BoardFixture extends StatelessWidget {
         name: 'Monitor',
         role: '',
         agent: 'omp',
-        approval: 'ask',
+        mode: PermissionMode.ask,
         state: 'idle',
       ),
     ];

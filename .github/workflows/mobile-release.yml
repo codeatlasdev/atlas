@@ -78,6 +78,12 @@ jobs:
           flutter-version-file: apps/mobile/pubspec.yaml
           channel: stable
 
+      # The translations are written from the catalog (i18n/messages) by the lanes' own step; that needs bun.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
       - name: Rust targets for the native crate
         run: rustup target add aarch64-apple-ios
 
@@ -126,6 +132,12 @@ jobs:
         with:
           flutter-version-file: apps/mobile/pubspec.yaml
           channel: stable
+
+      # The translations are written from the catalog (i18n/messages) by the lanes' own step; that needs bun.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
 
       - name: Rust targets for the native crate
         run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android

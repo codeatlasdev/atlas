@@ -634,6 +634,19 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         )),
         lab: lab.as_ref().map(|(l, _)| l.clone()),
     });
+    // A lab is seeded from main before anything can ask it (the phone link below, the socket's accept loop), so its
+    // first answer is never an empty list of agents. A failed seed is retried by `follow`, as after any drop.
+    let lab_first = match &lab {
+        Some((l, first)) => match l.seed_on(&hub, first.clone()).await {
+            Ok(s) => Some(s),
+            Err(e) => {
+                // i18n-ignore: log
+                eprintln!("hostd lab: could not seed from main: {e:#}");
+                None
+            }
+        },
+        None => None,
+    };
     crate::mobile::start(&hub);
     hub.crew_relay.start(&hub);
     // Plain agents push to the phones' tokens (not on a lab: it mirrors the real hostd's agents,
@@ -680,8 +693,8 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // bound and rewritten it, a resumed agent posted its `done` to the previous daemon's dead port and the
     // task ended `failed: agent exited (code 0)`.
     hub.crew.start(Arc::downgrade(&hub));
-    if let Some((l, first)) = lab {
-        tokio::spawn(l.follow(Arc::downgrade(&hub), first));
+    if let Some((l, _)) = lab {
+        tokio::spawn(l.follow(Arc::downgrade(&hub), lab_first));
     }
     {
         let mut rx = hub.agents.subscribe();

@@ -3,7 +3,6 @@
 // cards answered by voice. The rules held here: the app sends ONLY what was heard and shows hostd's verdict; it never
 // turns words into an allow; the voice stops on a tap, on dictation and in the background; the toggle sets the
 // crewmate's flag.
-import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';

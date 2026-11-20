@@ -83,7 +83,7 @@ class VoiceHost implements Transport {
     'state': state,
     if (state == 'done') 'result': 'The full reply of $id.',
     'spoken': spoken,
-    if (action != null) 'action': action,
+    if (action != null) 'action': action, // ignore: use_null_aware_elements
   };
 
   Map<String, dynamic> _row() => {

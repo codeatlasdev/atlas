@@ -260,15 +260,16 @@ async fn until<T>(what: &str, mut f: impl AsyncFnMut() -> Option<T>) -> T {
 }
 
 /// The webhook secret is in the private app file and nowhere else under the server's directory, and not in any of
-/// `replies` (what the test was told over the wire).
+/// `replies` (what the test was told over the wire). Links are not followed: `shims/gh` points at the atlas binary
+/// (this test binary, which holds the constant), and what a link points at is not a file the server wrote.
 fn assert_secret_stays_in_its_file(dir: &std::path::Path, replies: &[String]) {
     fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         for e in std::fs::read_dir(dir).unwrap().flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                walk(&p, out);
-            } else {
-                out.push(p);
+            let Ok(kind) = e.file_type() else { continue };
+            if kind.is_dir() {
+                walk(&e.path(), out);
+            } else if kind.is_file() {
+                out.push(e.path());
             }
         }
     }
@@ -294,6 +295,33 @@ fn assert_secret_stays_in_its_file(dir: &std::path::Path, replies: &[String]) {
             "a reply carries the secret: {r}"
         );
     }
+}
+
+// The leak check reads what the server wrote, not what a link points at. `<crew dir>/shims/gh` is a link to the atlas
+// binary, which under test is this test binary, and it holds `WEBHOOK_SECRET` as a constant: following the link failed
+// `a_signed_delivery_starts_the_task_and_a_replayed_id_does_nothing` on main's Linux CI whenever the crewmate's task
+// made the shim before the walk (a race). A file the server writes with the secret in it must still fail the check.
+#[test]
+fn the_leak_check_reads_the_servers_files_not_where_a_link_points() {
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("atlas");
+    std::fs::write(&target, format!("binary {WEBHOOK_SECRET} bytes")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("shims")).unwrap();
+    std::os::unix::fs::symlink(&target, dir.path().join("shims/gh")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), dir.path().join("linked-dir")).unwrap();
+    assert_secret_stays_in_its_file(dir.path(), &[]);
+
+    std::fs::write(
+        dir.path().join("leak.log"),
+        format!("token={WEBHOOK_SECRET}"),
+    )
+    .unwrap();
+    let caught = std::panic::catch_unwind(|| assert_secret_stays_in_its_file(dir.path(), &[]));
+    assert!(
+        caught.is_err(),
+        "a file the server wrote with the secret must fail the check"
+    );
 }
 
 fn task_for(tasks: &[Value], comment_id: u64) -> Option<&Value> {

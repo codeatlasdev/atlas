@@ -114,6 +114,7 @@
 	"cmd_hostd_not_running_desktop": "o hostd não está rodando; abra o Atlas Desktop",
 	"cmd_hostd_not_running_in": "o hostd não está rodando ({dir})",
 	"cmd_hostd_pair_no_address": "o endpoint de pareamento não tem nenhum endereço que um celular consiga acessar (sem relay e sem endereço na rede local): esta máquina está online?",
+	"cmd_hostd_project_down_still_stopping": "O Atlas (pid {pid}) ainda está encerrando a stack",
 	"cmd_hostd_reconcile_upgraded": [
 		{
 			"declarations": [

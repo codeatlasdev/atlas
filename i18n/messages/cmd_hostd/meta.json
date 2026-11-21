@@ -46,6 +46,7 @@
 	"cmd_hostd_not_running_desktop": "Error of `atlas term` when no hostd answers and the desktop app is closed. Lowercase: the CLI puts `error:` before it.",
 	"cmd_hostd_not_running_in": "Error of `atlas hostd` (--status, --stop, --upgrade, --mobile-pair, --crew-pause, --crew-login): no daemon answers in the hostd directory {dir}. Lowercase: the CLI puts `error:` before it.",
 	"cmd_hostd_pair_no_address": "Error of `atlas hostd --mobile-pair` when the pairing invite carries neither a relay nor a direct address. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_project_down_still_stopping": "Error the phone shows when stopping a project's whole stack timed out: the stack's atlas process (pid {pid}, shown as is) was asked to shut down but is still running after 10 seconds.",
 	"cmd_hostd_reconcile_upgraded": "Output of `atlas hostd --reconcile` and `atlas update` after a live hand-over; {count} is how many running terminals the new host kept.",
 	"cmd_hostd_restarted_ended": "Output of `atlas hostd --restart`, `--reconcile` and `atlas update` after the terminal host was replaced; {count} is how many running terminals ended with the old one.",
 	"cmd_hostd_restarted_idle": "Output of `atlas hostd --reconcile` and `atlas update` when the stale host had no running terminal and was replaced without asking.",

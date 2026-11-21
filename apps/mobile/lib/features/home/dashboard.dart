@@ -13,10 +13,12 @@ import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
 import 'package:atlas_mobile/features/home/home_skeleton.dart';
 import 'package:atlas_mobile/features/home/home_cards.dart';
 import 'package:atlas_mobile/features/home/home_header.dart';
+import 'package:atlas_mobile/features/home/project_groups.dart';
 import 'package:atlas_mobile/features/home/project_tile.dart';
 import 'package:atlas_mobile/features/inbox/inbox_providers.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
@@ -68,6 +70,7 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
 
   @override
   void dispose() {
+    _search.dispose();
     _poll.close();
     _timer?.cancel();
     super.dispose();
@@ -75,6 +78,79 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
 
   void _openProject(ProjectInfo p) =>
       context.push('/project', extra: {'device': widget.device, 'project': p});
+
+  // The list's own state: what is typed in the search, which repositories show their idle worktrees, whether
+  // the "Other folders" section is open. Kept across polls (keys are repository roots, not list positions).
+  final _search = TextEditingController();
+  String _query = '';
+  final _unfolded = <String>{};
+  bool _foldersOpen = false;
+
+  /// The rows under "Projects": the search's hits, or one block per repository then the other folders.
+  List<Widget> _rows(
+    List<ProjectInfo> list,
+    Map<String, List<(String, AgentStatus)>> agentsOf,
+    Set<String> flagged,
+  ) {
+    final l10n = context.l10n;
+    Widget tile(ProjectInfo p, {bool nested = false}) => ProjectTile(
+      key: ValueKey('project-${p.id}'),
+      project: p,
+      agents: agentsOf[p.id] ?? const [],
+      flagged: flagged.contains(p.id),
+      onOpen: () => _openProject(p),
+      nested: nested,
+    );
+    if (_query.trim().isNotEmpty) {
+      final hits = searchProjects(list, _query, flagged: flagged);
+      if (hits.isEmpty) {
+        return [
+          Padding(
+            padding: const EdgeInsets.all(Space.xl),
+            child: Text(
+              l10n.mobile_projects_search_empty(_query.trim()),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge!
+                  .copyWith(color: AtlasColors.of(context).muted),
+            ),
+          ),
+        ];
+      }
+      return [for (final p in hits) tile(p)];
+    }
+    final home = groupProjects(list, flagged: flagged);
+    return [
+      for (final g in home.groups) ...[
+        tile(g.head),
+        // Active worktrees always show under their project; the idle ones on request.
+        for (final w in g.worktrees)
+          if (isActive(w, flagged) || _unfolded.contains(g.key))
+            tile(w, nested: true),
+        if (g.worktrees.any((w) => !isActive(w, flagged)))
+          _FoldRow(
+            key: ValueKey('fold-${g.key}'),
+            label: _unfolded.contains(g.key)
+                ? l10n.mobile_projects_worktrees_hide
+                : l10n.mobile_projects_worktrees_show(
+                    g.worktrees.where((w) => !isActive(w, flagged)).length,
+                  ),
+            open: _unfolded.contains(g.key),
+            onTap: () => setState(() {
+              if (!_unfolded.remove(g.key)) _unfolded.add(g.key);
+            }),
+          ),
+      ],
+      if (home.folders.isNotEmpty) ...[
+        _FoldersHeader(
+          count: home.folders.length,
+          open: _foldersOpen,
+          onTap: () => setState(() => _foldersOpen = !_foldersOpen),
+        ),
+        if (_foldersOpen)
+          for (final f in home.folders) tile(f),
+      ],
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -110,15 +186,7 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
                 ServiceAttention(:final project))
           project.id,
     };
-    final sorted = [...list]
-      ..sort((a, b) {
-        int rank(ProjectInfo p) => flagged.contains(p.id)
-            ? 0
-            : p.running
-            ? 1
-            : 2;
-        return rank(a).compareTo(rank(b));
-      });
+    final home = groupProjects(list, flagged: flagged);
     final missing = connected
         ? ref.watch(missingIntegrationsProvider(widget.device)).value ??
               const <AgentIntegration>[]
@@ -144,6 +212,8 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
         },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
+          // The search keyboard goes away as soon as the list is scrolled.
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           slivers: [
             SliverToBoxAdapter(
               child: HomeHeader(
@@ -220,7 +290,7 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
                     if (missing.isNotEmpty) const SizedBox(height: Space.md),
                     SectionHeader(
                       'Projects',
-                      count: list.length,
+                      count: home.groups.length,
                       trailing: canOpenTerminal(widget.device)
                           ? TextButton.icon(
                               key: const Key('new-terminal-computer'),
@@ -237,6 +307,12 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
                             )
                           : null,
                     ),
+                    // Only where a list is long enough to need it (or while a search is typed).
+                    if (list.length > 5 || _query.isNotEmpty)
+                      _ProjectSearch(
+                        controller: _search,
+                        onChanged: (v) => setState(() => _query = v),
+                      ),
                   ],
                 ),
               ),
@@ -269,20 +345,172 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
                     Space.xxl + kFloatingBarScrollPad,
                   ),
                   sliver: SliverList.list(
-                    children: [
-                      for (var i = 0; i < sorted.length; i++)
-                        ProjectTile(
-                          project: sorted[i],
-                          agents: agentsOf[sorted[i].id] ?? const [],
-                          flagged: flagged.contains(sorted[i].id),
-                          onOpen: () => _openProject(sorted[i]),
-                          last: i == sorted.length - 1,
-                        ),
-                    ],
+                    children: _rows(list, agentsOf, flagged),
                   ),
                 ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The search over projects, worktree branches and folders.
+class _ProjectSearch extends StatelessWidget {
+  const _ProjectSearch({required this.controller, required this.onChanged});
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.sm),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) => TextField(
+          key: const Key('project-search'),
+          controller: controller,
+          onChanged: onChanged,
+          textInputAction: TextInputAction.search,
+          autocorrect: false,
+          decoration: InputDecoration(
+            hintText: context.l10n.mobile_projects_search_hint,
+            prefixIcon: Icon(Icons.search_rounded, color: c.faint),
+            suffixIcon: value.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: context.l10n.mobile_projects_search_clear,
+                    icon: Icon(Icons.close_rounded, color: c.faint),
+                    onPressed: () {
+                      controller.clear();
+                      onChanged('');
+                    },
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "N worktrees" / "Hide worktrees" under a repository: aligned with the rows' text, quiet until needed.
+class _FoldRow extends StatelessWidget {
+  const _FoldRow({
+    super.key,
+    required this.label,
+    required this.open,
+    required this.onTap,
+  });
+  final String label;
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Semantics(
+      button: true,
+      expanded: open,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          // Under the title column: the avatar is 50 wide, then the row's gap.
+          padding: const EdgeInsets.fromLTRB(
+            Space.lg + 50 + Space.md,
+            Space.sm,
+            Space.lg,
+            Space.sm,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                size: 20,
+                color: c.accent,
+              ),
+              const SizedBox(width: Space.xs),
+              Flexible(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodyMedium!
+                      .copyWith(color: c.accent, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The "Other folders" section: collapsed by default, says what those folders are when open.
+class _FoldersHeader extends StatelessWidget {
+  const _FoldersHeader({
+    required this.count,
+    required this.open,
+    required this.onTap,
+  });
+  final int count;
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final t = Theme.of(context).textTheme;
+    return Semantics(
+      button: true,
+      expanded: open,
+      child: InkWell(
+        key: const Key('other-folders'),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Space.lg + 2,
+            Space.xl,
+            Space.lg,
+            Space.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        text: context.l10n.mobile_projects_folders,
+                        children: [
+                          TextSpan(
+                            text: '  $count',
+                            style: TextStyle(color: c.muted),
+                          ),
+                        ],
+                      ),
+                      style: t.titleSmall,
+                    ),
+                  ),
+                  Icon(
+                    open
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    color: c.muted,
+                  ),
+                ],
+              ),
+              if (open)
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.xs),
+                  child: Text(
+                    context.l10n.mobile_projects_folders_hint,
+                    style: t.bodySmall!.copyWith(color: c.muted),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

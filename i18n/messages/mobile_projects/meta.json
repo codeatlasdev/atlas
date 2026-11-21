@@ -1,0 +1,11 @@
+{
+	"mobile_projects_folders": "Collapsed section at the end of the phone's home: folders opened in Atlas Desktop that are not projects (no atlas.yaml, not a git checkout)",
+	"mobile_projects_folders_hint": "Explanation under the Other folders section header on the phone's home",
+	"mobile_projects_search_clear": "Accessibility label of the button that empties the project search",
+	"mobile_projects_search_empty": "Shown instead of the project list when the search finds nothing; query is what the user typed",
+	"mobile_projects_search_hint": "Placeholder of the search field above the project list on the phone's home",
+	"mobile_projects_stack_stop": "Button in a running project's status panel on the phone that stops its whole stack (every service)",
+	"mobile_projects_stack_stopping": "The Stop button of a project while its stack is stopping",
+	"mobile_projects_worktrees_hide": "Row under a project on the phone's home that folds its expanded worktrees back",
+	"mobile_projects_worktrees_show": "Row under a project on the phone's home that unfolds its idle worktrees; count is how many. i18n-allow pt-zero: only shown when the project has at least one idle worktree (the fold row in features/home/dashboard.dart)"
+}

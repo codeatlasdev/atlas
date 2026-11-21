@@ -7,7 +7,9 @@ import 'package:atlas_mobile/core/ui/inset_row.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
 
 /// A project, Telegram-row style like the crew's logbook: avatar with a running dot, the name
-/// and its state on top, under it what its agent is doing (tap: that agent) or its services.
+/// and its state on top, under it what its agent is doing (tap: that agent), else its branch. A worktree is
+/// named by its branch; [nested] under its project it trades the avatar for a branch mark, indented, so the
+/// repository reads as one block. A folder that is not a project has no state: it shows where it is.
 class ProjectTile extends StatelessWidget {
   const ProjectTile({
     super.key,
@@ -16,6 +18,7 @@ class ProjectTile extends StatelessWidget {
     required this.flagged,
     required this.onOpen,
     this.last = false,
+    this.nested = false,
   });
 
   final ProjectInfo project;
@@ -25,6 +28,9 @@ class ProjectTile extends StatelessWidget {
 
   /// The last row draws no divider under it.
   final bool last;
+
+  /// Drawn under its repository's row (a worktree on the home).
+  final bool nested;
 
   /// The agent worth showing: one that needs you, else one working, else the latest.
   (String, AgentStatus)? get _lead {
@@ -48,16 +54,28 @@ class ProjectTile extends StatelessWidget {
     final up = project.services.where((s) => s.state == 'running').length;
     final failed = project.services.where((s) => s.state == 'failed').length;
     final lead = _lead;
-    final (stateText, stateColor) = !project.running
+    final (stateText, stateColor) = !project.isProject && !project.running
+        ? ('', c.muted)
+        : !project.running
         ? ('stopped', c.muted)
         : failed > 0
         ? ('$failed down', c.error)
         : project.services.isEmpty
         ? ('running', c.success)
         : ('$up/${project.services.length} up', c.success);
+    final title = project.worktree
+        ? project.branch ?? project.name
+        : project.name;
+    // What tells this row apart when no agent speaks for it: a worktree's folder, a project's branch, a plain
+    // folder's place on disk.
+    final idle = !project.isProject
+        ? project.root.replaceFirst(RegExp(r'^/(Users|home)/[^/]+'), '~')
+        : project.worktree
+        ? project.name
+        : project.branch;
     return InsetRow(
       semanticsLabel: [
-        '${project.name}, $stateText',
+        stateText.isEmpty ? title : '$title, $stateText',
         if (lead != null) '${lead.$2.agent}, ${lead.$2.state}',
       ].join('. '),
       onTap: onOpen,
@@ -66,10 +84,24 @@ class ProjectTile extends StatelessWidget {
       leading: Stack(
         clipBehavior: Clip.none,
         children: [
-          Hero(
-            tag: 'project-${project.id}',
-            child: ProjectAvatar(name: project.name, size: 50),
-          ),
+          if (nested)
+            SizedBox(
+              width: 50,
+              height: 36,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Icon(
+                  Icons.subdirectory_arrow_right_rounded,
+                  size: 22,
+                  color: c.faint,
+                ),
+              ),
+            )
+          else
+            Hero(
+              tag: 'project-${project.id}',
+              child: ProjectAvatar(name: project.name, size: 50),
+            ),
           if (project.running)
             Positioned(
               right: -2,
@@ -91,7 +123,7 @@ class ProjectTile extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                project.name,
+                title,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium!
                     .copyWith(fontWeight: FontWeight.w600, color: c.text),
@@ -107,7 +139,9 @@ class ProjectTile extends StatelessWidget {
         const SizedBox(height: 3),
         if (lead == null)
           Text(
-            project.running ? 'No agent here' : 'Tap to open',
+            idle ?? (project.running ? 'No agent here' : 'Tap to open'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodyLarge!
                 .copyWith(color: c.muted),
           )

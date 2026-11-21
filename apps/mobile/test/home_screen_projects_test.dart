@@ -80,7 +80,7 @@ void main() {
         .map((e) => ProjectInfo.fromJson(e as Map<String, dynamic>))
         .toList();
 
-    expect(projects.length, 1);
+    expect(projects.length, 3); // the project, one of its worktrees, a folder
     expect(projects.first.name, 'shop');
     expect(projects.first.id, 'a');
   });

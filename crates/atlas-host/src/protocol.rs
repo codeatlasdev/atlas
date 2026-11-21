@@ -486,7 +486,9 @@ pub enum HostCmd {
         #[serde(default)]
         query: Option<String>,
     },
-    /// `op`: `restart` | `start` | `stop` one service, or `up` (start the stack detached).
+    /// `op`: `restart` | `start` | `stop` one service (`service` required), `up` (start the stack
+    /// detached) or `down` (stop the whole stack, like the desktop's stack stop; `service` is not
+    /// used; nothing running answers `{}` too, a stack still alive after 10 s is an error).
     ProjectService {
         id: String,
         #[serde(default)]

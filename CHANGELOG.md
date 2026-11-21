@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Every Atlas Mobile release has its Android APK on GitHub.** Once a `mobile-vX.Y.Z` build is approved for the stores, the workflow attaches Google Play's universal APK of it (`atlas-mobile-X.Y.Z.apk` and its `.sha256`) to a GitHub release for the tag. It is signed with Play's app signing key, so it and a Play Store install update each other. The release is never marked "Latest", which stays the desktop and CLI release.
+
 ### Fixed
 
 - **Atlas Mobile: a sheet or dialog is never under the tab bar.** Sheets a tab opens (the "Find your computer on Wi-Fi" explanation in Settings, the new-terminal and permission sheets) were drawn on the tab's own navigator, below the floating bar, which hid their buttons and stayed tappable over the scrim. The shell now watches every tab navigator and hides the bar (not tappable, not read by a screen reader) while any popup is open, so no screen has to remember it.

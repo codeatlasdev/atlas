@@ -18,6 +18,8 @@ pub(crate) struct Entry {
     /// SSH host: not reachable from this host's runner, skipped.
     #[serde(default)]
     host: Option<String>,
+    #[serde(default)]
+    pinned: bool,
 }
 
 pub(crate) fn entries(dir: &Path) -> Result<Vec<Entry>, String> {
@@ -44,29 +46,155 @@ fn parse(s: String) -> Value {
 }
 
 /// Every local project with its live services and the agents whose terminal runs in it
-/// (`panes`/`agent_status` as for [`detail`]): enough for the phone's home screen.
+/// (`panes`/`agent_status` as for [`detail`]): enough for the phone's home screen. Entries
+/// whose folder is gone are left out; each carries what the phone needs to group and filter
+/// (`kind`, `repo`, `branch`, `worktree`, `pinned`). Registry order; the stacks are asked
+/// concurrently.
 pub async fn list(
     dir: &Path,
     panes: &[(String, String)],
     agent_status: &Value,
 ) -> Result<Value, String> {
-    let mut out = Vec::new();
-    for e in entries(dir)? {
-        let root = Path::new(&e.root);
-        let st = tools::call(root, "atlas_status", &json!({}))
+    let entries = entries(dir)?;
+    let mut set = tokio::task::JoinSet::new();
+    for (i, e) in entries.into_iter().enumerate() {
+        set.spawn(async move {
+            let root = PathBuf::from(&e.root);
+            let (root, checkout) = tokio::task::spawn_blocking(move || {
+                let c = root.is_dir().then(|| Checkout::of(&root));
+                (root, c)
+            })
             .await
-            .map(parse)
-            .unwrap_or(Value::Null);
-        out.push(json!({
-            "id": e.id,
-            "root": e.root,
-            "name": root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-            "running": st["running"] == true,
-            "services": st["services"].as_array().cloned().unwrap_or_default(),
-            "agents": agents_in(root, panes, agent_status),
-        }));
+            .ok()?;
+            let checkout = checkout?;
+            let st = tools::call(&root, "atlas_status", &json!({}))
+                .await
+                .map(parse)
+                .unwrap_or(Value::Null);
+            Some((i, e, root, checkout, st))
+        });
     }
+    let mut found = Vec::new();
+    while let Some(r) = set.join_next().await {
+        if let Ok(Some(x)) = r {
+            found.push(x);
+        }
+    }
+    found.sort_by_key(|x| x.0);
+    let out: Vec<Value> = found
+        .into_iter()
+        .map(|(_, e, root, c, st)| {
+            json!({
+                "id": e.id,
+                "root": e.root,
+                "name": root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                "running": st["running"] == true,
+                "services": st["services"].as_array().cloned().unwrap_or_default(),
+                "agents": agents_in(&root, panes, agent_status),
+                "kind": if c.project { "project" } else { "folder" },
+                "repo": c.repo,
+                "branch": c.branch,
+                "worktree": c.worktree,
+                "pinned": e.pinned,
+            })
+        })
+        .collect();
     Ok(json!({"projects": out}))
+}
+
+/// What a registered folder is on disk, from files alone (the list is polled every few
+/// seconds for every entry, so no `git` process).
+struct Checkout {
+    /// An `atlas.yaml`/`atlas.yml` or a git checkout: a real project, not a folder opened once.
+    project: bool,
+    /// The main repository's root (a main checkout's own root); `None` when not git.
+    repo: Option<String>,
+    /// HEAD's branch; `None` when detached or not git.
+    branch: Option<String>,
+    /// A linked worktree of `repo`.
+    worktree: bool,
+}
+
+impl Checkout {
+    fn of(root: &Path) -> Self {
+        let dotgit = root.join(".git");
+        let has_config = root.join("atlas.yaml").is_file() || root.join("atlas.yml").is_file();
+        let git = if dotgit.is_dir() {
+            Some((dotgit.clone(), false))
+        } else {
+            // A linked worktree (or submodule): `.git` is a file `gitdir: <path>`.
+            std::fs::read_to_string(&dotgit)
+                .ok()
+                .and_then(|t| {
+                    t.trim()
+                        .strip_prefix("gitdir:")
+                        .map(|p| p.trim().to_string())
+                })
+                .map(|p| (clean(&root.join(p)), true))
+        };
+        let Some((gitdir, from_file)) = git else {
+            return Self {
+                project: has_config || dotgit.exists(),
+                repo: None,
+                branch: None,
+                worktree: false,
+            };
+        };
+        let branch = std::fs::read_to_string(gitdir.join("HEAD"))
+            .ok()
+            .and_then(|h| {
+                h.trim()
+                    .strip_prefix("ref: refs/heads/")
+                    .map(str::to_string)
+            });
+        // The repository's own git dir: `commondir` (relative to the worktree's git dir) when
+        // git wrote one, else the `<main>/.git/worktrees/<name>` layout.
+        let common = from_file
+            .then(|| match std::fs::read_to_string(gitdir.join("commondir")) {
+                Ok(c) => Some(clean(&gitdir.join(c.trim()))),
+                Err(_) => gitdir
+                    .parent()
+                    .filter(|p| p.file_name().is_some_and(|n| n == "worktrees"))
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf),
+            })
+            .flatten();
+        let (repo, worktree) = match common {
+            Some(c) if c != gitdir => (
+                // `<main>/.git` -> `<main>`; a bare repository is its own root.
+                if c.file_name().is_some_and(|n| n == ".git") {
+                    c.parent().map(Path::to_path_buf).unwrap_or(c)
+                } else {
+                    c
+                },
+                true,
+            ),
+            _ => (root.to_path_buf(), false),
+        };
+        Self {
+            project: true,
+            repo: Some(repo.to_string_lossy().into_owned()),
+            branch,
+            worktree,
+        }
+    }
+}
+
+/// `p` without `.`/`..` components (lexically: the path may be a worktree's relative `gitdir`).
+fn clean(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !out.pop() {
+                    out.push(c);
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// Agent panes whose terminal runs inside `root` (a pane belongs to the project of its
@@ -169,8 +297,10 @@ pub async fn service(
     op: &str,
 ) -> Result<Value, String> {
     let root = root_of(dir, id)?;
-    if op == "up" {
-        return up(&root).await;
+    match op {
+        "up" => return up(&root).await,
+        "down" => return down(&root).await,
+        _ => {}
     }
     let tool = match op {
         "restart" => "atlas_restart_service",
@@ -181,6 +311,17 @@ pub async fn service(
     let service = service.ok_or("service is required")?;
     let text = tools::call(&root, tool, &json!({"service": service})).await?;
     Ok(json!({"text": text}))
+}
+
+/// Stop the whole stack the way the desktop's `stack_stop` does. Nothing running counts as stopped.
+async fn down(root: &Path) -> Result<Value, String> {
+    match atlas_tui::runner::down(root, std::time::Duration::from_secs(10)).await? {
+        atlas_tui::runner::DownOutcome::Timeout { pid } => Err(atlas_i18n::t!(
+            "cmd_hostd_project_down_still_stopping",
+            pid = pid
+        )),
+        _ => Ok(json!({})),
+    }
 }
 
 /// Start the whole stack the way the desktop does (`atlas dev --detach --dir <root>`).
@@ -216,48 +357,180 @@ pub async fn action(dir: &Path, id: &str, key: &str, confirmed: bool) -> Result<
 mod tests {
     use super::*;
 
+    /// A main checkout the way `git init` leaves it (only what hostd reads).
+    fn git_main(root: &Path, head: &str) {
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(root.join(".git/HEAD"), head).unwrap();
+    }
+
+    /// A linked worktree of `main` exactly as `git worktree add` lays it out: a `.git` file
+    /// pointing at `<main>/.git/worktrees/<name>`, which holds HEAD and `commondir`.
+    fn git_worktree(main: &Path, wt: &Path, name: &str, head: &str) {
+        let admin = main.join(".git/worktrees").join(name);
+        std::fs::create_dir_all(&admin).unwrap();
+        std::fs::create_dir_all(wt).unwrap();
+        std::fs::write(admin.join("HEAD"), head).unwrap();
+        std::fs::write(admin.join("commondir"), "../..\n").unwrap();
+        std::fs::write(
+            admin.join("gitdir"),
+            format!("{}\n", wt.join(".git").display()),
+        )
+        .unwrap();
+        std::fs::write(wt.join(".git"), format!("gitdir: {}\n", admin.display())).unwrap();
+    }
+
+    fn registry(dir: &Path, entries: Value) {
+        std::fs::create_dir_all(dir.join("desktop")).unwrap();
+        std::fs::write(dir.join("desktop/projects.json"), entries.to_string()).unwrap();
+    }
+
+    fn s(p: &Path) -> String {
+        p.to_string_lossy().into_owned()
+    }
+
     /// SSH projects run on another host: listing them here would show a stack this
-    /// host can neither see nor control.
+    /// host can neither see nor control. The phone groups and filters on `kind`, `repo`,
+    /// `branch`, `worktree` and `pinned`.
     #[tokio::test]
     async fn lists_only_local_projects_and_reports_stopped_stacks() {
         let tmp = tempfile::tempdir().unwrap();
         let proj = tmp.path().join("shop");
-        std::fs::create_dir_all(&proj).unwrap();
-        std::fs::create_dir_all(tmp.path().join("desktop")).unwrap();
-        std::fs::write(
-            tmp.path().join("desktop/projects.json"),
+        let wt = tmp.path().join("shop-feature");
+        let folder = tmp.path().join("Downloads");
+        git_main(&proj, "ref: refs/heads/main\n");
+        git_worktree(&proj, &wt, "shop-feature", "ref: refs/heads/feature/x\n");
+        std::fs::create_dir_all(&folder).unwrap();
+        registry(
+            tmp.path(),
             json!([
-                {"id": "a", "root": proj, "pinned": false, "added": "x"},
+                {"id": "a", "root": proj, "pinned": true, "added": "x"},
+                {"id": "w", "root": wt, "pinned": false, "added": "x"},
                 {"id": "b", "root": "/srv/x", "host": "ssh:box"},
-            ])
-            .to_string(),
-        )
-        .unwrap();
+                {"id": "f", "root": folder},
+            ]),
+        );
         // Real AgentHub output, the same serialization hostd sends.
         let hub = crate::agents::AgentHub::default();
         hub.apply("claude", &json!({"pane_key": "p1", "payload": {"event": "permission_request", "tool_name": "Bash"}}));
         let status = serde_json::to_value(hub.all()).unwrap();
-        let panes = vec![(
-            "p1".to_string(),
-            proj.join("src").to_string_lossy().into_owned(),
-        )];
+        let panes = vec![("p1".to_string(), s(&proj.join("src")))];
         let v = list(tmp.path(), &panes, &status).await.unwrap();
         let ps = v["projects"].as_array().unwrap();
-        assert_eq!(ps.len(), 1);
-        assert_eq!(ps[0]["id"], "a");
+        let ids: Vec<_> = ps.iter().map(|p| p["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["a", "w", "f"], "registry order, ssh entry skipped");
         assert_eq!(ps[0]["name"], "shop");
         assert_eq!(ps[0]["running"], false);
         // The home screen's "needs you" comes from here: agents ride along per project.
         assert_eq!(ps[0]["agents"][0]["pane_key"], "p1");
         assert_eq!(ps[0]["agents"][0]["status"]["state"], "blocked");
+        assert_eq!(ps[1]["agents"], json!([]));
+
+        assert_eq!(ps[0]["kind"], "project");
+        assert_eq!(ps[0]["repo"], s(&proj));
+        assert_eq!(ps[0]["branch"], "main");
+        assert_eq!(ps[0]["worktree"], false);
+        assert_eq!(ps[0]["pinned"], true);
+
+        assert_eq!(ps[1]["kind"], "project");
+        assert_eq!(
+            ps[1]["repo"],
+            s(&proj),
+            "a worktree points at its main repository"
+        );
+        assert_eq!(ps[1]["branch"], "feature/x");
+        assert_eq!(ps[1]["worktree"], true);
+        assert_eq!(ps[1]["pinned"], false);
+
+        assert_eq!(ps[2]["kind"], "folder");
+        assert_eq!(ps[2]["repo"], Value::Null);
+        assert_eq!(ps[2]["branch"], Value::Null);
+        assert_eq!(ps[2]["worktree"], false);
+        assert_eq!(ps[2]["pinned"], false);
+
         // The phone's home parses this payload (apps/mobile/test/project_list_test.dart).
         check_fixture(
             "project_list.json",
             &serde_json::to_string_pretty(&v)
                 .unwrap()
-                .replace(&json_path(&proj), "/Users/me/shop"),
+                .replace(&json_path(tmp.path()), "/Users/me"),
         );
         assert_eq!(root_of(tmp.path(), "b").unwrap_err(), "unknown project b");
+    }
+
+    /// The rest of the matrix: a config folder that is not git is a project, a detached HEAD
+    /// has no branch, a worktree whose `.git` file is relative and a missing root is left out.
+    #[tokio::test]
+    async fn kind_repo_branch_for_every_layout_and_missing_roots_are_omitted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = tmp.path();
+        let yaml = t.join("yaml-only");
+        std::fs::create_dir_all(&yaml).unwrap();
+        std::fs::write(yaml.join("atlas.yml"), "name: x\n").unwrap();
+        let detached = t.join("detached");
+        git_main(&detached, "0123456789abcdef0123456789abcdef01234567\n");
+        // `.git` as a file with a relative gitdir and no `commondir` (older layout).
+        let rel = t.join("repo-rel");
+        let wt = t.join("wt-rel");
+        git_main(&rel, "ref: refs/heads/trunk\n");
+        let admin = rel.join(".git/worktrees/wt-rel");
+        std::fs::create_dir_all(&admin).unwrap();
+        std::fs::write(admin.join("HEAD"), "ref: refs/heads/topic\n").unwrap();
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(
+            wt.join(".git"),
+            "gitdir: ../repo-rel/.git/worktrees/wt-rel\n",
+        )
+        .unwrap();
+        registry(
+            t,
+            json!([
+                {"id": "gone", "root": t.join("deleted-worktree")},
+                {"id": "y", "root": yaml},
+                {"id": "d", "root": detached},
+                {"id": "r", "root": rel},
+                {"id": "wr", "root": wt},
+            ]),
+        );
+        let v = list(t, &[], &json!({})).await.unwrap();
+        let ps = v["projects"].as_array().unwrap();
+        let ids: Vec<_> = ps.iter().map(|p| p["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["y", "d", "r", "wr"], "{v}");
+
+        assert_eq!(ps[0]["kind"], "project");
+        assert_eq!(ps[0]["repo"], Value::Null);
+        assert_eq!(ps[0]["branch"], Value::Null);
+        assert_eq!(ps[0]["worktree"], false);
+
+        assert_eq!(ps[1]["kind"], "project");
+        assert_eq!(ps[1]["repo"], s(&detached));
+        assert_eq!(ps[1]["branch"], Value::Null, "detached HEAD");
+
+        assert_eq!(ps[2]["branch"], "trunk");
+        assert_eq!(
+            ps[3]["repo"],
+            s(&rel),
+            "relative gitdir resolved against the worktree root"
+        );
+        assert_eq!(ps[3]["branch"], "topic");
+        assert_eq!(ps[3]["worktree"], true);
+    }
+
+    /// Stopping a project whose stack is not running is not an error (the phone's button can
+    /// race the stack exiting on its own).
+    #[tokio::test]
+    async fn down_with_no_stack_running_is_ok() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proj = tmp.path().join("shop");
+        std::fs::create_dir_all(&proj).unwrap();
+        registry(tmp.path(), json!([{"id": "a", "root": proj}]));
+        assert_eq!(
+            service(tmp.path(), "a", None, "down").await.unwrap(),
+            json!({})
+        );
+        assert_eq!(
+            service(tmp.path(), "a", None, "restart").await.unwrap_err(),
+            "service is required"
+        );
     }
 
     #[tokio::test]

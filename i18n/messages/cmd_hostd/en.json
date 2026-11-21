@@ -111,6 +111,7 @@
 	"cmd_hostd_not_running_desktop": "atlas hostd is not running; open Atlas Desktop",
 	"cmd_hostd_not_running_in": "atlas hostd is not running ({dir})",
 	"cmd_hostd_pair_no_address": "the pairing endpoint has no address a phone could dial (no relay, no LAN address): is this machine online?",
+	"cmd_hostd_project_down_still_stopping": "Atlas (pid {pid}) is still stopping the stack",
 	"cmd_hostd_reconcile_upgraded": [
 		{
 			"declarations": [

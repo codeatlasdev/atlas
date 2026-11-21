@@ -447,13 +447,18 @@ mod tests {
         assert_eq!(ps[2]["worktree"], false);
         assert_eq!(ps[2]["pinned"], false);
 
-        // The phone's home parses this payload (apps/mobile/test/project_list_test.dart).
-        check_fixture(
-            "project_list.json",
-            &serde_json::to_string_pretty(&v)
-                .unwrap()
-                .replace(&json_path(tmp.path()), "/Users/me"),
-        );
+        // The phone's home parses this payload (apps/mobile/test/project_list_test.dart). Each root is
+        // replaced whole, longest first: on Windows a child path is joined with `\` (`/Users/me\shop`
+        // otherwise, CI 2026-11-21).
+        let mut text = serde_json::to_string_pretty(&v).unwrap();
+        for (p, to) in [
+            (&wt, "/Users/me/shop-feature"),
+            (&folder, "/Users/me/Downloads"),
+            (&proj, "/Users/me/shop"),
+        ] {
+            text = text.replace(&json_path(p), to);
+        }
+        check_fixture("project_list.json", &text);
         assert_eq!(root_of(tmp.path(), "b").unwrap_err(), "unknown project b");
     }
 

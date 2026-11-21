@@ -1,0 +1,25 @@
+{
+	"mobile_projects_folders": "Outras pastas",
+	"mobile_projects_folders_hint": "Abertas no Atlas Desktop, mas não são projetos: sem atlas.yaml e sem repositório git.",
+	"mobile_projects_search_clear": "Limpar busca",
+	"mobile_projects_search_empty": "Nada corresponde a \"{query}\"",
+	"mobile_projects_search_hint": "Buscar projetos, branches e pastas",
+	"mobile_projects_stack_stop": "Parar",
+	"mobile_projects_stack_stopping": "Parando…",
+	"mobile_projects_worktrees_hide": "Ocultar worktrees",
+	"mobile_projects_worktrees_show": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} worktree",
+				"countPlural=*": "{count} worktrees"
+			}
+		}
+	]
+}

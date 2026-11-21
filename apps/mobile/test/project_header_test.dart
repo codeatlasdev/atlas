@@ -24,12 +24,13 @@ ProjectSnapshot _snap({required bool running, int services = 6}) =>
     );
 
 // The project screen is a scroll view: the header is as tall as it needs, the page scrolls.
-Widget _header(ProjectSnapshot s, {VoidCallback? onUp}) => Scaffold(
-  body: SingleChildScrollView(
-    padding: const EdgeInsets.all(16),
-    child: ProjectHeader(snap: s, onUp: onUp),
-  ),
-);
+Widget _header(ProjectSnapshot s, {VoidCallback? onUp, VoidCallback? onDown}) =>
+    Scaffold(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: ProjectHeader(snap: s, onUp: onUp, onDown: onDown),
+      ),
+    );
 
 void main() {
   testWidgets('stopped: says so with its services, and Start starts it', (
@@ -75,6 +76,24 @@ void main() {
     expect(find.textContaining('pid 4821'), findsOneWidget);
   });
 
+  // Regression (2026-11-20): a stack started from the phone could not be stopped from it.
+  testWidgets(
+    'running: Stop stops the stack, and says Stopping… while it does',
+    (t) async {
+      var stopped = 0;
+      await t.pumpWidget(
+        appAround(_header(_snap(running: true), onDown: () => stopped++)),
+      );
+      await t.tap(find.widgetWithText(OutlinedButton, 'Stop'));
+      expect(stopped, 1);
+
+      await t.pumpWidget(appAround(_header(_snap(running: true))));
+      final b = t.widget<OutlinedButton>(find.byKey(const Key('project-stop')));
+      expect(b.onPressed, isNull);
+      expect(find.text('Stopping…'), findsOneWidget);
+    },
+  );
+
   for (final phone in phoneSizes) {
     for (final scale in textScales) {
       testWidgets('fits ${phone.name} at text x$scale', (t) async {
@@ -90,6 +109,14 @@ void main() {
             expect(t.takeException(), isNull);
             final start = t.getRect(find.widgetWithText(FilledButton, 'Start'));
             expect(start.right, lessThanOrEqualTo(phone.size.width));
+
+            await t.pumpWidget(
+              appAround(_header(_snap(running: true), onDown: () {})),
+            );
+            await t.pump();
+            expect(t.takeException(), isNull);
+            final stop = t.getRect(find.widgetWithText(OutlinedButton, 'Stop'));
+            expect(stop.right, lessThanOrEqualTo(phone.size.width));
           },
         );
       });

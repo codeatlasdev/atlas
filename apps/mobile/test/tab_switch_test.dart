@@ -95,10 +95,17 @@ Future<void> _launch(
   );
 }
 
-/// Taps [tab] on the bar and lets the switch and whatever the page loads finish.
+/// Taps [tab] on the bar and lets the switch and whatever the page loads finish. The demo computer sends an
+/// invite, which the Crew tab shows as a sheet: closed here, since the bar is hidden while a sheet is open
+/// (`tab_bar_under_popups_test.dart`) and a person closes it before switching tabs.
 Future<void> _visit(WidgetTester t, _Tab tab) async {
   await t.tap(_barItem(tab));
   await settle(t);
+  final sheet = find.byType(BottomSheet);
+  if (sheet.evaluate().isNotEmpty) {
+    Navigator.of(t.element(sheet.first)).pop();
+    await settle(t);
+  }
 }
 
 FrameProbe _probe(WidgetTester t, [Map<String, Finder> extra = const {}]) =>

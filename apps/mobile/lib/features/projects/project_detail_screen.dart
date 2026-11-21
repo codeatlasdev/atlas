@@ -295,6 +295,9 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                             onUp: _busy.contains('up')
                                 ? null
                                 : () => _serviceOp('up'),
+                            onDown: _busy.contains('down')
+                                ? null
+                                : () => _serviceOp('down'),
                           ),
                           if (s.setupState != null && s.setupState != 'ok')
                             ProjectSetupRow(snap: s),

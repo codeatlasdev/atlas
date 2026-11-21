@@ -23,7 +23,7 @@ Each paired phone is one row: **Phone A3F9** (the app sends the same name, "Atla
 | Permission                                  | Allows                                                                                                                                              |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | See projects, logs and agents               | project and service state, logs and search, agent tabs and replies, terminal list, a project's changed files and their diffs (`git_status`, `git_diff`); read the images of a crewmate's task, its audit and usage |
-| Restart services, run actions, send prompts | restart/start/stop a service, start a stack, run an action (its confirm step is shown on the phone), send a prompt to an agent that is idle or done, open a new terminal (`pty_open`), stage and unstage files, commit (with the AI message), push and open a pull request (`git_stage`, `git_unstage`, `git_commit`, `git_commit_message`, `git_push`, `git_pr_create`); send a task, with images, to a crewmate (uploading an image is the same permission); answer a crewmate's question (`crewmate_answer`) or a card, including a secret it asks for (Face ID first) |
+| Restart services, run actions, send prompts | restart/start/stop a service, start or stop a stack, run an action (its confirm step is shown on the phone), send a prompt to an agent that is idle or done, open a new terminal (`pty_open`), stage and unstage files, commit (with the AI message), push and open a pull request (`git_stage`, `git_unstage`, `git_commit`, `git_commit_message`, `git_push`, `git_pr_create`); send a task, with images, to a crewmate (uploading an image is the same permission); answer a crewmate's question (`crewmate_answer`) or a card, including a secret it asks for (Face ID first) |
 | Answer agent permission prompts             | allow or deny a Claude Code / Codex tool call                                                                                                       |
 | Watch terminals                             | live terminal output                                                                                                                                |
 | Type in terminals                           | keystrokes; the app also asks for Face ID / biometrics before each session                                                                          |
@@ -58,6 +58,22 @@ One path for the connection and one for the states, so a new screen does not inv
 - **Getting a connection:** `requireMux(ref, device)` in a provider, `requireMuxOf(ref, device)` in a widget handler (`lib/core/connection/require_mux.dart`). Both wait while the link opens and return the live connection, or throw `DeviceOffline` (the computer is off) or `DeviceProtocolMismatch` (the section above). `errorText(e)` turns a caught error into the one sentence to show. A background refresh that must not wait uses `liveMux(ref, device)` and skips when it is null.
 - **Rendering an `AsyncValue`:** `AsyncView` (`lib/core/ui/async_view.dart`) draws loading (the one spinner), the error with **Try again**, the empty state, the offline state and the protocol-mismatch state; the screen only supplies the data builder and the copy. A list that reads `value ?? []` shows "empty" while it is still loading: never do that.
 - **A computer that is not connected:** `ReachingView` (full screen: reaching, can't reach, or the update message) and `OfflineStrip` (one line over a screen that keeps showing history). `test/goldens/<os>/async_view_states.png` pins the set.
+
+## Projects on the home screen
+
+`project_list` answers `{projects: [...]}`, one entry per project of the desktop's registry (`<hostd dir>/desktop/projects.json`; SSH checkouts are skipped, the desktop owns them), in registry order. Each entry has `id`, `root`, `name`, `running`, `services` and `agents`, plus what the phone needs to group and filter. All of it is read from files (the list is polled every 5 seconds for every entry, so there is no `git` process):
+
+| Field | Meaning |
+| --- | --- |
+| `kind` | `"project"` when the root has an `atlas.yaml`/`atlas.yml` or is a git checkout (a `.git` directory or file at the root), else `"folder"` (a folder opened once, like `~/Downloads`) |
+| `repo` | the main repository's root: a main checkout's own root, or for a linked worktree the root of the checkout it was added from; `null` when the folder is not a git checkout |
+| `branch` | the checkout's HEAD branch; `null` when detached or not git |
+| `worktree` | `true` for a linked worktree (its `.git` is a file pointing at `<main>/.git/worktrees/<name>`), so the phone can fold worktrees under `repo` |
+| `pinned` | the registry entry's pin (`false` when unset) |
+
+Entries whose folder no longer exists on disk are left out. The stacks of the entries are asked concurrently.
+
+`project_service {id, op, service?}`: `op` is `restart`, `start` or `stop` for one `service` (required), `up` to start the stack detached, or `down` to stop the whole stack (the desktop's **Stop**; `service` is not used). `down` on a stack that is not running answers `{}` as well; if the stack is still alive 10 seconds after the shutdown request, it fails with a message saying it is still stopping.
 
 ## Review and ship from the phone
 

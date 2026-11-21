@@ -1,0 +1,23 @@
+Atlas: Dev Remote has no accounts, no sign-in, no purchases and no user-generated content. No login credentials are needed.
+
+1. SCREEN RECORDING
+Attached to this submission (App Review Information > Attachment): a recording made on a physical iPhone 15 Pro running the latest iOS. It starts at app launch and shows the typical flow: onboarding, the built-in demo computer, projects and services, live logs, an AI agent's conversation and its permission prompt (approved in the app), a terminal, and the crew.
+
+2. PURPOSE AND AUDIENCE
+Atlas is a free, open-source developer tool (github.com/codeatlasdev/atlas) that runs a software project's development services and the AI coding agents a developer uses (Claude Code, Codex and others) on the developer's own computer. Atlas: Dev Remote is its companion for software developers: it lets them see and control that computer from the phone when they are away from the desk. Problem it solves: a developer's agents stop and wait for a permission or an answer, or a service crashes, while nobody is at the computer. With the app the developer sees service state and logs, restarts a service, reads an agent's conversation and approves or denies its request from anywhere, so work continues instead of waiting hours.
+
+3. HOW TO REVIEW
+Without a computer (recommended for review): open the app, tap Continue until "Scan pairing code", tap it, then under the camera view tap "No computer at hand? Explore a demo" (it is there whether camera access is allowed or denied). A built-in sample computer opens; it connects to nothing. Try: Projects (tap a service: logs, restart), Agents (one agent is waiting for a permission prompt you can approve or deny), a terminal, and the Crew tab. Leave it in Settings > Leave demo.
+With a real computer: install Atlas Desktop (macOS, Windows or Linux) from atlas.codeatlas.com.br, open Settings > Mobile, scan the QR code with the app, and the phone shows that computer's projects and agents.
+
+4. EXTERNAL SERVICES
+None for accounts, payments, ads, analytics or AI. The phone connects directly to the user's own computer over end-to-end encrypted QUIC (the open-source iroh library). When a direct connection is not possible, the encrypted traffic passes through n0's public relays (relay.n0.iroh.link, run by the makers of iroh), which cannot read it. The AI agents run on the user's computer with the user's own subscriptions; the app only shows their state and relays the user's answers. No data goes to CodeAtlas.
+
+5. REGIONS
+The app works the same in every region. It is available in English and Brazilian Portuguese. There are no regional differences in features or content.
+
+6. REGULATED INDUSTRY OR THIRD-PARTY MATERIAL
+Not applicable: no regulated services and no protected third-party content.
+
+Permissions: the camera is used only to scan the pairing code; local network only to reach the user's computer on the same Wi-Fi; Face ID is asked before typing in a terminal. Encryption: standard TLS/QUIC only (ITSAppUsesNonExemptEncryption = NO).
+Contact: luan@codeatlas.com.br, +55 41 99518-0794.

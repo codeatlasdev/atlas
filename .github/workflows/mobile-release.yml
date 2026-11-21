@@ -4,7 +4,8 @@ name: Mobile release
 # (apps/mobile/fastlane/Fastfile):
 #   1. unattended: build, sign, upload to TestFlight and the Play internal testing track;
 #   2. after a maintainer approves the `mobile-store` environment: that same build goes to App
-#      Store review (released on approval) and to Play production (every user at once).
+#      Store review (released on approval) and to Play production (every user at once), and the
+#      tag gets a GitHub release (never "Latest") with Play's universal APK of it.
 # Not approved, it stays with testers. Both stores share one build number (the run's start, in
 # minutes), and the version comes from the tag. Secrets: docs/mobile.md, "Releases".
 #
@@ -188,9 +189,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/mobile-v')
     needs: [number, ios, android]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     # Required reviewers on this environment hold the job until one of them approves.
     environment: mobile-store
+    permissions:
+      contents: write # the tag's GitHub release with the APK
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -214,3 +217,38 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: bundle exec fastlane release
+
+      # The Android build that just went to Play production, as an APK anyone can sideload: Play's own universal APK,
+      # signed with Play's app signing key, so it and a Play Store install update each other. iOS has no equivalent.
+      - name: Universal APK from Play
+        working-directory: apps/mobile
+        env:
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+          VERSION: ${{ needs.number.outputs.version }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: bundle exec fastlane android_apk
+
+      # Never "Latest": `/releases/latest` is the desktop and CLI's default channel (installers, 1.4.0 updaters).
+      # Every client that reads the release list ignores a `mobile-v` tag (it is not a semver tag), and this one
+      # must never become the redirect's target either. A rerun replaces the files.
+      - name: GitHub release with the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.number.outputs.version }}
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+        run: |
+          files=(apps/mobile/build/apk/atlas-mobile-"$VERSION".apk apps/mobile/build/apk/atlas-mobile-"$VERSION".apk.sha256)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            notes="Atlas Mobile $VERSION (build $BUILD_NUMBER), the build now on Google Play and submitted to the App Store.
+
+          **Android:** \`atlas-mobile-$VERSION.apk\` is Google Play's universal APK of this build, signed with the same key as the Play Store app, so installing it over the Play version (or the reverse) updates it in place. Check it with \`sha256sum -c atlas-mobile-$VERSION.apk.sha256\`.
+
+          **iOS:** the App Store (or TestFlight for testers); Apple does not allow installing an app file directly.
+
+          Changes: [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md). Guide: [docs/mobile.md](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/mobile.md)."
+            gh release create "$TAG" "${files[@]}" --verify-tag --latest=false \
+              --title "Atlas Mobile $VERSION" --notes "$notes"
+          fi

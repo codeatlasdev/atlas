@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Every Atlas Mobile release has its Android APK on GitHub.** Once a `mobile-vX.Y.Z` build is approved for the stores, the workflow attaches Google Play's universal APK of it (`atlas-mobile-X.Y.Z.apk` and its `.sha256`) to a GitHub release for the tag. It is signed with Play's app signing key, so it and a Play Store install update each other. The release is never marked "Latest", which stays the desktop and CLI release.
+
 ### Fixed
 
 - **Atlas Mobile releases hand the TestFlight build to the testers instead of failing after the upload.** The workflow never passed `BETA_FEEDBACK_EMAIL` to fastlane, so the app's TestFlight information was never created and App Store Connect refused the distribution ("Beta App Description is missing") 25 minutes into the first `mobile-v1.0.0` run, which also held back its store step. The `mobile-beta` variable is passed now, and `ios_beta` refuses to start without it when there are groups to hand the build to.

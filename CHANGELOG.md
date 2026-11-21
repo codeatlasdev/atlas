@@ -8,7 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Added
 
-- **Every Atlas Mobile release has its Android APK on GitHub.** Once a `mobile-vX.Y.Z` build is approved for the stores, the workflow attaches Google Play's universal APK of it (`atlas-mobile-X.Y.Z.apk` and its `.sha256`) to a GitHub release for the tag. It is signed with Play's app signing key, so it and a Play Store install update each other. The release is never marked "Latest", which stays the desktop and CLI release.
+- **Every Atlas Mobile release has its Android APK on GitHub, from the first build.** As soon as a `mobile-vX.Y.Z` build reaches testers, the tag's GitHub release appears as a pre-release with Google Play's universal APK of it (`atlas-mobile-X.Y.Z.apk` and its `.sha256`); once the build is approved for the stores, the same release becomes a normal one. The APK is signed with Play's app signing key, so it and a Play Store install update each other. The release is never marked "Latest", which stays the desktop and CLI release.
 
 ### Fixed
 

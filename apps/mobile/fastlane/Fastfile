@@ -194,18 +194,29 @@ end
 # The universal APK Google Play generates from the bundle BUILD_NUMBER, signed with Play's app signing key: the
 # same signature as an install from the Play Store, so one updates the other. An APK built and signed here would
 # carry the upload key instead, and Android refuses to update across different signatures. Written to
-# build/apk/atlas-mobile-VERSION.apk with its .sha256, which the workflow attaches to the tag's GitHub release.
-# No retry: it runs after the store approval, long after Play generated the APK (minutes after the upload), so an
-# error here is real (wrong version code, the service account's rights) and is shown at once.
+# build/apk/atlas-mobile-VERSION.apk with its .sha256, which scripts/mobile-apk-release.sh attaches to the tag's
+# GitHub release.
+#
+# Right after the upload Play may not have generated the APK yet: APK_WAIT_MINUTES (the workflow's testing stage
+# sets it) waits for it, a minute at a time. Only for that: a refused key or a missing permission (401, 403) stops
+# at once, and without APK_WAIT_MINUTES every error does.
 lane :android_apk do
   need("PLAY_SERVICE_ACCOUNT_JSON", "BUILD_NUMBER")
   apk = File.join(APP, "build/apk/atlas-mobile-#{version_name}.apk")
-  download_universal_apk_from_google_play(
-    package_name: ANDROID_PACKAGE,
-    version_code: ENV["BUILD_NUMBER"].to_i,
-    json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
-    destination: apk, # the action creates the folder
-  )
+  deadline = Time.now + (ENV["APK_WAIT_MINUTES"].to_i * 60)
+  begin
+    download_universal_apk_from_google_play(
+      package_name: ANDROID_PACKAGE,
+      version_code: ENV["BUILD_NUMBER"].to_i,
+      json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      destination: apk, # the action creates the folder
+    )
+  rescue StandardError => e
+    raise if Time.now >= deadline || e.message =~ /\b(401|403)\b|unauthori[sz]ed|forbidden|permission|invalid_grant/i
+    UI.important("Play has no universal APK for #{ENV['BUILD_NUMBER']} yet (#{e.message.lines.first&.strip}); waiting 60 s")
+    sleep(60)
+    retry
+  end
   sum = Digest::SHA256.file(apk).hexdigest
   File.write("#{apk}.sha256", "#{sum}  #{File.basename(apk)}\n")
   UI.success("#{File.basename(apk)} #{sum}")

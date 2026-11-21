@@ -1,7 +1,7 @@
 ---
 title: "Atlas Mobile"
 source: mobile.md
-source_sha: "8ce370369a41d54af709913955acf1608f10828a"
+source_sha: "24ca8c7431334eb0235b6fcd63cc738ca7f73cc4"
 translation: machine
 ---
 
@@ -383,6 +383,7 @@ Um caminho, uma tag: `bun run mobile:release 1.2.0` (numa `main` atualizada, com
 0. **Gate de CI:** nada é compilado até o CI (`ci.yml`) passar no commit da tag (`scripts/ci-passed.sh`, o mesmo gate da versão do desktop e da CLI). Uma tag num commit vermelho ou ainda em execução espera até 2 horas por essa execução e depois não envia nada.
 1. **Sem supervisão:** compila a versão `1.2.0` (da tag; só `mobile-vX.Y.Z`) com um build number para as duas lojas e a envia ao **TestFlight** e à faixa **Play internal testing**.
 2. **Depois da sua aprovação:** o job `store` espera o environment `mobile-store`. Os required reviewers dele aprovam pela execução (**Review deployments**). Ele então promove esse mesmo build, nunca um novo: `fastlane ios_release` o envia à revisão da App Store e a Apple o publica assim que aprova; `fastlane android_release` o move do internal testing para produção, para todos os usuários de uma vez. Sem aprovação em 30 dias, a execução expira e a versão fica com os testers. Uma correção é a próxima tag (`mobile-v1.2.1`).
+3. **O APK na tag:** logo depois da promoção, o mesmo job baixa o APK universal que o Google Play gera desse build (`fastlane android_apk`) e anexa `atlas-mobile-1.2.0.apk` e o `.sha256` dele a uma GitHub release da tag, criada com `--latest=false`. O Play assina esse APK com a chave de assinatura do app, a mesma de uma instalação pela Play Store, então um atualiza o outro; um APK compilado e assinado no CI levaria a chave de upload e o Android recusaria a atualização entre os dois. A release nunca é a "Latest" porque o `/releases/latest` é o que os instaladores da CLI e do desktop seguem, e todo cliente que lê a lista de releases ignora tags `mobile-v` (não são semver). O iOS não tem equivalente: a Apple só permite a App Store e o TestFlight.
 
 Commits e pull requests nunca publicam nada. Uma execução iniciada à mão (Actions, **Run workflow**) compila só para testers e mantém a versão do `pubspec.yaml`. Localmente, `bun run mobile:beta` faz o passo 1, e `BUILD_NUMBER=<n> VERSION=1.2.0 bundle exec fastlane release` o passo 2. Nenhum segredo está no repositório: as lanes leem o ambiente; o CI lê os secrets do environment `mobile-beta` (passo 1) e do `mobile-store` (passo 2: a chave do App Store Connect e a service account do Play).
 

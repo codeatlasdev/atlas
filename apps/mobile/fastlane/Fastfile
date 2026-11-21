@@ -10,8 +10,11 @@
 #   fastlane release          promote BUILD_NUMBER (already tested) to both stores
 #   fastlane ios_release      submit that TestFlight build to App Store review
 #   fastlane android_release  promote that internal build to Play production
+#   fastlane android_apk      the Play-signed universal APK of that build, for the GitHub release
 #   fastlane ios_rehearse     the iOS store build, unsigned, never uploaded (pull requests)
 #   fastlane android_rehearse the Android store bundle, debug-signed, never uploaded (pull requests)
+
+require "digest"
 
 default_platform(:ios)
 
@@ -165,6 +168,26 @@ lane :android_beta do |options|
   )
 ensure
   [props, jks, gservices].each { |f| File.delete(f) if f && File.exist?(f) }
+end
+
+# The universal APK Google Play generates from the bundle BUILD_NUMBER, signed with Play's app signing key: the
+# same signature as an install from the Play Store, so one updates the other. An APK built and signed here would
+# carry the upload key instead, and Android refuses to update across different signatures. Written to
+# build/apk/atlas-mobile-VERSION.apk with its .sha256, which the workflow attaches to the tag's GitHub release.
+# No retry: it runs after the store approval, long after Play generated the APK (minutes after the upload), so an
+# error here is real (wrong version code, the service account's rights) and is shown at once.
+lane :android_apk do
+  need("PLAY_SERVICE_ACCOUNT_JSON", "BUILD_NUMBER")
+  apk = File.join(APP, "build/apk/atlas-mobile-#{version_name}.apk")
+  download_universal_apk_from_google_play(
+    package_name: ANDROID_PACKAGE,
+    version_code: ENV["BUILD_NUMBER"].to_i,
+    json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+    destination: apk, # the action creates the folder
+  )
+  sum = Digest::SHA256.file(apk).hexdigest
+  File.write("#{apk}.sha256", "#{sum}  #{File.basename(apk)}\n")
+  UI.success("#{File.basename(apk)} #{sum}")
 end
 
 # The store half: never builds. It promotes the exact build testers had (BUILD_NUMBER), so what

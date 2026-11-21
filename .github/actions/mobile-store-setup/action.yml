@@ -41,3 +41,12 @@ runs:
       shell: bash
       working-directory: apps/mobile
       run: bundle install
+
+    # fastlane asks `xcodebuild -showBuildSettings` first, with 3 s and 4 retries by default. A busy hosted macOS
+    # runner needs longer: PR #720's iOS rehearsal failed there before building anything (2026-11-21). The same call
+    # starts `ios_beta` on a release tag.
+    - name: Time for xcodebuild on a hosted runner
+      shell: bash
+      run: |
+        echo "FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=60" >> "$GITHUB_ENV"
+        echo "FASTLANE_XCODEBUILD_SETTINGS_RETRIES=3" >> "$GITHUB_ENV"

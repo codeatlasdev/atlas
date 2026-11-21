@@ -1,7 +1,7 @@
 ---
 title: "Labels e triagem"
 source: labels.md
-source_sha: "05f8ba916e69cbd32ffb9c257e3ea2dc37fabe41"
+source_sha: "f3af40f2500ecbb091a508a526129986e55ba685"
 translation: machine
 ---
 
@@ -14,7 +14,7 @@ O Atlas tem um conjunto pequeno de labels, mantido em [`.github/labels.yml`](htt
 | Família | Valores | Aplicada por | Regra |
 |---|---|---|---|
 | `type:` | `bug`, `feature`, `docs`, `chore`, `security`, `question` | o formulário da issue define; um mantenedor corrige | exatamente uma |
-| `area:` | `cli`, `runtime`, `tui`, `desktop`, `terminal`, `editor`, `mcp`, `deploy`, `installer`, `site`, `ci` | um mantenedor, na triagem | uma ou mais |
+| `area:` | `cli`, `runtime`, `tui`, `desktop`, `terminal`, `editor`, `mcp`, `deploy`, `installer`, `site`, `ci`, `crew` | um mantenedor, na triagem | uma ou mais |
 | `priority:` | `0 data loss or security`, `1 high`, `2 normal`, `3 low` | um mantenedor, na triagem | no máximo uma; quem contribui não define |
 | `status:` | `needs-triage`, `needs-repro`, `confirmed`, `blocked`, `upstream`, `stale`, `wontfix`, `duplicate` | os formulários de issue definem `needs-triage`; um mantenedor muda | uma de cada vez |
 | `channel:` | `stable`, `beta`, `alpha` | um mantenedor, a partir da resposta em **Release channel** no formulário de bug | o canal em que o problema apareceu; veja [Versionamento](versioning.md) |

@@ -1,7 +1,7 @@
 ---
 title: "Atlas Mobile"
 source: mobile.md
-source_sha: "f04bdaa64899921c9bf3335433102dbfcb4e2e30"
+source_sha: "6065ba9f378d1090cba0a6ad6b4a5940c991486b"
 translation: machine
 ---
 
@@ -420,6 +420,8 @@ Uma vez por loja, à mão: crie o registro do app (`br.com.codeatlas.atlas.mobil
 **Ensaio em todo pull request que mexe no caminho de release** (o workflow, `.github/actions/mobile-store-setup`, `apps/mobile/fastlane`, `ios/`, `android/`, o pubspec e os arquivos de Ruby): o mesmo workflow roda só os jobs `rehearsal`, `fastlane ios_rehearse` (macOS: `flutter build ios` e um archive do Xcode do scheme `prod`, sem assinatura) e `fastlane android_rehearse` (Linux: o app bundle `prod`, assinado com a chave de debug). Mesmo flavor, flags, versão do Flutter e Ruby de um release, sem segredo, sem environment e sem upload, então uma build de loja quebrada aparece no pull request e não numa tag de release. Todo job de loja começa pela mesma composite action, `.github/actions/mobile-store-setup` (Flutter pelo pubspec, bun, os targets de Rust, Ruby pelo `apps/mobile/.ruby-version`, `bundle install`).
 
 **Estado das lojas do qual o pipeline depende** (configurado uma vez; conferido em 2026-11-20): o App Store Connect tem a versão 1.0.0 com descrição, palavras-chave, capturas de tela (iPhone de 6,9 polegadas), contato e notas para a revisão, privacidade do app (ID do dispositivo para funcionalidade, não vinculado), classificação etária 4+, direitos de conteúdo (sem conteúdo de terceiros) e preço gratuito em todos os territórios. O `ios_release` envia pela chave de API com `precheck_include_in_app_purchases: false` (o precheck não consegue ler compras dentro do app por uma chave) e declara que não usa criptografia não isenta (o Info.plist também diz isso). O Play tem todas as tarefas de Conteúdo do app concluídas e as configurações da loja (categoria Ferramentas, contato `contato@codeatlas.com.br`, site). **A primeira versão de produção no Play é um passo manual, uma vez só:** um app nunca publicado é um "app de rascunho" e a API se recusa a lançar qualquer coisa nele, então o `android_release` cria essa primeira versão de produção como rascunho e avisa; termine no Play Console (Visão geral da publicação → Enviar para revisão). Todo release seguinte sai pelo workflow.
+
+**As notas para a App Review** ficam em [`apps/mobile/store/app-review-notes.txt`](https://github.com/codeatlasdev/atlas/blob/main/apps/mobile/store/app-review-notes.txt), o texto de App Store Connect > Informações para a revisão do app > Notas. A primeira revisão da Apple para a 1.0.0 (2026-11-20, Guideline 2.1, Information Needed) pediu seis coisas a todo envio novo, e o arquivo responde a cada uma: uma gravação de tela num aparelho físico, do lançamento do app até o fluxo típico (anexada às informações de revisão, não como link), o propósito e o público do app, como chegar às funções (o computador de demonstração embutido, já que o app não tem contas), os serviços externos (só os relays iroh da n0), diferenças regionais (nenhuma) e material regulado (nenhum). Quando uma versão muda o que o revisor vê, atualize o arquivo e a gravação na mesma mudança e copie o texto para o App Store Connect antes de aprovar a etapa `mobile-store`.
 
 ### Painéis das lojas a partir de um agente (opcional)
 

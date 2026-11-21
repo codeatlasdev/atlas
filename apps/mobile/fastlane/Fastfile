@@ -20,6 +20,7 @@ default_platform(:ios)
 
 APP = File.expand_path("..", __dir__) # apps/mobile
 ANDROID_PACKAGE = "br.com.codeatlas.atlas.mobile"
+IOS_BUNDLE_ID = "br.com.codeatlas.atlas.mobile"
 
 BETA_DESCRIPTION = <<~TEXT.strip
   Atlas on your phone: see and control the Atlas running on your computer, from anywhere and
@@ -83,6 +84,21 @@ lane :beta do
   android_beta(build_number: n)
 end
 
+# The TestFlight groups a build must be handed to. A group with access to all builds already gets every
+# build once it is processed, and App Store Connect refuses to assign one to it ("Builds cannot be assigned
+# to this internal group", mobile-v1.0.1), so those are left out. Needs the API key set first.
+def assignable_groups(names)
+  return [] if names.empty?
+  app = Spaceship::ConnectAPI::App.find(IOS_BUNDLE_ID)
+  UI.user_error!("no App Store Connect app #{IOS_BUNDLE_ID}") unless app
+  by_name = app.get_beta_groups.to_h { |g| [g.name, g] }
+  unknown = names - by_name.keys
+  UI.user_error!("unknown TestFlight groups: #{unknown.join(', ')}") unless unknown.empty?
+  automatic, manual = names.partition { |name| by_name[name].has_access_to_all_builds }
+  UI.message("TestFlight: #{automatic.join(', ')} get every build automatically") unless automatic.empty?
+  manual
+end
+
 lane :ios_beta do |options|
   need("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "APPLE_TEAM_ID")
   n = options[:build_number] || build_number
@@ -99,6 +115,7 @@ lane :ios_beta do |options|
     issuer_id: ENV["ASC_ISSUER_ID"],
     key_content: ENV["ASC_KEY_P8"],
   )
+  groups = assignable_groups(groups)
   # xcodebuild signs with the same key (automatic signing, no certificates in the repo).
   p8 = File.join(Dir.tmpdir, "AuthKey_#{ENV['ASC_KEY_ID']}.p8")
   File.write(p8, ENV["ASC_KEY_P8"])
@@ -134,6 +151,10 @@ lane :ios_beta do |options|
     beta_app_description: BETA_DESCRIPTION,
     beta_app_feedback_email: ENV["BETA_FEEDBACK_EMAIL"],
     changelog: ENV.fetch("BETA_CHANGELOG", "New test build."),
+    # The groups are internal (see above), and internal testers need no beta review. pilot submits one
+    # by default, which fails without the beta review contact ("Missing required information to submit
+    # for external testing"), after the build is already uploaded (mobile-v1.0.1).
+    submit_beta_review: false,
   )
 ensure
   [p8, plist].each { |f| File.delete(f) if f && File.exist?(f) }
@@ -289,19 +310,23 @@ end
 # the distribution). BUILD_NUMBER and VERSION name it.
 lane :ios_distribute do
   need("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "BUILD_NUMBER", "TESTFLIGHT_GROUPS")
+  key = app_store_connect_api_key(
+    key_id: ENV["ASC_KEY_ID"],
+    issuer_id: ENV["ASC_ISSUER_ID"],
+    key_content: ENV["ASC_KEY_P8"],
+  )
+  groups = assignable_groups(ENV["TESTFLIGHT_GROUPS"].split(",").map(&:strip).reject(&:empty?))
+  next UI.success("Nothing to hand over: every group gets new builds automatically") if groups.empty?
   upload_to_testflight(
-    api_key: app_store_connect_api_key(
-      key_id: ENV["ASC_KEY_ID"],
-      issuer_id: ENV["ASC_ISSUER_ID"],
-      key_content: ENV["ASC_KEY_P8"],
-    ),
+    api_key: key,
     distribute_only: true,
     app_platform: "ios",
     app_version: ENV.fetch("VERSION", "1.0.0"),
     build_number: ENV["BUILD_NUMBER"],
-    groups: ENV["TESTFLIGHT_GROUPS"].split(",").map(&:strip),
+    groups: groups,
     beta_app_description: BETA_DESCRIPTION,
     beta_app_feedback_email: ENV["BETA_FEEDBACK_EMAIL"],
     changelog: ENV.fetch("BETA_CHANGELOG", "New test build."),
+    submit_beta_review: false, # internal groups only, as in ios_beta
   )
 end

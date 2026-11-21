@@ -20,11 +20,42 @@
           }
         }
       ],
+      "branch": "main",
       "id": "a",
+      "kind": "project",
       "name": "shop",
+      "pinned": true,
+      "repo": "/Users/me/shop",
       "root": "/Users/me/shop",
       "running": false,
-      "services": []
+      "services": [],
+      "worktree": false
+    },
+    {
+      "agents": [],
+      "branch": "feature/x",
+      "id": "w",
+      "kind": "project",
+      "name": "shop-feature",
+      "pinned": false,
+      "repo": "/Users/me/shop",
+      "root": "/Users/me/shop-feature",
+      "running": false,
+      "services": [],
+      "worktree": true
+    },
+    {
+      "agents": [],
+      "branch": null,
+      "id": "f",
+      "kind": "folder",
+      "name": "Downloads",
+      "pinned": false,
+      "repo": null,
+      "root": "/Users/me/Downloads",
+      "running": false,
+      "services": [],
+      "worktree": false
     }
   ]
 }

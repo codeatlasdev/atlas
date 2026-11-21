@@ -1,0 +1,25 @@
+{
+	"mobile_projects_folders": "Other folders",
+	"mobile_projects_folders_hint": "Opened in Atlas Desktop, but not projects: no atlas.yaml and no git repository.",
+	"mobile_projects_search_clear": "Clear search",
+	"mobile_projects_search_empty": "Nothing matches \"{query}\"",
+	"mobile_projects_search_hint": "Search projects, branches and folders",
+	"mobile_projects_stack_stop": "Stop",
+	"mobile_projects_stack_stopping": "Stopping…",
+	"mobile_projects_worktrees_hide": "Hide worktrees",
+	"mobile_projects_worktrees_show": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} worktree",
+				"countPlural=*": "{count} worktrees"
+			}
+		}
+	]
+}

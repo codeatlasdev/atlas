@@ -37,7 +37,8 @@ Future<void> _pump(WidgetTester t) async {
   final router = GoRouter(
     routes: [
       StatefulShellRoute.indexedStack(
-        builder: (context, state, shell) => ShellScaffold(shell: shell),
+        builder: (context, state, shell) =>
+            ShellScaffold(shell: shell, popups: ValueNotifier(false)),
         branches: [
           for (final path in ['/', '/crew', '/inbox', '/settings'])
             StatefulShellBranch(

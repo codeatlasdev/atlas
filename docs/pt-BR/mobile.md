@@ -1,7 +1,7 @@
 ---
 title: "Atlas Mobile"
 source: mobile.md
-source_sha: "24ca8c7431334eb0235b6fcd63cc738ca7f73cc4"
+source_sha: "e4c450ddff0416e25b850fef412292f8e7b2de50"
 translation: machine
 ---
 
@@ -25,7 +25,7 @@ Cada celular pareado é uma linha: **Celular A3F9** (o app envia o mesmo nome, "
 | Permissão | Permite |
 | --- | --- |
 | Ver projetos, logs e agentes | estado de projetos e serviços, logs e pesquisa, abas e respostas de agentes, lista de terminais, os arquivos alterados de um projeto e os diffs deles (`git_status`, `git_diff`); ler as imagens da tarefa de um crewmate, o audit e o uso |
-| Reiniciar serviços, executar ações, enviar prompts | reiniciar, iniciar e parar um serviço, subir uma stack, rodar uma ação (a etapa de confirmação aparece no celular), enviar um prompt a um agente ocioso ou concluído, abrir um terminal novo (`pty_open`), fazer stage e unstage de arquivos, fazer commit (com a mensagem gerada por IA), fazer push e abrir um pull request (`git_stage`, `git_unstage`, `git_commit`, `git_commit_message`, `git_push`, `git_pr_create`); enviar uma tarefa, com imagens, a um crewmate (enviar uma imagem é a mesma permissão); responder a pergunta de um crewmate (`crewmate_answer`) ou um card, inclusive um segredo que ele pede (antes, Face ID) |
+| Reiniciar serviços, executar ações, enviar prompts | reiniciar, iniciar e parar um serviço, subir ou parar uma stack, rodar uma ação (a etapa de confirmação aparece no celular), enviar um prompt a um agente ocioso ou concluído, abrir um terminal novo (`pty_open`), fazer stage e unstage de arquivos, fazer commit (com a mensagem gerada por IA), fazer push e abrir um pull request (`git_stage`, `git_unstage`, `git_commit`, `git_commit_message`, `git_push`, `git_pr_create`); enviar uma tarefa, com imagens, a um crewmate (enviar uma imagem é a mesma permissão); responder a pergunta de um crewmate (`crewmate_answer`) ou um card, inclusive um segredo que ele pede (antes, Face ID) |
 | Responder aos prompts de permissão dos agentes | permitir ou negar uma chamada de ferramenta do Claude Code ou do Codex |
 | Acompanhar terminais | saída ao vivo do terminal |
 | Digitar nos terminais | teclas digitadas; o app também pede Face ID ou biometria antes de cada sessão |
@@ -60,6 +60,22 @@ Um caminho para a conexão e outro para os estados, para que uma tela nova não 
 - **Obter uma conexão:** `requireMux(ref, device)` num provider, `requireMuxOf(ref, device)` num handler de widget (`lib/core/connection/require_mux.dart`). Os dois esperam enquanto o link abre e devolvem a conexão ativa, ou lançam `DeviceOffline` (o computador está desligado) ou `DeviceProtocolMismatch` (a seção acima). `errorText(e)` transforma um erro capturado na única frase a mostrar. Uma atualização em segundo plano que não pode esperar usa `liveMux(ref, device)` e pula quando o valor é nulo.
 - **Renderizar um `AsyncValue`:** `AsyncView` (`lib/core/ui/async_view.dart`) desenha o carregamento (o único spinner), o erro com **Try again**, o estado vazio, o estado offline e o de divergência de protocolo; a tela só fornece o builder dos dados e o texto. Uma lista que lê `value ?? []` mostra "vazio" enquanto ainda carrega: nunca faça isso.
 - **Um computador que não está conectado:** `ReachingView` (tela cheia: conectando, não foi possível conectar, ou a mensagem de atualização) e `OfflineStrip` (uma linha sobre uma tela que continua mostrando o histórico). `test/goldens/<os>/async_view_states.png` fixa o conjunto.
+
+## Projetos na tela inicial
+
+`project_list` responde `{projects: [...]}`, uma entrada por projeto do registro do desktop (`<diretório do hostd>/desktop/projects.json`; checkouts SSH são ignorados, o desktop cuida deles), na ordem do registro. Cada entrada tem `id`, `root`, `name`, `running`, `services` e `agents`, mais o que o celular precisa para agrupar e filtrar. Tudo vem da leitura de arquivos (a lista é consultada a cada 5 segundos para cada entrada, então não há processo `git`):
+
+| Campo | Significado |
+| --- | --- |
+| `kind` | `"project"` quando a raiz tem `atlas.yaml`/`atlas.yml` ou é um checkout git (um diretório ou arquivo `.git` na raiz); senão `"folder"` (uma pasta aberta uma vez, como `~/Downloads`) |
+| `repo` | a raiz do repositório principal: a própria raiz de um checkout principal, ou, numa worktree vinculada, a raiz do checkout de onde ela foi criada; `null` quando a pasta não é um checkout git |
+| `branch` | o branch do HEAD do checkout; `null` com HEAD solto ou fora do git |
+| `worktree` | `true` para uma worktree vinculada (o `.git` dela é um arquivo apontando para `<principal>/.git/worktrees/<nome>`), para o celular agrupá-la sob `repo` |
+| `pinned` | o fixado da entrada do registro (`false` quando ausente) |
+
+Entradas cuja pasta não existe mais no disco são omitidas. As stacks das entradas são consultadas em paralelo.
+
+`project_service {id, op, service?}`: `op` é `restart`, `start` ou `stop` para um `service` (obrigatório), `up` para subir a stack em segundo plano, ou `down` para parar a stack inteira (o **Stop** do desktop; `service` não é usado). `down` numa stack que não está rodando também responde `{}`; se a stack ainda estiver viva 10 segundos depois do pedido de encerramento, falha com uma mensagem dizendo que ela ainda está encerrando.
 
 ## Revisar e entregar pelo celular
 

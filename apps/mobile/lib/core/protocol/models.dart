@@ -127,6 +127,23 @@ class ProjectInfo {
   /// Agents whose terminal runs in this project: `(pane key, status)`.
   final List<(String, AgentStatus)> agents;
 
+  /// `false` for a folder that is neither an atlas.yaml project nor a git checkout (`~/Downloads` opened once in
+  /// the desktop). An older hostd sends no `kind`: everything is a project, as before.
+  final bool isProject;
+
+  /// The main repository's root this checkout belongs to (its own root for a main checkout); null when not git
+  /// or from an older hostd. Worktrees of one repository share it.
+  final String? repo;
+
+  /// The checked-out branch; null when detached or not git.
+  final String? branch;
+
+  /// A linked git worktree (a second checkout of [repo]).
+  final bool worktree;
+
+  /// Pinned in the desktop's sidebar.
+  final bool pinned;
+
   const ProjectInfo({
     required this.id,
     required this.root,
@@ -134,6 +151,11 @@ class ProjectInfo {
     required this.running,
     required this.services,
     this.agents = const [],
+    this.isProject = true,
+    this.repo,
+    this.branch,
+    this.worktree = false,
+    this.pinned = false,
   });
 
   factory ProjectInfo.fromJson(Map<String, dynamic> j) => ProjectInfo(
@@ -147,6 +169,11 @@ class ProjectInfo {
             .toList() ??
         [],
     agents: AgentStatus.paneList(j['agents']),
+    isProject: j['kind'] != 'folder',
+    repo: j['repo'] as String?,
+    branch: j['branch'] as String?,
+    worktree: j['worktree'] as bool? ?? false,
+    pinned: j['pinned'] as bool? ?? false,
   );
 }
 

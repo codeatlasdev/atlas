@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';
 import 'package:atlas_mobile/features/projects/detail/kpis.dart';
 
@@ -16,14 +17,22 @@ String _dur(int s) {
 }
 
 /// The project head: avatar, name and folder, then one status panel: the state with its action (Start when
-/// stopped) and the numbers under it. State, action and numbers are one block, so the action always sits on
-/// the state it changes and nothing floats beside a pill.
+/// stopped, Stop when running) and the numbers under it. State, action and numbers are one block, so the action
+/// always sits on the state it changes and nothing floats beside a pill.
 class ProjectHeader extends StatelessWidget {
-  const ProjectHeader({super.key, required this.snap, required this.onUp});
+  const ProjectHeader({
+    super.key,
+    required this.snap,
+    required this.onUp,
+    required this.onDown,
+  });
   final ProjectSnapshot snap;
 
   /// Starts the whole stack; null while a start is in flight.
   final VoidCallback? onUp;
+
+  /// Stops the whole stack; null while a stop is in flight.
+  final VoidCallback? onDown;
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +85,7 @@ class ProjectHeader extends StatelessWidget {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                _StateLine(snap: snap, onUp: onUp),
+                _StateLine(snap: snap, onUp: onUp, onDown: onDown),
                 Divider(height: 1, thickness: 1, color: c.borderSubtle),
                 Padding(
                   padding: const EdgeInsets.all(Space.md),
@@ -94,9 +103,14 @@ class ProjectHeader extends StatelessWidget {
 /// What the project is doing, in words, and the one thing to do about it. Stopped: "Stopped", how many
 /// services it has, and Start. Running: "Running" (or how many failed), uptime and pid.
 class _StateLine extends StatelessWidget {
-  const _StateLine({required this.snap, required this.onUp});
+  const _StateLine({
+    required this.snap,
+    required this.onUp,
+    required this.onDown,
+  });
   final ProjectSnapshot snap;
   final VoidCallback? onUp;
+  final VoidCallback? onDown;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +183,19 @@ class _StateLine extends StatelessWidget {
                 onPressed: onUp,
                 icon: const Icon(Icons.play_arrow_rounded, size: 20),
                 label: Text(onUp == null ? 'Starting…' : 'Start'),
+              ),
+            // Started from here or from the desktop, the stack can always be stopped from here
+            // (each service also stops on its own, from its tile).
+            if (snap.running)
+              OutlinedButton.icon(
+                key: const Key('project-stop'),
+                onPressed: onDown,
+                icon: const Icon(Icons.stop_rounded, size: 20),
+                label: Text(
+                  onDown == null
+                      ? context.l10n.mobile_projects_stack_stopping
+                      : context.l10n.mobile_projects_stack_stop,
+                ),
               ),
           ],
         ),

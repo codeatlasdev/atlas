@@ -174,26 +174,17 @@ end
 # same signature as an install from the Play Store, so one updates the other. An APK built and signed here would
 # carry the upload key instead, and Android refuses to update across different signatures. Written to
 # build/apk/atlas-mobile-VERSION.apk with its .sha256, which the workflow attaches to the tag's GitHub release.
-# Play generates the APK a few minutes after the upload: retried for up to 15 minutes.
+# No retry: it runs after the store approval, long after Play generated the APK (minutes after the upload), so an
+# error here is real (wrong version code, the service account's rights) and is shown at once.
 lane :android_apk do
   need("PLAY_SERVICE_ACCOUNT_JSON", "BUILD_NUMBER")
-  dir = File.join(APP, "build/apk")
-  apk = File.join(dir, "atlas-mobile-#{version_name}.apk")
-  attempts = 15
-  begin
-    download_universal_apk_from_google_play(
-      package_name: ANDROID_PACKAGE,
-      version_code: ENV["BUILD_NUMBER"].to_i,
-      json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
-      destination: apk,
-    )
-  rescue StandardError => e
-    attempts -= 1
-    raise if attempts.zero?
-    UI.important("Play has no universal APK for #{ENV['BUILD_NUMBER']} yet (#{e.message}); retrying in 60 s")
-    sleep(60)
-    retry
-  end
+  apk = File.join(APP, "build/apk/atlas-mobile-#{version_name}.apk")
+  download_universal_apk_from_google_play(
+    package_name: ANDROID_PACKAGE,
+    version_code: ENV["BUILD_NUMBER"].to_i,
+    json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+    destination: apk, # the action creates the folder
+  )
   sum = Digest::SHA256.file(apk).hexdigest
   File.write("#{apk}.sha256", "#{sum}  #{File.basename(apk)}\n")
   UI.success("#{File.basename(apk)} #{sum}")

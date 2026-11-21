@@ -32,6 +32,7 @@
     "cmd_hostd_not_running_desktop": "69ac085d70b2",
     "cmd_hostd_not_running_in": "05b9289debc7",
     "cmd_hostd_pair_no_address": "4ca84347e9ee",
+    "cmd_hostd_project_down_still_stopping": "f336ee80a5e6",
     "cmd_hostd_reconcile_upgraded": "9469835c09c9",
     "cmd_hostd_restarted_ended": "31e4e8b15d19",
     "cmd_hostd_restarted_idle": "2e30234f5d83",

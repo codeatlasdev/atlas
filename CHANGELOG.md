@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **`atlas update` hands the terminal host over live when no terminal is open.** Every update from alpha.24 to alpha.27 with no terminal running ended in "Live upgrade of the terminal host failed: ... failed to fill whole buffer" and a plain restart: the old host's handoff starts with an empty chunk, and the new host took it for the end of the handoff, never received the pid lock and agent state, found the lock held and exited. The new host now waits for the real terminator and the old side no longer sends the empty chunk. Pinned with the real bytes of an alpha.26 host and a handoff between two real processes. Updating a host older than alpha.28 can still not be handed over live when it has no terminal (the receiving side is the already released new binary), so that update is one restart; from alpha.27 on it hands over live.
+
 - **Atlas Mobile: a sheet or dialog is never under the tab bar.** Sheets a tab opens (the "Find your computer on Wi-Fi" explanation in Settings, the new-terminal and permission sheets) were drawn on the tab's own navigator, below the floating bar, which hid their buttons and stayed tappable over the scrim. The shell now watches every tab navigator and hides the bar (not tappable, not read by a screen reader) while any popup is open, so no screen has to remember it.
 
 - **Atlas Mobile: a project's stack can be stopped from the phone.** The status panel had Start but nothing once the stack ran; it now has Stop, and hostd's `project_service` takes `op: "down"` (the same stop as the desktop's).

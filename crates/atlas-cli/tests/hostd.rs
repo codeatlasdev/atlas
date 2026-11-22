@@ -635,6 +635,52 @@ async fn agent_state_survives_an_upgrade() {
     assert_eq!(later["panes"]["p1"]["state"], "working", "{later}");
 }
 
+// Regression: #670. `atlas update` with no terminal open failed every time ("waiting for the new hostd: failed to
+// fill whole buffer"): the old daemon's empty first chunk was taken for the end of the handoff, the successor never
+// received the pid-file lock, found it held and exited. Two real processes, no pty.
+#[tokio::test]
+async fn upgrade_with_no_terminal_hands_the_daemon_over_with_its_lock_and_agents() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (mut d, c) = start(dir).await;
+    let old_pid = c.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap();
+    c.call(
+        "agent_bind",
+        json!({"pane": "p1", "agent": "omp", "cwd": "/w"}),
+    )
+    .await
+    .unwrap();
+    let r = post_hook(
+        dir,
+        "omp",
+        &json!({"pane_key": "p1", "payload": {"event": "agent_end", "text": "done it"}}),
+        None,
+    );
+    assert!(r.starts_with("HTTP/1.1 2"), "{r}");
+
+    let r = c.call("upgrade", json!({"exe": BIN})).await.unwrap();
+    assert_eq!(r["handed_off"], 0, "{r}");
+    let c2 = connect_retry(dir, old_pid).await;
+    let new_pid = c2.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap();
+    let _kill_new = Pid(new_pid as u32);
+    assert_eq!(
+        std::fs::read_to_string(paths::pid(dir)).unwrap().trim(),
+        new_pid.to_string(),
+        "the pid file names the successor"
+    );
+    wait_for("the old hostd to exit", || {
+        d.0.try_wait().unwrap().is_some()
+    })
+    .await;
+    let agents = c2.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(agents["panes"]["p1"]["state"], "done", "{agents}");
+    assert_eq!(agents["panes"]["p1"]["last_message"], "done it", "{agents}");
+}
+
 #[tokio::test]
 async fn upgrade_hands_live_ptys_to_a_new_hostd_without_killing_the_program() {
     use tokio::io::AsyncReadExt;

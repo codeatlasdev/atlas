@@ -45,32 +45,45 @@ export async function loadStyles(componentPaths: string[], globalCss: string[] =
 	return () => sheets.forEach((s) => s.remove());
 }
 
-/** `selector[::pseudo]` of every element under `root` whose winning `animation` loops forever. */
-export function infiniteAnimations(root: Element): string[] {
+/** Winning declaration text of `props` (the first that any rule sets) per element and pseudo, as `[label, text]`. */
+function winners(root: Element, props: string[]): [string, string][] {
 	const rules = [...document.styleSheets].flatMap((s) => [...rulesOf(s.cssRules)]);
-	const found: string[] = [];
-	const els = [root, ...root.querySelectorAll("*")];
-	for (const el of els) {
+	const out: [string, string][] = [];
+	for (const el of [root, ...root.querySelectorAll("*")]) {
 		for (const pseudo of ["", "::before", "::after"]) {
 			let win: Win | undefined;
 			rules.forEach((rule, order) => {
-				const text =
-					rule.style.getPropertyValue("animation") || rule.style.getPropertyValue("animation-name");
+				const text = props.map((p) => rule.style.getPropertyValue(p)).find(Boolean);
 				if (!text) return;
 				for (const sel of rule.selectorText.split(/,(?![^(]*\))/).map((x) => x.trim())) {
 					if ((PSEUDO.exec(sel)?.[0] ?? "") !== pseudo) continue;
-					const plain = sel.replace(PSEUDO, "");
-					if (!el.matches(plain)) continue;
+					if (!el.matches(sel.replace(PSEUDO, ""))) continue;
 					const spec = specificity(sel);
 					if (!win || spec > win.spec || (spec === win.spec && order > win.order))
-						win = { spec, order, infinite: /\binfinite\b/.test(text), text };
+						win = { spec, order, infinite: false, text };
 				}
 			});
-			if (win?.infinite)
-				found.push(
-					`${el.tagName.toLowerCase()}.${[...el.classList].join(".")}${pseudo} {animation: ${win.text}}`,
-				);
+			if (win) out.push([`${el.tagName.toLowerCase()}.${[...el.classList].join(".")}${pseudo}`, win.text]);
 		}
 	}
-	return found;
+	return out;
+}
+
+/** `selector[::pseudo] {animation: ...}` of every element whose winning `animation` loops forever. */
+export function infiniteAnimations(root: Element): string[] {
+	return winners(root, ["animation", "animation-name"])
+		.filter(([, text]) => /\binfinite\b/.test(text))
+		.map(([label, text]) => `${label} {animation: ${text}}`);
+}
+
+/** Elements whose winning `transition` animates `prop` (or `all`) for a non-zero time: a change of it runs an animation. */
+export function transitionsOf(root: Element, prop: string): string[] {
+	return winners(root, ["transition"])
+		.filter(([, text]) =>
+			text.split(/,(?![^(]*\))/).some((t) => {
+				const [name, dur] = t.trim().split(/\s+/);
+				return (name === prop || name === "all") && parseFloat(dur) > 0;
+			}),
+		)
+		.map(([label, text]) => `${label} {transition: ${text}}`);
 }

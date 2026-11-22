@@ -1,7 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../test/setup.ts";
 import { afterEach, expect, test } from "bun:test";
-import { infiniteAnimations, loadStyles } from "../../test/motion.ts";
+import { infiniteAnimations, loadStyles, transitionsOf } from "../../test/motion.ts";
 
 // Incident (#289, docs/perf/linux-webkit-study.md): a workspace whose stack is up kept four `infinite` CSS animations
 // running (the sidebar dot's ring, the header's halo and one halo per service card). One running animation holds
@@ -54,4 +54,15 @@ test("an idle and a sleeping crewmate are still, a working one with a hat loops"
 	expect(
 		infiniteAnimations(await render(CrewmateFace, { seed: "a", state: "working", look }, css)).join(),
 	).toContain("pom");
+});
+
+// Incident (#289): the dashboard's "Health over time" bars moved with a 400 ms transition, and their right edge advances at
+// every metrics sample (about once a second), so a running stack always had a band mid-transition: ~40 % of the time a
+// running animation, 4 points of a core on an otherwise idle dashboard. A bar that moves in steps costs nothing between them.
+test("the health timeline's bands do not transition when they grow", async () => {
+	const { default: StateTimeline } = await import("./panel/StateTimeline.svelte");
+	const lanes = [{ name: "api", segments: [{ start: 1000, end: null, band: "running" }] }];
+	const t = await render(StateTimeline, { lanes, end: 60_000 }, ["./panel/StateTimeline.svelte"]);
+	expect(t.querySelectorAll(".band.open")).toHaveLength(1);
+	expect(transitionsOf(t, "transform")).toEqual([]);
 });

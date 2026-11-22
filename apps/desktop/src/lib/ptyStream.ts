@@ -35,13 +35,28 @@ export function ptyStream(o: {
 	 * lost there would leave that much of the window used for ever.
 	 */
 	let owed = 0;
+	/**
+	 * Bytes handed to xterm and not parsed yet, over every stream this view had: `reset()` does not drop the writes xterm
+	 * queued, so a new stream (a fresh window on Rust's side) opened on top of a backlog adds to it, and a slow page
+	 * would pile up streams until xterm discards data. A redraw waits for it to reach zero.
+	 */
+	let backlog = 0;
+	/** A redraw was asked for while xterm still held output. */
+	let wanted = false;
 	/** Bumped by every attach: frames and parse callbacks of an earlier stream are stale. */
 	let epoch = 0;
+	/** Redraw from hostd's history: now when xterm is caught up, else as soon as it is (the old stream stops at once). */
 	const attach = () => {
-		const mine = ++epoch;
+		epoch++;
 		link?.close();
 		link = undefined;
 		owed = 0;
+		if (backlog > 0) wanted = true;
+		else open();
+	};
+	const open = () => {
+		wanted = false;
+		const mine = epoch;
 		o.open((f) => {
 			if (!alive || mine !== epoch) return;
 			switch (f.kind) {
@@ -73,7 +88,10 @@ export function ptyStream(o: {
 		);
 	};
 	const feed = (bytes: Uint8Array, replay: boolean, mine: number) => {
+		backlog += bytes.length;
 		o.write(bytes, replay, () => {
+			backlog -= bytes.length;
+			if (wanted && backlog <= 0 && alive) return open();
 			if (mine !== epoch) return;
 			if (link) link.ack(bytes.length);
 			else owed += bytes.length;

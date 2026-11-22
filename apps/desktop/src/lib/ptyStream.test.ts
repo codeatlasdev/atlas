@@ -31,9 +31,12 @@ function xterm() {
 		text: "",
 		resets: 0,
 		queue: [],
+		/** bytes handed to xterm and not parsed yet */
+		pending: 0,
 		write: (b, _replay, done) => {
 			x.text += dec(b);
-			x.queue.push(done);
+			x.pending += b.length;
+			x.queue.push(() => ((x.pending -= b.length), done()));
 		},
 		reset: () => {
 			x.text = "";
@@ -107,7 +110,11 @@ describe("ptyStream", () => {
 		h.data("stale");
 		p.reattach();
 		await tick();
-		// xterm still parses what it held before the reset, and calls back for it.
+		// xterm still parses what it held before the reset, and calls back for it: nothing of that is credited to the
+		// new stream, and only then is the new stream opened.
+		x.parse();
+		await tick();
+		expect(h.opens).toBe(2);
 		x.parse();
 		expect(h.acked).toEqual(["v1".length]); // the new replay only
 	});
@@ -117,6 +124,7 @@ describe("ptyStream", () => {
 	test("a dropped stream is closed and redrawn from a fresh replay, then keeps streaming", async () => {
 		const { h, x } = await start("screen@100MB");
 		h.data("old");
+		x.parse();
 		h.emit({ kind: "dropped" });
 		await tick();
 		expect(h.opens).toBe(2);
@@ -125,6 +133,40 @@ describe("ptyStream", () => {
 		expect(x.resets).toBe(2);
 		h.data("+live");
 		expect(x.text).toBe("screen@100MB+live");
+	});
+
+	// Incident (load test, 2026-11-22): a page starved for seconds under a flood had hostd cut its stream; each new
+	// stream got a fresh window while xterm still held the old backlog (reset() does not drop queued writes), cycle
+	// after cycle, until xterm discarded data ("write data discarded, use flow control", 50 MB): the replay's callback
+	// never came, the view stayed hidden and nothing was acknowledged again.
+	test("a reattach waits until xterm has parsed what it holds, so a slow page never piles up streams", async () => {
+		const { h, x } = await start("screen");
+		const MB = 1024 * 1024;
+		for (let cycle = 0; cycle < 20; cycle++) {
+			h.emit({ kind: "data", bytes: new Uint8Array(2 * MB) });
+			h.emit({ kind: "dropped" });
+			await tick();
+		}
+		// xterm parsed nothing the whole time: no new stream may have been opened on top of its backlog.
+		expect(h.opens).toBe(1);
+		expect(x.pending).toBeLessThanOrEqual(2 * MB + "screen".length);
+		x.parse();
+		await tick();
+		expect(h.opens).toBe(2);
+		expect(x.text).toBe("screen");
+	});
+
+	test("a reconnect while xterm holds unparsed output waits too, then redraws from the replay", async () => {
+		const { h, x, p } = await start("v1");
+		h.data("backlog");
+		p.reattach();
+		await tick();
+		expect(h.opens).toBe(1);
+		expect(h.closed).toBe(1); // the old stream stops feeding at once
+		x.parse();
+		await tick();
+		expect(h.opens).toBe(2);
+		expect(x.text).toBe("v1");
 	});
 
 	test("an ended program keeps its last screen and is not reattached", async () => {
@@ -138,6 +180,7 @@ describe("ptyStream", () => {
 	test("reattach (host reconnected) replays from scratch instead of appending to a stale screen", async () => {
 		const { h, x, p } = await start("v1");
 		h.data("x");
+		x.parse();
 		p.reattach();
 		await tick();
 		expect(x.text).toBe("v1");

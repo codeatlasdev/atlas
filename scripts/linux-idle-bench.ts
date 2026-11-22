@@ -12,7 +12,7 @@
 //   --label L       prefix of the window's label in the report (`<label>/<scenario>`), e.g. the renderer or the knob under test
 //   --scenario S    put the app in a state first and measure it: welcome (start with no project), workspace (SCM dock open),
 //                   stack-running, terminal-idle, terminal-output, chat-idle, chat-stream, list-scroll, unfocused, hidden-workspace,
-//                   hidden-chat-stream, unfocused-chat-stream. Without it the app is measured as it is. The scenarios open a
+//                   hidden-chat-stream, unfocused-chat-stream, crew (the crew workspace with three faces), crew-unfocused. Without it the app is measured as it is. The scenarios open a
 //                   fixture project (git repo, 2 worktrees, 2000 files) under the instance's HOME and use
 //                   scripts/fixtures/linux-idle/fake-omp.py as the chat engine; "unfocused" needs `foot` and a keyboard on the
 //                   instance's own sway (docs/perf/linux-webkit-study.md, "Method").
@@ -188,6 +188,8 @@ const JS = {
 	stop: `[...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "Stop")?.click(); return 1`,
 	close: (tab: string) => `window.__atlas.ws.closeTab(${JSON.stringify(tab)}); return 1`,
 	scroll: `const el = [...document.querySelectorAll(".dock *")].find((e) => e.scrollHeight > e.clientHeight + 20 && getComputedStyle(e).overflowY !== "visible"); if (!el) throw new Error("no scrollable list in the dock"); window.__benchScroll = true; (function step(t0) { if (!window.__benchScroll) return; requestAnimationFrame((t) => { el.scrollTop = ((t - t0) * 0.1) % (el.scrollHeight - el.clientHeight); step(t0); }); })(performance.now()); return el.scrollHeight`,
+	// The crew workspace with three crewmates (idle, working, asleep): every one draws a CrewmateFace with its own frame loop.
+	crew: `const a = window.__atlas; for (const [name, role] of [["Ada", "backend"], ["Bo", "frontend"], ["Cy", "review"]]) await a.crew.createCrewmate("", { name, role, agent: "omp" }); document.dispatchEvent(new KeyboardEvent("keydown", { key: "B", code: "KeyB", ctrlKey: true, shiftKey: true, bubbles: true })); await new Promise((r) => setTimeout(r, 2000)); return document.querySelectorAll("svg[aria-hidden] .eyes").length`,
 	scrollStop: `window.__benchScroll = false; return 1`,
 };
 
@@ -204,6 +206,8 @@ export const SCENARIOS = [
 	"stack-running",
 	"hidden-chat-stream",
 	"unfocused-chat-stream",
+	"crew",
+	"crew-unfocused",
 ] as const;
 
 type Ctx = { pid: number; atlas: string; sock: string; run: (js: string) => unknown; sway: (...a: string[]) => string; tmp: string; project: string; wt: string };
@@ -262,6 +266,16 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 			const stop = await enter("chat-stream", c);
 			c.sway("workspace", "2");
 			return () => (c.sway("workspace", "1"), stop());
+		}
+		case "crew": {
+			const faces = c.run(JS.crew) as number;
+			if (!faces) throw new Error("the crew workspace drew no crewmate face");
+			return () => {};
+		}
+		case "crew-unfocused": {
+			const off = await enter("crew", c);
+			const blur = await enter("unfocused", c);
+			return () => (blur(), off());
 		}
 		case "unfocused-chat-stream": {
 			const stop = await enter("chat-stream", c);

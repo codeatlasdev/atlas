@@ -247,7 +247,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(5)).await;
         let sent_after: usize = frames.0.lock().iter().map(|f| f.len() - HEADER).sum();
         assert!(
-            sent_after >= 2 * WINDOW && sent_after < 2 * WINDOW + FRAME_BYTES,
+            (2 * WINDOW..2 * WINDOW + FRAME_BYTES).contains(&sent_after),
             "{sent_after} bytes after one ack of the whole window"
         );
         task.abort();

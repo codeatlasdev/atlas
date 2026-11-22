@@ -1,0 +1,165 @@
+diff --git i/crates/atlas-core/src/procs.rs w/crates/atlas-core/src/procs.rs
+index 8f51a6ae..0831f2b8 100644
+--- i/crates/atlas-core/src/procs.rs
++++ w/crates/atlas-core/src/procs.rs
+@@ -287,10 +287,13 @@ mod imp {
+     }
+ 
+     fn boot_time() -> Option<u64> {
+-        std::fs::read_to_string("/proc/stat")
+-            .ok()?
+-            .lines()
+-            .find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())
++        static BTIME: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
++        *BTIME.get_or_init(|| {
++            std::fs::read_to_string("/proc/stat")
++                .ok()?
++                .lines()
++                .find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())
++        })
+     }
+ 
+     pub fn start_time(pid: u32) -> Option<u64> {
+diff --git i/crates/atlas-desktop/src/main.rs w/crates/atlas-desktop/src/main.rs
+index 2f61ebba..e432f89f 100644
+--- i/crates/atlas-desktop/src/main.rs
++++ w/crates/atlas-desktop/src/main.rs
+@@ -49,6 +49,8 @@ mod hotkeys;
+ mod lifecycle;
+ #[cfg(any(target_os = "linux", test))]
+ mod linux_gfx;
++#[cfg(target_os = "linux")]
++mod study_knobs;
+ mod live;
+ mod live_server;
+ mod menu;
+@@ -484,6 +486,9 @@ fn visible_on_any(win: (i32, i32, i32, i32), screens: &[(i32, i32, i32, i32)]) -
+ /// compositor per-frame alpha blending of the whole window for nothing. Same mechanism as tauri-apps/tauri#15471
+ /// (measured on macOS: ~8x GPU power for a static page); the Linux cost is inferred, not measured.
+ fn window_transparent(configured: bool) -> bool {
++    if std::env::var("ATLAS_STUDY_TRANSPARENT").is_ok_and(|v| v == "1") {
++        return configured;
++    }
+     transparent_on(configured, std::env::consts::OS)
+ }
+ 
+@@ -562,12 +567,16 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+     {
+         builder = builder.additional_browser_args(webview_win::args());
+     }
++    #[cfg(target_os = "linux")]
++    study_knobs::before_window();
+     let win = builder
+         .transparent(window_transparent(cfg.transparent))
+         .visible(false)
+         .theme(theme)
+         .initialization_script(script)
+         .build()?;
++    #[cfg(target_os = "linux")]
++    study_knobs::after_window(&win);
+     #[cfg(windows)]
+     fit_first_launch(app, &win, (cfg.width, cfg.height));
+     // Edge's F5 / Ctrl+R / Ctrl+F … must never reload the app or open browser UI (keydown still reaches the page).
+diff --git i/crates/atlas-desktop/src/study_knobs.rs w/crates/atlas-desktop/src/study_knobs.rs
+new file mode 100644
+index 00000000..e1e1cfdc
+--- /dev/null
++++ w/crates/atlas-desktop/src/study_knobs.rs
+@@ -0,0 +1,97 @@
++//! EXPERIMENT ONLY (docs/perf/linux-webkit-study.md): environment-driven WebKitGTK knobs, to measure one at a time.
++//! Not for merging: the report lists each knob that proves worth shipping as its own PR.
++//!
++//!   ATLAS_STUDY_HWACCEL=always|never|demand     WebKitSettings:hardware-acceleration-policy
++//!   ATLAS_STUDY_CACHE=doc|web|none              WebKitWebContext cache model (document viewer / web browser / document browser)
++//!   ATLAS_STUDY_SMOOTH=0|1                      enable-smooth-scrolling
++//!   ATLAS_STUDY_WEBGL=0                         enable-webgl
++//!   ATLAS_STUDY_MEDIA=0                         enable-media, enable-webaudio, enable-mediasource, enable-media-stream
++//!   ATLAS_STUDY_PAGECACHE=0                     enable-page-cache
++//!   ATLAS_STUDY_MEMPRESSURE=limitMb:pollS:conservative:strict:kill   WebKitMemoryPressureSettings (web AND network process)
++//!   ATLAS_STUDY_TRANSPARENT=1                   the Tauri window stays transparent on Linux (what macOS does)
++
++use webkit2gtk::{
++    CacheModel, HardwareAccelerationPolicy, MemoryPressureSettings, SettingsExt, WebContextExt,
++    WebViewExt, WebsiteDataManager,
++};
++
++fn var(k: &str) -> Option<String> {
++    std::env::var(k).ok().filter(|v| !v.is_empty())
++}
++
++/// Before any WebKit process exists: memory pressure is process-wide and read when a process is spawned.
++pub fn before_window() {
++    let Some(v) = var("ATLAS_STUDY_MEMPRESSURE") else {
++        return;
++    };
++    let p: Vec<f64> = v.split(':').filter_map(|x| x.parse().ok()).collect();
++    let mut s = MemoryPressureSettings::new();
++    if let Some(&l) = p.first() {
++        s.set_memory_limit(l as u32);
++    }
++    if let Some(&x) = p.get(1) {
++        s.set_poll_interval(x);
++    }
++    if let Some(&x) = p.get(2) {
++        s.set_conservative_threshold(x);
++    }
++    if let Some(&x) = p.get(3) {
++        s.set_strict_threshold(x);
++    }
++    if let Some(&x) = p.get(4) {
++        s.set_kill_threshold(x);
++    }
++    WebsiteDataManager::set_memory_pressure_settings(&mut s);
++    crate::diag::log(&format!("study knobs: memory pressure {v}"));
++}
++
++/// Right after the webview exists, before its first load completes.
++pub fn after_window(win: &tauri::WebviewWindow) {
++    let _ = win.with_webview(|pw| {
++        let wv: webkit2gtk::WebView = pw.inner();
++        let Some(s) = WebViewExt::settings(&wv) else {
++            return;
++        };
++        let mut done = Vec::new();
++        if let Some(v) = var("ATLAS_STUDY_HWACCEL") {
++            s.set_hardware_acceleration_policy(match v.as_str() {
++                "never" => HardwareAccelerationPolicy::Never,
++                "demand" => HardwareAccelerationPolicy::OnDemand,
++                _ => HardwareAccelerationPolicy::Always,
++            });
++            done.push(format!("hwaccel={v}"));
++        }
++        if let Some(v) = var("ATLAS_STUDY_SMOOTH") {
++            s.set_enable_smooth_scrolling(v == "1");
++            done.push(format!("smooth={v}"));
++        }
++        if var("ATLAS_STUDY_WEBGL").as_deref() == Some("0") {
++            s.set_enable_webgl(false);
++            done.push("webgl=0".into());
++        }
++        if var("ATLAS_STUDY_MEDIA").as_deref() == Some("0") {
++            s.set_enable_media(false);
++            s.set_enable_webaudio(false);
++            s.set_enable_mediasource(false);
++            s.set_enable_media_stream(false);
++            done.push("media=0".into());
++        }
++        if var("ATLAS_STUDY_PAGECACHE").as_deref() == Some("0") {
++            s.set_enable_page_cache(false);
++            done.push("pagecache=0".into());
++        }
++        if let Some(v) = var("ATLAS_STUDY_CACHE")
++            && let Some(ctx) = wv.context()
++        {
++            ctx.set_cache_model(match v.as_str() {
++                "doc" => CacheModel::DocumentViewer,
++                "none" => CacheModel::DocumentBrowser,
++                _ => CacheModel::WebBrowser,
++            });
++            done.push(format!("cache={v}"));
++        }
++        if !done.is_empty() {
++            crate::diag::log(&format!("study knobs: {}", done.join(" ")));
++        }
++    });
++}

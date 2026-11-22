@@ -8,9 +8,8 @@
 	import { WebLinksAddon } from "@xterm/addon-web-links";
 	import { WebglAddon } from "@xterm/addon-webgl";
 	import { Unicode11Addon } from "@xterm/addon-unicode11";
-	import { listen } from "@tauri-apps/api/event";
 	import { host } from "#lib/host.ts";
-	import { b64bytes } from "#lib/b64.ts";
+	import { openPtyStream } from "#lib/ptyChannel.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { imeStagingKey, keepTextareaEmpty } from "#lib/xtermInput.ts";
@@ -19,7 +18,7 @@
 	import FindInput from "./FindInput.svelte";
 	import { IS_MAC, primaryKey } from "#lib/keys.ts";
 	import { xtermKey } from "#lib/termKeys.ts";
-	import { ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
+	import { ptyStream } from "#lib/ptyStream.ts";
 	import { hostEvents } from "#lib/hostEventsApp.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -209,13 +208,11 @@
 		});
 		offs.push(() => sel.dispose());
 		const stream = ptyStream({
-			listen: (f) => listen<PtyEvent>(`pty://${pty}`, (e) => f(e.payload)),
-			attach: () =>
-				host.ptyAttach(pty, true).then(() => {
-					fit?.fit();
-					return host.ptyResize(pty, t.cols, t.rows);
-				}),
-			decode: b64bytes,
+			open: (f) => openPtyStream(pty, f),
+			attached: () => {
+				fit?.fit();
+				return host.ptyResize(pty, t.cols, t.rows);
+			},
 			write: (b, replay, done) => {
 				if (!replay) return t.write(b, done);
 				// Fresh buffer behind a hidden host: the reset's blank frame is never on screen.

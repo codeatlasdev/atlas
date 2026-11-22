@@ -6,8 +6,9 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { b64decode } from "#lib/b64.ts";
 import { invokeHost } from "#lib/host.ts";
+import { openPtyStream } from "#lib/ptyChannel.ts";
+import { ptyStream } from "#lib/ptyStream.ts";
 
 /** Drop ANSI escape sequences and the text a carriage return overwrote, leaving what the user would read. */
 export function stripAnsi(s: string): string {
@@ -34,7 +35,8 @@ export async function openSigninPty(
 	const argv = await invoke<string[]>("crew_signin_argv", { hostKey, command });
 	const r = await invokeHost<{ pty: string }>("pty_create", signinPtyRequest(argv));
 	onCreated(r.pty);
-	await invokeHost("pty_attach", { pty: r.pty });
+	// Title/exit events only: the output is read from the stream `watchSigninPty` opens.
+	await invokeHost("pty_attach", { pty: r.pty, output: false });
 }
 
 /** Send one line of input (plus Enter) to the pty. */
@@ -48,17 +50,21 @@ export function watchSigninPty(
 	onOutput: (text: string) => void,
 	onExit: () => void,
 ): () => void {
-	let off: (() => void) | null = null;
-	void listen<{ data: string; replay?: boolean }>(`pty://${pty}`, (e) => {
-		onOutput(stripAnsi(b64decode(e.payload.data)));
-	}).then((fn) => {
-		off = fn;
+	const text = new TextDecoder();
+	const stream = ptyStream({
+		open: (f) => openPtyStream(pty, f),
+		attached: async () => {},
+		write: (b, _replay, done) => {
+			onOutput(stripAnsi(text.decode(b, { stream: true })));
+			done();
+		},
+		reset: () => {},
 	});
 	const exitOff = listen<{ ev: string; pty?: string }>("host://event", (e) => {
 		if (e.payload.ev === "pty_exit" && e.payload.pty === pty) onExit();
 	});
 	return () => {
-		off?.();
+		stream.dispose();
 		void exitOff.then((fn) => fn());
 	};
 }

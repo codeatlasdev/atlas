@@ -6,10 +6,11 @@
 	import { usePoll } from "#lib/clock.svelte.ts";
 	import { onMount } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
-	import { listen } from "@tauri-apps/api/event";
 	import { toast } from "@codeatlasdev/ui";
 	import { SquareTerminal } from "@lucide/svelte";
-	import { host, b64bytes } from "#lib/host.ts";
+	import { host } from "#lib/host.ts";
+	import { openPtyStream } from "#lib/ptyChannel.ts";
+	import { ptyStream } from "#lib/ptyStream.ts";
 	import { hostEvents } from "#lib/hostEventsApp.ts";
 	import { errText } from "#lib/api.ts";
 	import { apply, emptyChat, LineBuffer, type ChatState, type UiRequest } from "#lib/rpc.ts";
@@ -71,26 +72,28 @@
 	usePoll(STATE_POLL_MS, () => focused, poll);
 
 	onMount(() => {
-		let alive = true;
 		const offs: (() => void)[] = [];
-		const ready = listen<{ data: string; replay: boolean }>(`pty://${tab.pty}`, (e) =>
-			feed(b64bytes(e.payload.data), e.payload.replay),
-		).then((u) => (alive ? offs.push(u) : u()));
-		// After the listener is live: the replay hostd sends at once would otherwise be lost (see ptyStream.ts).
-		const attach = () =>
-			void ready
-				.then(() => {
-					if (alive && tab.pty) return host.ptyAttach(tab.pty, true);
+		// History first, then live output (see ptyStream.ts); the reset of a replay is `feed`'s own.
+		const stream = tab.pty
+			? ptyStream({
+					open: (f) => openPtyStream(tab.pty!, f),
+					attached: async () => {},
+					write: (b, replay, done) => {
+						feed(b, replay);
+						done();
+					},
+					reset: () => {},
 				})
-				.catch(() => {});
-		attach();
-		offs.push(hostEvents.onReconnected(attach));
-		// hostd dropped this view for not reading (a hidden webview); the replay redraws the transcript.
-		if (tab.pty) offs.push(hostEvents.onDropped(tab.pty, attach));
+			: undefined;
+		if (stream) {
+			offs.push(() => stream.dispose());
+			offs.push(hostEvents.onReconnected(() => stream.reattach()));
+			// hostd dropped this view for not reading (a hidden webview); the replay redraws the transcript.
+			offs.push(hostEvents.onDropped(tab.pty!, () => stream.reattach()));
+		}
 		window.setTimeout(poll, 1500);
 		void worktreeFiles(tab.worktreeId).then((f) => (atFiles = f));
 		return () => {
-			alive = false;
 			offs.forEach((u) => u());
 			if (tab.pty) void host.ptyDetach(tab.pty).catch(() => {});
 		};

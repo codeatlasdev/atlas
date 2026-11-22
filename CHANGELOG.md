@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **A terminal that prints flat out no longer costs four cores or a gigabyte on Linux and Windows.** An xterm.js terminal got its output as base64 text in one script evaluated in the webview per frame, with nothing stopping a program that printed faster than xterm.js parsed (`yes`, a build log, `cat` of a big file): across hostd, the app and WebKit it cost 383 % of a core and the web process grew from 205 to 1,153 MB. Output now goes from hostd to the page as binary frames on a Tauri channel, at most one per display frame, and the page acknowledges what xterm.js has parsed: past 2 MiB unacknowledged the stream stops being read and the program waits, like in a native terminal. Nothing is skipped silently; a stream hostd cuts redraws from its history. `docs/terminal.md` has the design.
+
 - **Atlas Mobile: a sheet or dialog is never under the tab bar.** Sheets a tab opens (the "Find your computer on Wi-Fi" explanation in Settings, the new-terminal and permission sheets) were drawn on the tab's own navigator, below the floating bar, which hid their buttons and stayed tappable over the scrim. The shell now watches every tab navigator and hides the bar (not tappable, not read by a screen reader) while any popup is open, so no screen has to remember it.
 
 - **Atlas Mobile: a project's stack can be stopped from the phone.** The status panel had Start but nothing once the stack ran; it now has Stop, and hostd's `project_service` takes `op: "down"` (the same stop as the desktop's).

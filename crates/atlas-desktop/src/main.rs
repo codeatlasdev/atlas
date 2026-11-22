@@ -60,7 +60,8 @@ mod loose_fs;
 mod native_ui;
 mod natives;
 mod open_path;
-mod pty_batch;
+mod pty_feed;
+mod pty_stream;
 mod registry;
 mod remote;
 mod shell_env;
@@ -231,6 +232,9 @@ macro_rules! handlers {
             shell_env::shell_set,
             host::host_call,
             host::host_pty_list,
+            pty_stream::pty_stream,
+            pty_stream::pty_stream_ack,
+            pty_stream::pty_stream_stop,
             host::host_status,
             host::host_take_prompt,
             host::host_restart,

@@ -80,18 +80,27 @@ impl Session {
         json!({"ev": "pty_exit", "pty": self.id, "code": code}).to_string()
     }
 
-    /// Raw byte subscription. An exited pty gets its replay and then a closed stream.
+    /// Raw byte subscription. An exited pty gets its replay and then a closed stream. The answer says how many bytes
+    /// of replay the stream starts with (`replay`, 0 without one): the reader cannot tell the history from live
+    /// output in a byte stream, and a view must reset before the history even when it is empty.
     pub fn attach_raw(&self, conn: u64, out: RawOut, replay: bool) -> Value {
         let mut b = self.buf.lock();
+        let mut replayed = 0;
         if replay {
-            let _ = out.try_send(b.ring_bytes());
+            let ring = b.ring_bytes();
+            replayed = ring.len();
+            if replayed > 0 {
+                let _ = out.try_send(ring);
+            }
         }
         // Under the buf lock: `finish` clears `raw` under the same lock, so no sender outlives the pty.
         if self.exited().is_none() {
             b.raw.insert(conn, out);
         }
         drop(b);
-        self.info()
+        let mut info = self.info();
+        info["replay"] = replayed.into();
+        info
     }
 
     pub fn detach(&self, conn: u64) {

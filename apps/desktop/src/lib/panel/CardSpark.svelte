@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Sparkline } from "@codeatlasdev/ui/charts";
+	import "./chartMotion.ts";
 	import { fmtMem } from "#lib/format.ts";
 	import type { Service } from "#lib/stores/projects.svelte.ts";
 	import { metrics } from "./metrics.svelte.ts";

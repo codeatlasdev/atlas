@@ -135,6 +135,70 @@ describe("ptyStream", () => {
 		expect(x.text).toBe("screen@100MB+live");
 	});
 
+	// Incident (release chat-stream bench, 2026-11-22): a stream that the host closed right after it opened was
+	// reattached at once, again and again: the chat tab sent `get_messages` ~10 times a second, each time replaying and
+	// re-parsing a 0.4-1.4 MB transcript, and cost 208-233 % of a core against 31-39 % before the channel.
+	test("a host that closes every stream right away is retried with growing waits, not in a tight loop", async () => {
+		const waits = [];
+		const release = [];
+		let opens = 0;
+		const p = ptyStream({
+			open: async (onFrame) => {
+				opens++;
+				queueMicrotask(() => onFrame({ kind: "replay", bytes: enc("history") }));
+				queueMicrotask(() => onFrame({ kind: "dropped" }));
+				return { ack: () => {}, close: () => {} };
+			},
+			attached: async () => {},
+			write: (_b, _r, done) => done(),
+			reset: () => {},
+			wait: (ms) => (waits.push(ms), new Promise((r) => release.push(r))),
+		});
+		await tick();
+		// The first drop redraws at once; the second waits for the clock, which has not moved.
+		expect(opens).toBe(2);
+		expect(waits).toEqual([250]);
+		for (const expected of [500, 1000, 2000]) {
+			release.shift()();
+			await tick();
+			expect(waits.at(-1)).toBe(expected);
+		}
+		expect(opens).toBe(5);
+		p.dispose();
+		release.shift()();
+		await tick();
+		expect(opens).toBe(5);
+	});
+
+	test("a stream that stayed attached for a while and then drops redraws at once, and a steady stream never reattaches", async () => {
+		const h = fakeHost("screen");
+		const x = xterm();
+		const waits = [];
+		const real = Date.now;
+		let now = 1_000_000;
+		Date.now = () => now;
+		try {
+			const p = ptyStream({ open: h.open, attached: async () => {}, write: x.write, reset: x.reset, wait: (ms) => (waits.push(ms), new Promise(() => {})) });
+			await tick();
+			// 60 s of a chat stream, 30 lines a second: one stream, one replay, nothing else.
+			for (let i = 0; i < 1800; i++) {
+				now += 33;
+				h.data(`{"type":"message_update"}\n`);
+				x.parse();
+			}
+			await tick();
+			expect(h.opens).toBe(1);
+			expect(x.resets).toBe(1);
+			h.emit({ kind: "dropped" });
+			await tick();
+			expect(h.opens).toBe(2);
+			expect(waits).toEqual([]);
+			p.dispose();
+		} finally {
+			Date.now = real;
+		}
+	});
+
 	// Incident (load test, 2026-11-22): a page starved for seconds under a flood had hostd cut its stream; each new
 	// stream got a fresh window while xterm still held the old backlog (reset() does not drop queued writes), cycle
 	// after cycle, until xterm discarded data ("write data discarded, use flow control", 50 MB): the replay's callback

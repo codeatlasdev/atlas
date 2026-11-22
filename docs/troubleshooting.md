@@ -12,7 +12,7 @@ Start with `atlas dev --status` (what is running and in what state) and `atlas v
 | Symptom | Cause and fix |
 |---|---|
 | `atlas: command not found` after installing | Open a new shell: `atlas install` edits your shell's startup file. Check `~/.atlas/bin` is on `PATH`. |
-| macOS kills the binary (`zsh: killed`) | The binary is not signed. Release builds are ad-hoc signed; for a binary you built, run `codesign -f -s - target/release/atlas`. A browser download may also need `xattr -d com.apple.quarantine ./atlas`. |
+| macOS kills the binary (`zsh: killed`) | The binary is not signed. Release builds are Developer ID signed (ad-hoc when built without the signing secrets, as forks are); for a binary you built, run `codesign -f -s - target/release/atlas`. A browser download may also need `xattr -d com.apple.quarantine ./atlas`. |
 | `atlas update` says to run `brew upgrade` | The binary lives under a Homebrew prefix; update it with Homebrew. |
 | `atlas update` refuses to run | You are using a linked dev build (`atlas link`). Run `atlas unlink` first. |
 | The update prompt is in the way | `ATLAS_NO_UPDATE_PROMPT=1`, or answer `n` (silences that version for 24 hours). |
@@ -65,7 +65,7 @@ The full table is in [Agent setup](agents.md#troubleshooting) and [MCP](mcp.md#t
 | A terminal is blank right after opening | Turn off *Fast terminal (GPU)* in Settings → Terminal to compare with the xterm.js renderer, and file an issue with `atlas desktop debug logs` output. |
 | A worktree was not deleted with its branch | The branch is unmerged, so Atlas keeps it (a toast says so). Delete it with `git branch -D` when you are sure. |
 | `atlas wt` or `atlas term` says the app is not running | They use `~/.atlas/desktop.sock`; open Atlas Desktop first. `atlas term` falls back to the local hostd when the app is closed. |
-| The app and CLI versions differ | `atlas update` brings both to the latest; **Update CLI & app** in the app does the same. Running stacks keep their version until `atlas down && atlas dev --detach`. |
+| The app and CLI versions differ | `atlas update` brings both to the latest; **Update CLI and app** in the app does the same. Running stacks keep their version until `atlas down && atlas dev --detach`. |
 
 ### Linux: lag, freezes or stale frames
 
@@ -101,6 +101,8 @@ atlas desktop debug shot /tmp/x.png
 
 ## Reporting a bug
 
-If the CLI panics it prints a path such as `crash-<unix_ms>-<pid>.toml` (the newest 20 are kept) under `~/Library/Application Support/atlas/crashes/` (`$XDG_DATA_HOME/atlas/crashes` on Linux). Crash reports stay on your machine and are never uploaded. Tokens are redacted and your home directory is written as `~`, but review one before attaching it.
+If the CLI panics it prints a path such as `crash-<unix_ms>-<pid>.toml` (the newest 20 are kept) under `~/Library/Application Support/atlas/crashes/` (`$XDG_DATA_HOME/atlas/crashes` on Linux). A crash of the process itself (a segmentation fault inside WebKit, a graphics driver or Atlas) writes `crash-native-<unix_ms>-<pid>.toml` in the same directory, so it no longer depends on `coredumpctl` being there. Crash reports stay on your machine and are never uploaded. Tokens are redacted and your home directory is written as `~`, but review one before attaching it.
 
-Open an issue at [github.com/codeatlasdev/atlas/issues](https://github.com/codeatlasdev/atlas/issues) with `atlas version`, your OS, what you ran and the relevant lines of `.logs/<service>.log` (redact secrets). Security problems go through [SECURITY.md](https://github.com/codeatlasdev/atlas/blob/main/SECURITY.md), not public issues.
+Atlas Desktop tells you at its next start: if a crash report (or the terminal host dying on its own) is newer than the last one you dismissed, a card in the bottom-right corner says **Atlas closed unexpectedly last time** with **Report** (the usual report screen, redacted, nothing sent until you press *Report issue*) and **Dismiss**. Dismissing remembers the time in `~/.atlas/desktop/crash-ack`, so the card does not come back for that crash; the first launch only looks at the last 7 days.
+
+Open an issue at [github.com/codeatlasdev/atlas/issues](https://github.com/codeatlasdev/atlas/issues) with the whole output of `atlas version` (it names the exact build), your OS, what you ran and the relevant lines of `.logs/<service>.log` (redact secrets). Security problems go through [SECURITY.md](https://github.com/codeatlasdev/atlas/blob/main/SECURITY.md), not public issues.

@@ -1,0 +1,22 @@
+{
+  "pt-BR": {
+    "native_notify_alert_copy_details": "f17f5da3fc92",
+    "native_notify_alert_crashed": "7e406367a01f",
+    "native_notify_alert_details": "0e93eb76626f",
+    "native_notify_alert_ended": "e0a9f8435b13",
+    "native_notify_alert_not_ready": "4aa93c630944",
+    "native_notify_alert_out_of_memory": "f2f5aea9f2d0",
+    "native_notify_alert_quit": "3b7522750be9",
+    "native_notify_alert_reopen": "e78f7b6f8cb1",
+    "native_notify_alert_terminated": "d7d1d97b6a0c",
+    "native_notify_alert_title": "f4d23ee5d1e6",
+    "native_notify_capture_failed": "b99c00f3cb1f",
+    "native_notify_dock_agent_gone": "3fd352ae245e",
+    "native_notify_dock_keys_clash": "fe192ee7abe3",
+    "native_notify_dock_not_built": "e6c166cdd9c3",
+    "native_notify_no_home": "bb8b93902f22",
+    "native_notify_no_permission": "7b11654c9963",
+    "native_notify_service_failed": "72144b6ce764",
+    "native_notify_shell_not_executable": "442d99cb333c"
+  }
+}

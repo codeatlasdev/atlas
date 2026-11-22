@@ -1,11 +1,14 @@
+import { m } from "#lib/i18n/m.ts";
+
 /** Guided tour: step list and pure sequencing (anchors are `[data-tour="<anchor>"]`). */
 
 export interface TourStep {
 	id: string;
 	/** `data-tour` value of the element to spotlight. */
 	anchor: string;
-	title: string;
-	body: string;
+	/** The copy is read when the card is drawn (a getter), so a language switch shows at once. */
+	readonly title: string;
+	readonly body: string;
 	/** Preferred card side relative to the anchor. */
 	side: "right" | "left" | "bottom" | "top";
 }
@@ -14,50 +17,78 @@ export const TOUR_STEPS: TourStep[] = [
 	{
 		id: "sidebar",
 		anchor: "sidebar",
-		title: "Your projects live here",
-		body: "Every project is a space with its own color. Pick one to switch, and its worktrees sit right under it.",
+		get title() {
+			return m.onboarding_tour_sidebar_title();
+		},
+		get body() {
+			return m.onboarding_tour_sidebar_body();
+		},
 		side: "right",
 	},
 	{
 		id: "spaces",
 		anchor: "spaces",
-		title: "Switch spaces",
-		body: "Each space remembers its tabs, panes and stack, so switching never loses your place.",
+		get title() {
+			return m.onboarding_tour_spaces_title();
+		},
+		get body() {
+			return m.onboarding_tour_spaces_body();
+		},
 		side: "right",
 	},
 	{
 		id: "breadcrumb",
 		anchor: "breadcrumb",
-		title: "Know where you are",
-		body: "Project, worktree and branch at a glance. Click a part to jump somewhere else.",
+		get title() {
+			return m.onboarding_tour_breadcrumb_title();
+		},
+		get body() {
+			return m.onboarding_tour_breadcrumb_body();
+		},
 		side: "bottom",
 	},
 	{
 		id: "panel-kpis",
 		anchor: "panel-kpis",
-		title: "The stack, at a glance",
-		body: "Health, services and resources for this project. Start the stack from the header when you are ready.",
+		get title() {
+			return m.onboarding_tour_panel_kpis_title();
+		},
+		get body() {
+			return m.onboarding_tour_panel_kpis_body();
+		},
 		side: "bottom",
 	},
 	{
 		id: "service-card",
 		anchor: "service-card",
-		title: "Every service, live",
-		body: "State, CPU and memory update as things run. Click a card to open its logs or restart it.",
+		get title() {
+			return m.onboarding_tour_service_card_title();
+		},
+		get body() {
+			return m.onboarding_tour_service_card_body();
+		},
 		side: "top",
 	},
 	{
 		id: "right-toggle",
 		anchor: "right-toggle",
-		title: "Details when you want them",
-		body: "The right sidebar holds agent history and ports. Hide it for a calmer view; it comes back with one key.",
+		get title() {
+			return m.onboarding_tour_right_toggle_title();
+		},
+		get body() {
+			return m.onboarding_tour_right_toggle_body();
+		},
 		side: "bottom",
 	},
 	{
 		id: "palette",
 		anchor: "palette",
-		title: "Go anywhere with one key",
-		body: "Jump to a worktree, terminal, file or command by typing a few letters.",
+		get title() {
+			return m.onboarding_tour_palette_title();
+		},
+		get body() {
+			return m.onboarding_tour_palette_body();
+		},
 		side: "bottom",
 	},
 ];

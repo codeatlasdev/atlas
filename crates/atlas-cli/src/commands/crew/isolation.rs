@@ -209,7 +209,7 @@ pub fn install_steps(a: &Account) -> Vec<String> {
     ]
 }
 
-/// The writes of the units, as `(file, contents)`; the caller pipes the contents to `sudo tee <file>`.
+/// The writes of the units, as `(file, contents)`; the caller writes each with [`super::layout::write_unit_script`].
 pub fn unit_files(a: &Account) -> [(String, String); 5] {
     let f = |name: &str, body: String| (format!("/etc/systemd/system/{name}"), body);
     [
@@ -295,6 +295,17 @@ pub const ENGINES_DIR: &str = "/usr/local/lib/atlas-crew/engines";
 /// by every crewmate user. Not a crewmate's home and not the crew user's: nobody's sign-in lives here.
 pub const ENGINE_HOME: &str = "/usr/local/lib/atlas-crew/engine-home";
 
+/// The `gh` every crewmate finds first: a link to the `atlas` binary in the helper's engine directory (the helper pins
+/// its `PATH`, so this is the one place a root-owned name can win over `/usr/bin/gh`). `atlas` run as `gh` asks hostd for
+/// an installation token of the GitHub App for the repo the command targets and runs the real `gh` with it
+/// (`atlas_host::crew::gh_shim`); with no app it runs the real `gh` untouched. The link follows `atlas crew update`
+/// (it names the path, not the file).
+pub fn gh_shim_step() -> String {
+    format!(
+        "sudo install -d -m 0755 {ENGINES_DIR} && sudo ln -sfn {INSTALL_DIR}/atlas {ENGINES_DIR}/gh"
+    )
+}
+
 /// Where each installer puts its binary under its `$HOME`, in the order they are tried.
 const BIN_DIRS: [&str; 5] = [
     ".local/bin",
@@ -308,10 +319,10 @@ const BIN_DIRS: [&str; 5] = [
 /// [`ENGINE_HOME`] as `$HOME`, then its binary linked into [`ENGINES_DIR`] and the tree made readable
 /// and executable for every user. `None` for a name that is not an engine.
 ///
-/// The install command is the one `atlas crew login` has always printed (`agent_install_hint`): the
+/// The install command is the one `atlas crew login` has always printed (`install` in `data/agents.json`): the
 /// vendor's own line, so an upgrade of the engine is the vendor's concern, not ours.
 pub fn engine_install_script(agent: &str, install_cmd: &str) -> Option<String> {
-    let bin = atlas_core::agents::get(agent)?.bin;
+    let bin = atlas_core::agents::get(agent)?.bin.as_str();
     // `bin` comes from the agent table, `install_cmd` from the CLI's own hints: neither is user input.
     let search = BIN_DIRS
         .iter()
@@ -363,13 +374,7 @@ if [ -d {crew_dir}/work ]; then sudo mv -T {crew_dir}/work {crew_dir}/work.pre-i
 
 /// The line `atlas crew install` prints after a migration, naming what changed for each crewmate.
 pub fn migration_notice(migrated: usize) -> Option<String> {
-    (migrated > 0).then(|| {
-        format!(
-            "{migrated} crewmate(s) now run as their own Linux user. Their agent sign-ins were shared \
-and are not copied: sign each agent in again with `atlas crew login <server> <agent> --crewmate <id>`. \
-A project checkout is made again by the next task; the old one is kept as work.pre-isolation next to it."
-        )
-    })
+    (migrated > 0).then(|| atlas_i18n::t!("cmd_crew_migration_notice", count = migrated))
 }
 
 /// One thing the installer does for isolation, in the order it must happen.
@@ -377,7 +382,7 @@ A project checkout is made again by the next task; the old one is kept as work.p
 pub enum Action {
     /// Run this shell on the server.
     Run(String),
-    /// Write `contents` to `file` (`sudo tee`).
+    /// Write the systemd unit `file` with `contents` ([`super::layout::write_unit_script`]).
     Write { file: String, contents: String },
     /// Install engine `agent` system-wide with `script` ([`engine_install_script`]). Unlike every other
     /// action a failure here does not fail the install: an engine needs the vendor's site and, for codex,
@@ -407,6 +412,7 @@ pub fn install_actions(a: &Account, ids: &[String], engines: &[(&str, &str)]) ->
         EGRESS_FILE.rsplit_once('/').map_or("/etc", |(d, _)| d)
     )));
     v.extend(start_steps().into_iter().map(Action::Run));
+    v.push(Action::Run(gh_shim_step()));
     for (agent, cmd) in engines {
         if let Some(script) = engine_install_script(agent, cmd) {
             v.push(Action::Engine {
@@ -1054,6 +1060,22 @@ mod tests {
         assert_eq!(ENGINE_DIRS[0], ENGINES_DIR);
     }
 
+    // The helper pins an isolated crewmate's PATH to its engine directory first: that is where `gh` must be to win.
+    #[cfg(unix)]
+    #[test]
+    fn gh_is_linked_to_atlas_in_the_directory_the_helper_searches_first() {
+        use atlas_host::crew::spawn::exec::ENGINE_DIRS;
+        let sh = gh_shim_step();
+        assert!(
+            sh.contains(&format!(
+                "ln -sfn {INSTALL_DIR}/atlas {}/gh",
+                ENGINE_DIRS[0]
+            )),
+            "{sh}"
+        );
+        assert!(sh.starts_with("sudo install -d -m 0755 "), "{sh}");
+    }
+
     #[test]
     fn existing_crewmates_are_listed_by_uuid_shape_from_both_store_names() {
         let sh = list_crewmates_script(&acct());
@@ -1106,7 +1128,7 @@ mod tests {
     fn the_migration_notice_names_the_sign_in_command_and_only_appears_when_something_moved() {
         assert_eq!(migration_notice(0), None);
         let n = migration_notice(3).unwrap();
-        assert!(n.starts_with("3 crewmate(s)"));
+        assert!(n.starts_with("3 crewmates now run"));
         assert!(n.contains("atlas crew login <server> <agent> --crewmate <id>"));
         assert!(n.contains("work.pre-isolation"));
     }

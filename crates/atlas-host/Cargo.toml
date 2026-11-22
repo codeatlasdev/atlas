@@ -1,6 +1,6 @@
 [package]
 name = "atlas-host"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.27"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 dirs = { workspace = true }
 atlas-core = { path = "../atlas-core" }
+atlas-i18n = { path = "../atlas-i18n" }
 parking_lot = { workspace = true }
 portable-pty = "0.9"
 base64 = { workspace = true }
@@ -34,11 +35,13 @@ hex = "0.4"
 tar = "0.4"
 flate2 = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
-croner = "2"
-chrono = { workspace = true }
-chrono-tz = { workspace = true }
+# RS256 for the GitHub App JWT (already in the tree through rustls).
+ring = "0.17"
+croner = { version = "4", default-features = false, features = ["jiff"] }
+jiff = { workspace = true }
 sha1_smol = "1"
 url = "2"
+semver = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
@@ -46,7 +49,6 @@ libc = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
-chrono = { workspace = true, features = ["serde"] }
 
 [lints]
 workspace = true

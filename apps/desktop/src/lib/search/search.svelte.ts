@@ -1,5 +1,6 @@
 import { host } from "#lib/host.ts";
 import { errText } from "#lib/api.ts";
+import { isProgramMissing } from "#lib/hostText.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import {
 	Results,
@@ -43,8 +44,16 @@ const fresh = (): SearchState => ({
 });
 
 /** Search state per worktree, kept while the panel is hidden. */
-const states: Record<string, SearchState> = $state({});
-export const searchState = (id: string): SearchState => (states[id] ??= fresh());
+// A plain map of per-worktree `$state` objects: the first lookup of a worktree creates its state, and that happens inside
+// `$derived` (SearchPanel), where writing to a shared `$state` map throws `state_unsafe_mutation` (found in #308's WebKit pass).
+const states: Record<string, SearchState> = {};
+export function searchState(id: string): SearchState {
+	if (!states[id]) {
+		const created = $state(fresh());
+		states[id] = created;
+	}
+	return states[id];
+}
 
 const generation: Record<string, number> = {};
 const timers: Record<string, number> = {};
@@ -123,7 +132,7 @@ async function runSearch(id: string) {
 	} catch (e) {
 		if (gen !== generation[id]) return;
 		// hostd reports a missing binary as a spawn error rather than exit 127.
-		if (!rgMissing && /No such file|not found|ENOENT|os error 2/i.test(errText(e))) {
+		if (!rgMissing && isProgramMissing(e)) {
 			rgMissing = true;
 			void runSearch(id);
 			return;

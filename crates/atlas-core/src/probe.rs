@@ -267,32 +267,49 @@ fn crash_summary(text: &str) -> Option<String> {
     Some(crate::redact::redact(&line))
 }
 
-/// Crash reports in `dir` (`crate::crash::crash_dir`), newest first, at most [`MAX_CRASH_FILES`].
-/// The time is the one in the file name (`crash-<unix_ms>-<pid>.toml`, or the older
-/// `crash-<unix seconds>.toml`), so two generations order on one clock.
-pub fn crash_files(dir: &Path, now_secs: u64) -> Vec<CrashFile> {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut found: Vec<(u64, std::path::PathBuf)> = rd
+/// One crash report on disk: when it was written (unix ms, from its name) and its redacted summary.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CrashEntry {
+    pub at_ms: u64,
+    pub summary: String,
+}
+
+/// Every crash report in `dir` (`crate::crash::crash_dir`), newest first, read lazily. The time is the one in the
+/// file name (`crash-<unix_ms>-<pid>.toml`, or the older `crash-<unix seconds>.toml`), so two generations order on
+/// one clock. A report that cannot be read or has no message is skipped.
+pub fn crash_entries(dir: &Path) -> impl Iterator<Item = CrashEntry> {
+    let mut found: Vec<(u64, std::path::PathBuf)> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
         .flatten()
         .filter_map(|e| {
-            let ms = crate::crash::report_time(e.file_name().to_str()?)?;
-            Some((ms, e.path()))
+            Some((
+                crate::crash::report_time(e.file_name().to_str()?)?,
+                e.path(),
+            ))
         })
         .collect();
     found.sort_by_key(|a| std::cmp::Reverse(a.0));
-    found
-        .into_iter()
-        .filter_map(|(ms, p)| {
-            let at = ms / 1000;
-            Some(CrashFile {
+    found.into_iter().filter_map(|(at_ms, p)| {
+        Some(CrashEntry {
+            at_ms,
+            summary: crash_summary(&std::fs::read_to_string(p).ok()?)?,
+        })
+    })
+}
+
+/// The newest crash reports, at most [`MAX_CRASH_FILES`], with their age at `now_secs`.
+pub fn crash_files(dir: &Path, now_secs: u64) -> Vec<CrashFile> {
+    crash_entries(dir)
+        .take(MAX_CRASH_FILES)
+        .map(|c| {
+            let at = c.at_ms / 1000;
+            CrashFile {
                 at,
                 age_secs: now_secs.saturating_sub(at),
-                summary: crash_summary(&std::fs::read_to_string(p).ok()?)?,
-            })
+                summary: c.summary,
+            }
         })
-        .take(MAX_CRASH_FILES)
         .collect()
 }
 
@@ -980,22 +997,42 @@ mod tests {
         assert!(crash_files(&d.path().join("nope"), 0).is_empty());
     }
 
+    // The program lives for 60 s and says so in `finished` if it gets to the end: a `run_bounded` that waited it out
+    // instead of killing it at the 200 ms timeout leaves that file, and the process is gone when the call returns.
+    // The assertions are about what happened to the child, never how long the call took.
     #[cfg(unix)]
     #[test]
     fn a_hung_program_is_killed_at_the_timeout_and_a_missing_one_is_none() {
-        let t = std::time::Instant::now();
+        let d = tempfile::tempdir().unwrap();
+        let pidfile = d.path().join("pid");
+        let finished = d.path().join("finished");
+        let script = format!(
+            "echo $$ > {}; sleep 60 >/dev/null 2>&1; touch {}",
+            pidfile.display(),
+            finished.display()
+        );
         assert_eq!(
-            run_bounded("sleep", &["5"], Duration::from_millis(200)),
+            run_bounded("sh", &["-c", &script], Duration::from_millis(200)),
             None
         );
-        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+        assert!(!finished.exists(), "the call waited for the hung program");
+        // On a machine so loaded that the shell had not written its pid by the timeout, it was killed before it ran.
+        if let Some(pid) = std::fs::read_to_string(&pidfile)
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+        {
+            assert!(
+                !crate::sys::pid_alive(pid),
+                "the hung program is still running"
+            );
+        }
         assert_eq!(
-            run_bounded("echo", &["hi"], Duration::from_secs(2)).as_deref(),
+            run_bounded("echo", &["hi"], crate::scaling::HANG).as_deref(),
             Some("hi\n")
         );
-        assert_eq!(run_bounded("false", &[], Duration::from_secs(2)), None);
+        assert_eq!(run_bounded("false", &[], crate::scaling::HANG), None);
         assert_eq!(
-            run_bounded("atlas-no-such-tool", &[], Duration::from_secs(1)),
+            run_bounded("atlas-no-such-tool", &[], crate::scaling::HANG),
             None
         );
     }

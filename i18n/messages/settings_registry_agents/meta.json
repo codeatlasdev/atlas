@@ -1,0 +1,11 @@
+{
+	"settings_registry_agents_agent_args_description": "Help line under the \"Extra arguments\" row in Settings > Agents, also shown in search results.",
+	"settings_registry_agents_agent_args_label": "Label of the \"Extra arguments\" row in Settings > Agents, also its title in search results.",
+	"settings_registry_agents_agent_custom_description": "Help line under the \"Add agent\" row in Settings > Agents, also shown in search results. The {…} placeholders are shortcuts filled in by the app.",
+	"settings_registry_agents_agent_default_description": "Help line under the \"Default agent\" row in Settings > Agents, also shown in search results.",
+	"settings_registry_agents_agent_permissions_description": "Help line under the \"Tool approval\" row in Settings > Agents, also shown in search results.",
+	"settings_registry_agents_description": "One line under the Agents page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_agents_dock_enabled_description": "Help line under the \"Show the dock\" row in Settings > Agents. The last sentence is only for Windows and Linux, where the dock starts hidden.",
+	"settings_registry_agents_label": "Sidebar entry and page title of the Agents section in Settings.",
+	"settings_registry_agents_quick_description": "Help line under the \"Quick commands\" row in Settings > Agents, also shown in search results."
+}

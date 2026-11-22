@@ -9,18 +9,19 @@ use super::{TurnCtx, TurnResult, launch, program};
 pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
     let mcp_config_path = write_mcp_config(&ctx)?;
 
+    // Always ask mode, said explicitly, and never a bypass flag: hostd decides every call that needs a decision
+    // (`crew::approval`) through the permission-prompt tool, whatever the crewmate's mode is, so a user's
+    // `defaultMode` in a settings file cannot widen it and a mode switch applies to the very next call.
     let mut cmd = ctx.command(&program("claude"));
     cmd.arg("-p")
         .arg("--output-format")
         .arg("json")
         .arg("--mcp-config")
         .arg(&mcp_config_path)
+        .arg("--permission-mode")
+        .arg("default")
         .arg("--permission-prompt-tool")
         .arg("atlas:approve");
-
-    if ctx.yolo {
-        cmd.arg("--dangerously-skip-permissions");
-    }
 
     if let Some(sid) = &ctx.session.session_id {
         cmd.arg("--resume").arg(sid);

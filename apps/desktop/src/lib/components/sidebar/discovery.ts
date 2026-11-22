@@ -1,4 +1,8 @@
 /** Pure helpers behind the "Find projects" dialog: grouping, filtering, relink suggestions. */
+import type { DiscoverDone } from "#lib/api.ts";
+import { formatNumber, relativeTime } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
+import { STACK_MESSAGES } from "#lib/onboarding/flow.ts";
 
 /** One folder reported by the Rust scan (`discover://event` `found`). */
 export interface Found {
@@ -71,24 +75,40 @@ export function pickable(found: Found[], registered: ReadonlySet<string>): Found
  * row, or a tick), and a broken config never is. */
 export const tickedByDefault = (f: Found): boolean => f.has_config && !f.error;
 
-/** The dialog's lead. Spotlight is macOS only: naming it on Windows or Linux points at a feature that is not there. */
-export function discoverLead(mac: boolean): string {
-	return `Looks for project folders in your usual folders${mac ? " and with Spotlight" : ""}. An atlas.yaml is optional: Atlas detects the stack.`;
-}
-
-/** Heading of the group of results outside every scanned folder. */
-export const elsewhereLabel = (mac: boolean): string =>
-	mac ? "Elsewhere (found by Spotlight)" : "Elsewhere";
-
 /**
  * The empty line above the list. With no atlas.yaml anywhere, a plain "No projects found" would sit right over a full
  * "Could use Atlas" list: say what is true instead.
  */
 export function noProjectsLine(query: string, candidates: number): string {
-	if (query) return `No project matches “${query}”.`;
-	return candidates
-		? "No folder with an atlas.yaml yet. Add one from the list below."
-		: "No projects found in the scanned folders.";
+	if (query) return m.tray_page_no_match({ query });
+	return candidates ? m.sidebar_discover_dialog_no_config() : m.sidebar_discover_dialog_none();
+}
+
+/** A scan's time in seconds with one decimal, in the digits of the language. */
+const seconds = (ms: number) =>
+	formatNumber(ms / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** The status line while the scan runs. */
+export function scanningLine(dirs: number, elapsedMs: number, found: number): string {
+	return m.sidebar_discover_dialog_scanning({
+		count: dirs,
+		amount: formatNumber(dirs),
+		seconds: seconds(elapsedMs),
+		found: formatNumber(found),
+	});
+}
+
+/** The status line of a finished (or cancelled) scan, without the unreadable count. */
+export function scannedLine(done: Pick<DiscoverDone, "dirs" | "elapsed_ms" | "cancelled">): string {
+	const inputs = { count: done.dirs, amount: formatNumber(done.dirs), seconds: seconds(done.elapsed_ms) };
+	return done.cancelled
+		? m.sidebar_discover_dialog_cancelled(inputs)
+		: m.sidebar_discover_dialog_scanned(inputs);
+}
+
+/** The tag of a found folder's stack: the label of the id `stack_of` sent, or the id itself when this app does not know it. */
+export function stackLabel(id: string): string {
+	return Object.hasOwn(STACK_MESSAGES, id) ? STACK_MESSAGES[id]!() : id;
 }
 
 /** `git@github.com:Org/Repo.git` and `https://github.com/org/repo/` are the same remote. */
@@ -120,20 +140,9 @@ export function movedCopy(
 	return only(pool.filter((f) => f.name === missing.name));
 }
 
-/** "just now", "3 days ago"… for the last-modified column. */
+/** "now", "3 days ago"… for the last-modified column (unix seconds, empty when unknown). */
 export function ago(seconds: number | null, now = Date.now() / 1000): string {
-	if (seconds == null) return "";
-	const d = Math.max(0, now - seconds);
-	const units: [number, string][] = [
-		[365 * 86400, "y"],
-		[30 * 86400, "mo"],
-		[7 * 86400, "w"],
-		[86400, "d"],
-		[3600, "h"],
-		[60, "min"],
-	];
-	for (const [s, label] of units) if (d >= s) return `${Math.floor(d / s)}${label} ago`;
-	return "just now";
+	return seconds == null ? "" : relativeTime(seconds * 1000, now * 1000);
 }
 
 /** The saved scan preferences. Folders without an atlas.yaml are included until the user turns them off: most people

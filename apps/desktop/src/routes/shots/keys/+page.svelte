@@ -4,6 +4,7 @@
 	// formatted, `⌘⇧4`, and already faded after 1.5 s). It reads no key itself and stores nothing.
 	import { listen } from "@tauri-apps/api/event";
 	import { onMount } from "svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let keys = $state<string[]>([]);
 
@@ -20,7 +21,7 @@
 	});
 </script>
 
-<svelte:head><title>Atlas Keystrokes</title></svelte:head>
+<svelte:head><title>{m.capture_keys_page_atlas_keystrokes()}</title></svelte:head>
 
 <div class="wrap" aria-hidden="true">
 	{#if keys.length > 0}

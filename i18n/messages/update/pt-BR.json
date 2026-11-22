@@ -1,0 +1,6 @@
+{
+	"update_empty_version": "versão vazia recebida do GitHub",
+	"update_failed": "a atualização falhou: {error}",
+	"update_older_release_managed": "Instalar uma versão mais antiga exige um Atlas instalado pelo instalador de shell. Outra ferramenta gerencia esta instalação.",
+	"update_restart_failed": "não foi possível reiniciar o atlas: {error}"
+}

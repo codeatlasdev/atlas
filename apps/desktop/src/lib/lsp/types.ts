@@ -13,12 +13,17 @@ export type ReasonCode =
 	| "crashed"
 	| "outside_root";
 
-/** Why a server is unavailable: a sentence, how to fix it, and a command to run when there is one. */
+/**
+ * Why a server is unavailable: a sentence, how to fix it, and a command to run when there is one. `message` and
+ * `hint` are the daemon's English; `args` (additive, absent from a daemon older than it) holds the values they were
+ * written from, so `lspReasonText` (`#lib/hostText.ts`) can show them in the app's language.
+ */
 export interface Reason {
 	code: ReasonCode;
 	message: string;
 	hint?: string;
 	command?: string;
+	args?: Record<string, unknown>;
 }
 
 export interface ServerStatus {

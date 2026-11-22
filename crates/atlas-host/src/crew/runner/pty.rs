@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use super::action::{
-    continuation_prompt, finish_unanswered, park_task, parse_atlas_action, resolve_action,
-    user_answer, visible_reply,
+    answer_accepted, continuation_prompt, finish_unanswered, park_task, parse_atlas_action,
+    resolve_action, visible_reply,
 };
 use super::gate::{Gate, gate_success};
 use super::outcome::{audit_task, broadcast_task, finish_task, persist, wait_for_outcome};
@@ -20,6 +20,25 @@ use crate::paths;
 use crate::protocol::{Mode, PtyCreate, Scope};
 use crate::pty::Session;
 use crate::server::Hub;
+
+/// What a terminal agent is started with. An agent that can ask (claude, omp) never gets its bypass flags: hostd
+/// decides each call through its hook (`crew::approval`) from the crewmate's mode, and the agent's own ask mode
+/// is said explicitly (`ask_args`, `claude --permission-mode default`), so a user's settings file cannot widen it.
+/// An agent that cannot ask (codex, opencode) gets its bypass flags only in `bypass`, for a task that is not a
+/// stranger's text (`triggers::yolo_for`).
+pub(crate) fn launch_argv(
+    def: &atlas_core::agents::AgentDef,
+    mode: crate::crew::store::Mode,
+    task: &Task,
+    prompt: &str,
+) -> Vec<String> {
+    let yolo = triggers::yolo_for(mode, task, def.can_ask);
+    let mut argv = def.argv(yolo, Some(prompt));
+    if !yolo {
+        argv.splice(1..1, def.ask_args.iter().cloned());
+    }
+    argv
+}
 
 pub(super) async fn run_one_pty(hub: &Hub, crewmate: &Crewmate, mut task: Task) {
     let pane_key = pane::key(&crewmate.id, &task.id);
@@ -60,7 +79,7 @@ pub(super) async fn run_one_pty(hub: &Hub, crewmate: &Crewmate, mut task: Task) 
         park_task(hub, crewmate, &mut task, action.clone());
         match resolve_action(&hub_arc, &crewmate.id, &task.id, &action).await {
             Some(answer) => {
-                task.answer = user_answer(&action, &answer);
+                answer_accepted(hub, crewmate, &mut task, &action, &answer);
                 let next = continuation_prompt(&full_prompt, result_text, &answer);
                 let (outcome2, steps2) =
                     run_pty_inner(hub, crewmate, &mut task, &next, &pane_key, &work_dir).await;
@@ -100,6 +119,10 @@ async fn finish_summarized(
         }
         (outcome, _) => outcome,
     };
+    task.spoken = match &outcome {
+        Ok(reply) => super::spoken::agent_line(reply).unwrap_or_default(),
+        Err(_) => String::new(),
+    };
     let (final_outcome, reply_full, was_summarized) =
         maybe_summarize(hub, crewmate, outcome, agent_env).await;
     task.reply_full = reply_full;
@@ -135,6 +158,12 @@ async fn run_pty_inner(
     let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
         return (Err("cancelled before the agent started".into()), vec![]);
     };
+    // The agent is told its permission mode first (`crew::approval::fragment`); a terminal agent has no other
+    // channel than its prompt, so a mode changed later reaches it with the next task.
+    let prompt = format!(
+        "{}{full_prompt}",
+        crate::crew::approval::prelude(hub, &crewmate.id, pane_key)
+    );
     // In tests a fake binary can be injected; production always uses the agent def.
     #[cfg(test)]
     let argv = match TEST_AGENT_BIN
@@ -144,17 +173,11 @@ async fn run_pty_inner(
     {
         // An isolated agent is an engine by name, found by the helper in its own directories.
         Some(bin) => vec![bin],
-        None => agent_def.argv(
-            triggers::yolo_for(crewmate.approval, task),
-            Some(full_prompt),
-        ),
+        None => launch_argv(agent_def, crewmate.mode, task, &prompt),
     };
     #[cfg(not(test))]
     let argv = {
-        let mut argv = agent_def.argv(
-            triggers::yolo_for(crewmate.approval, task),
-            Some(full_prompt),
-        );
+        let mut argv = launch_argv(agent_def, crewmate.mode, task, &prompt);
         if crewmate.agent == "omp" {
             let overlay =
                 crate::crew::engine::omp::overlay_args(&ctx.runtime_dir(hub, &crewmate.id));
@@ -184,6 +207,9 @@ async fn run_pty_inner(
     // An isolated agent reports to its own endpoint (a token that opens only its routes); the
     // request's values win over `hook_env`'s defaults, which name the crew user's global endpoint.
     req.env.extend(ctx.agent_env(hub, &crewmate.id));
+    // Git through the GitHub App (helper and bot identity, never a token).
+    req.env
+        .extend(crate::crew::github::app::agent_env(hub, &crewmate.id, pane_key).await);
     // Inject hook endpoint env vars (must come after crewmate env so ATLAS_* always wins).
     crate::server::hook_env(hub, &mut req);
 

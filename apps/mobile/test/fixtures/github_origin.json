@@ -12,6 +12,7 @@
     },
     "prompt": "Handle this: [UNTRUSTED CONTENT ...]",
     "source": "trigger",
+    "spoken": "",
     "state": "running",
     "summarized": false,
     "trigger_id": "gh",

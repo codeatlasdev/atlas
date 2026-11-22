@@ -4,7 +4,9 @@
 	import type { LspDoc } from "#lib/lsp/client.svelte.ts";
 	import { hint, dismissHint, runHintAction } from "#lib/lsp/hints.svelte.ts";
 	import LspPopover from "#lib/lsp/LspPopover.svelte";
+	import StatusItem from "#lib/editor/StatusItem.svelte";
 	import { uiStateOf } from "#lib/lsp/uiState.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { doc, errors = 0, warnings = 0 }: { doc: LspDoc; errors?: number; warnings?: number } = $props();
 
@@ -19,32 +21,33 @@
 			{#if mine.action}
 				<button class="act" onclick={runHintAction}>{mine.action.label}</button>
 			{/if}
-			<button class="x" aria-label="Dismiss" onclick={dismissHint}>×</button>
+			<button class="x" aria-label={m.crew_chat_ask_card_dismiss()} onclick={dismissHint}>×</button>
 		</span>
 	{/if}
 	<Popover side="top" align="end" sideOffset={6}>
 		{#snippet triggerChild(props)}
-			<button
+			<StatusItem
+				button
 				{...props}
-				class="lsp"
-				aria-label="Language server: {ui.label}"
+				aria-label={m.workbench_lsp_status_language_server_label({ label: ui.label })}
 				title={ui.summary}
 				data-kind={ui.kind}
+				style="max-width: 280px"
 			>
 				{#if ui.tone === "busy"}<LoaderCircle size={12} class="spin" />{:else}<Languages size={12} />{/if}
 				<span class="dot {ui.tone}"></span>
 				<span class="label">{ui.label}</span>
-			</button>
+			</StatusItem>
 		{/snippet}
 		<LspPopover {doc} {ui} />
 	</Popover>
 	{#if errors > 0}
-		<span class="count err" title="{errors} error{errors === 1 ? '' : 's'}"
+		<span class="count err" title={m.workbench_editor_errors({ count: errors })}
 			><CircleAlert size={12} />{errors}</span
 		>
 	{/if}
 	{#if warnings > 0}
-		<span class="count warn" title="{warnings} warning{warnings === 1 ? '' : 's'}"
+		<span class="count warn" title={m.workbench_editor_warnings({ count: warnings })}
 			><TriangleAlert size={12} />{warnings}</span
 		>
 	{/if}
@@ -56,24 +59,6 @@
 		align-items: center;
 		gap: 2px;
 		min-width: 0;
-	}
-	.lsp {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 2px 6px;
-		border: 0;
-		border-radius: 5px;
-		background: none;
-		font-size: 11px;
-		color: var(--ca-text-secondary);
-		max-width: 280px;
-		min-width: 0;
-		cursor: pointer;
-	}
-	.lsp:hover,
-	.lsp[data-state="open"] {
-		background: var(--ca-action-hover);
 	}
 	.label {
 		overflow: hidden;

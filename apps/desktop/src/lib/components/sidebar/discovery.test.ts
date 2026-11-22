@@ -1,11 +1,14 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../../test/locale.ts";
 import {
 	addable,
-	discoverLead,
-	elsewhereLabel,
 	noProjectsLine,
 	pickable,
+	scannedLine,
+	scanningLine,
+	stackLabel,
 	tickedByDefault,
 	ago,
 	groupFound,
@@ -81,17 +84,50 @@ test("folders without atlas.yaml can be ticked, but only valid configs are ticke
 });
 
 test("the empty line never says 'no projects' above a list of candidates", () => {
-	expect(noProjectsLine("", 3)).toBe("No folder with an atlas.yaml yet. Add one from the list below.");
-	expect(noProjectsLine("", 0)).toBe("No projects found in the scanned folders.");
-	expect(noProjectsLine("api", 3)).toBe("No project matches “api”.");
+	expect(noProjectsLine("", 3)).toBe(m.sidebar_discover_dialog_no_config());
+	expect(noProjectsLine("", 0)).toBe(m.sidebar_discover_dialog_none());
+	expect(noProjectsLine("api", 3)).toBe(m.tray_page_no_match({ query: "api" }));
+	expect(m.tray_page_no_match({ query: "api" })).toContain("api");
 });
 
-// PR #158 review (S6): Spotlight is macOS only.
+// PR #158 review (S6): Spotlight is macOS only. The message selects on the OS, the dialog passes nothing.
 test("Spotlight is only named on macOS", () => {
-	expect(discoverLead(true)).toContain("Spotlight");
-	expect(discoverLead(false)).not.toContain("Spotlight");
-	expect(elsewhereLabel(true)).toContain("Spotlight");
-	expect(elsewhereLabel(false)).toBe("Elsewhere");
+	expect(m.sidebar_discover_dialog_lead({ os: "mac" })).toContain("Spotlight");
+	for (const os of ["windows", "linux"] as const) {
+		expect(m.sidebar_discover_dialog_lead({ os })).not.toContain("Spotlight");
+		expect(m.sidebar_discover_dialog_elsewhere({ os })).toBe("Elsewhere");
+	}
+	expect(m.sidebar_discover_dialog_elsewhere({ os: "mac" })).toContain("Spotlight");
+});
+
+test("the status line of a running scan counts folders in words, with the zero and one cases and grouped digits", () => {
+	expect(scanningLine(0, 0, 0)).toBe("Scanning: no folders yet · 0.0 s · 0 found");
+	expect(scanningLine(1, 400, 0)).toBe("Scanning: 1 folder · 0.4 s · 0 found");
+	expect(scanningLine(1234, 12_340, 7)).toBe("Scanning: 1,234 folders · 12.3 s · 7 found");
+});
+
+test("the status line of a finished scan tells a cancelled scan from a finished one", () => {
+	const done = { dirs: 120, elapsed_ms: 1500, cancelled: false };
+	expect(scannedLine(done)).toBe("Scanned 120 folders in 1.5 s");
+	expect(scannedLine({ ...done, dirs: 1 })).toBe("Scanned 1 folder in 1.5 s");
+	expect(scannedLine({ ...done, dirs: 0 })).toBe("No folders scanned in 1.5 s");
+	expect(scannedLine({ ...done, cancelled: true })).toBe("Canceled after 120 folders in 1.5 s");
+	expect(scannedLine({ ...done, cancelled: true, dirs: 0 })).toBe("Canceled after 1.5 s, no folders scanned");
+});
+
+test("a scan line reads its numbers in the language of the app", async () => {
+	await inLocale("pt-BR", () => {
+		expect(scanningLine(2, 1200, 3)).toBe(
+			m.sidebar_discover_dialog_scanning({ count: 2, amount: "2", seconds: "1,2", found: "3" }),
+		);
+	});
+});
+
+// The scan sends the stack as a bare id (`stack_of`); the tag shows its label, and an id this app does not know as it came.
+test("a found folder's stack shows its label, an unknown one shows the id", () => {
+	expect(stackLabel("node")).toBe("Node project");
+	expect(stackLabel("compose")).toBe("Compose project");
+	expect(stackLabel("cobol")).toBe("cobol");
 });
 
 test("remotes normalize across ssh/https/case", () => {
@@ -118,12 +154,12 @@ test("moved copy: remote beats name, ambiguity yields nothing, registered folder
 test("ago picks the largest unit", () => {
 	const now = 1_000_000_000;
 	expect(ago(null, now)).toBe("");
-	expect(ago(now - 5, now)).toBe("just now");
-	expect(ago(now - 90, now)).toBe("1min ago");
-	expect(ago(now - 3 * 3600, now)).toBe("3h ago");
-	expect(ago(now - 3 * 86400, now)).toBe("3d ago");
-	expect(ago(now - 400 * 86400, now)).toBe("1y ago");
-	expect(ago(now + 100, now)).toBe("just now");
+	expect(ago(now - 5, now)).toBe("now");
+	expect(ago(now - 90, now)).toBe("1 min ago");
+	expect(ago(now - 3 * 3600, now)).toBe("3 hr ago");
+	expect(ago(now - 3 * 86400, now)).toBe("3 days ago");
+	expect(ago(now - 400 * 86400, now)).toBe("last year");
+	expect(ago(now + 100, now)).toBe("now");
 });
 
 // Incident: almost nobody has an atlas.yaml, and "Also folders without atlas.yaml" defaulted to off, so a new user's

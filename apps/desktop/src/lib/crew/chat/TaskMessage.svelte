@@ -19,7 +19,8 @@
 	import TaskActionCard from "./TaskActionCard.svelte";
 	import TaskImages from "./TaskImages.svelte";
 	import TaskReply from "./TaskReply.svelte";
-	import { fmtElapsed } from "./taskView.ts";
+	import { cardView, fmtElapsed } from "./taskView.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		task: CrewmateTask;
@@ -49,6 +50,12 @@
 	/** What the owner sent with the prompt (under it) and what the agent captured (under its reply, or on its card). */
 	const ownerImages = $derived((t.attachments ?? []).filter((a) => a.source !== "agent"));
 	const agentImages = $derived((t.attachments ?? []).filter((a) => a.source === "agent"));
+	/** Whether the card is live and what the owner picked (`cardView`: the task's state, and what this view sent). */
+	const card = $derived(cardView(t, chat.answeredActions));
+	// The local note that a card was answered only bridges an older hostd that keeps the task parked; it goes with the state.
+	$effect(() => {
+		if (t.state !== "waiting_action") chat.forgetAnswered(t.id);
+	});
 </script>
 
 <div class="msg-row" data-task-id={t.id} class:flash={chat.flashTask === t.id} class:group-start={groupStart}>
@@ -69,7 +76,9 @@
 		{#if t.preparing}
 			<!-- A first task on a big repo waited over a minute as a bare "Queued". -->
 			<div class="msg-meta muted preparing">
-				<span class="prep-dot" aria-hidden="true"></span>Downloading {t.preparing}…
+				<span class="prep-dot" aria-hidden="true"></span>{m.crew_chat_task_message_downloading_preparing({
+					preparing: t.preparing,
+				})}
 			</div>
 		{:else if t.state === "queued"}
 			<div class="msg-meta muted">{queuedLabel(t)}</div>
@@ -78,7 +87,7 @@
 
 	<!-- A choice/answer the user gave mid-task stays in the conversation: the crewmate's question, then the user's
 	     pick as their own message. -->
-	{#if t.answer && t.state !== "waiting_action" && t.action?.kind !== "add_trigger"}
+	{#if card.pick}
 		{#if t.action?.kind === "choose" || t.action?.kind === "input"}
 			<div class="msg-in" in:msgIn>
 				<div class="msg-in-body">
@@ -87,7 +96,7 @@
 			</div>
 		{/if}
 		<div class="msg-out" in:msgOut>
-			<div class="bubble out ca-selectable">{t.answer}</div>
+			<div class="bubble out ca-selectable">{card.pick}</div>
 		</div>
 	{/if}
 
@@ -108,8 +117,11 @@
 				{#if approval}
 					<ApprovalPrompt
 						{approval}
-						answered={chat.approvedReqs.has(approval.req)}
-						onanswer={(pane, req, allow) => void chat.approval(pane, req, allow)}
+						answered={chat.answeredReqs[approval.req]}
+						name={crewmate.name}
+						{chat}
+						{hostKey}
+						onanswer={(pane, req, answer) => void chat.approval(pane, req, answer)}
 					/>
 				{/if}
 			</div>
@@ -135,17 +147,17 @@
 		<div class="msg-in" class:group-start={groupStart} in:msgIn>
 			<div class="msg-in-body">
 				<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
-				<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
+				<div class="bubble in error ca-selectable">{t.error ?? m.crew_chat_task_message_failed()}</div>
 			</div>
 		</div>
 	{:else if t.state === "cancelled"}
 		<div class="msg-in" class:group-start={groupStart} in:msgIn>
 			<div class="msg-in-body">
 				<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
-				<div class="task-note"><X size={12} aria-hidden="true" /> Cancelled</div>
+				<div class="task-note"><X size={12} aria-hidden="true" /> {m.crew_chat_task_message_cancelled()}</div>
 			</div>
 		</div>
-	{:else if t.state === "waiting_action" && t.action}
+	{:else if card.live && t.action}
 		<div class="msg-in" class:group-start={groupStart} in:msgIn>
 			<div class="msg-in-body">
 				<TaskActionCard
@@ -164,12 +176,14 @@
 	<div class="msg-toolbar">
 		<CopyButton value={t.state === "done" ? (t.result ?? "") : t.prompt} label="" size="sm" />
 		{#if t.state === "failed" || t.state === "cancelled"}
-			<button class="tb-btn" title="Retry" onclick={() => void chat.sendText(t.prompt)}>
+			<button class="tb-btn" title={m.common_action_retry()} onclick={() => void chat.sendText(t.prompt)}>
 				<RotateCcw size={14} />
 			</button>
 		{/if}
 		{#if t.state === "running" && crewmate.running_task?.pane}
-			<button class="tb-btn" title="Open terminal" onclick={onterminal}><Terminal size={14} /></button>
+			<button class="tb-btn" title={m.crew_chat_task_message_open_terminal()} onclick={onterminal}
+				><Terminal size={14} /></button
+			>
 		{/if}
 	</div>
 </div>

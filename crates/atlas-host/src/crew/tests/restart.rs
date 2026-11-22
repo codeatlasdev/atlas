@@ -75,19 +75,19 @@ async fn a_running_terminal_task_runs_again_after_a_restart() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Phoenix").await;
     let task = send(&client, &id, "ship it").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     stop(client).await;
     strand(&dir, &id, &task, running);
 
     let quick = fake_agent(tmp.path(), "claude", &Hooks::new().done("shipped").script());
     use_agent_bin(&quick);
     let client = daemon(&dir).await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
 
     assert_eq!(done["result"], "shipped", "{done}");
     assert_eq!(done["restarts"], 1, "one interruption is counted: {done}");
@@ -114,12 +114,12 @@ async fn a_resumed_task_reports_to_the_new_daemon_even_when_its_hook_server_is_s
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Early bird").await;
     let task = send(&client, &id, "quick one").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     stop(client).await;
     strand(&dir, &id, &task, running);
 
@@ -128,7 +128,7 @@ async fn a_resumed_task_reports_to_the_new_daemon_even_when_its_hook_server_is_s
     *crate::agents::hook_server::TEST_DELAY_START.lock() =
         Some((dir.clone(), Duration::from_secs(1)));
     let client = daemon(&dir).await;
-    let ended = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    let ended = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     *crate::agents::hook_server::TEST_DELAY_START.lock() = None;
 
     assert_eq!(ended["result"], "on time", "{ended}");
@@ -143,12 +143,12 @@ async fn a_resumed_task_runs_before_the_ones_queued_behind_it() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Orderly").await;
     let first = send(&client, &id, "first").await;
-    wait_task_state(&client, &id, &first, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &first, "running", atlas_core::scaling::HANG).await;
     let second = send(&client, &id, "second").await;
     stop(client).await;
     // Stopping killed the agent and the dying worker may already have started `second`: leave the
@@ -165,8 +165,8 @@ async fn a_resumed_task_runs_before_the_ones_queued_behind_it() {
     let quick = fake_agent(tmp.path(), "claude", &Hooks::new().done("ok").script());
     use_agent_bin(&quick);
     let client = daemon(&dir).await;
-    let a = wait_task_state(&client, &id, &first, "done", Duration::from_secs(20)).await;
-    let b = wait_task_state(&client, &id, &second, "done", Duration::from_secs(20)).await;
+    let a = wait_task_state(&client, &id, &first, "done", atlas_core::scaling::HANG).await;
+    let b = wait_task_state(&client, &id, &second, "done", atlas_core::scaling::HANG).await;
 
     assert!(
         a["finished_at"].as_u64() <= b["started_at"].as_u64(),
@@ -184,12 +184,12 @@ async fn a_task_interrupted_three_times_fails_with_a_clear_error() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Doomed").await;
     let task = send(&client, &id, "crash the box").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     stop(client).await;
     // It was already resumed twice and was running again when the daemon died a third time.
     strand(&dir, &id, &task, |t| {
@@ -216,12 +216,12 @@ async fn a_task_interrupted_twice_is_still_resumed() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Stubborn").await;
     let task = send(&client, &id, "again").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     stop(client).await;
     strand(&dir, &id, &task, |t| {
         running(t);
@@ -236,7 +236,7 @@ async fn a_task_interrupted_twice_is_still_resumed() {
     );
     use_agent_bin(&quick);
     let client = daemon(&dir).await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
 
     assert_eq!(done["restarts"], 2, "{done}");
     crate::crew::runner::set_test_agent_bin(None);
@@ -249,12 +249,12 @@ async fn a_paused_crew_holds_the_interrupted_task_until_resume() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Held").await;
     let task = send(&client, &id, "hold me").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     client.call("crew_pause", json!({})).await.unwrap();
     stop(client).await;
     strand(&dir, &id, &task, running);
@@ -267,7 +267,7 @@ async fn a_paused_crew_holds_the_interrupted_task_until_resume() {
     assert_eq!(held["state"], "queued", "paused: nothing runs: {held}");
 
     client.call("crew_resume", json!({})).await.unwrap();
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert_eq!(done["result"], "resumed", "{done}");
     crate::crew::runner::set_test_agent_bin(None);
     client.call("shutdown", json!({})).await.ok();
@@ -309,9 +309,9 @@ async fn a_running_conversational_task_resumes_its_session_after_a_restart() {
     let client = daemon(&dir).await;
     let id = engine_crewmate(&client, "Sessioned").await;
     let t1 = send(&client, &id, "turn one").await;
-    wait_task_state(&client, &id, &t1, "done", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &t1, "done", atlas_core::scaling::HANG).await;
     let t2 = send(&client, &id, "turn two").await;
-    wait_task_state(&client, &id, &t2, "done", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &t2, "done", atlas_core::scaling::HANG).await;
     stop(client).await;
     // The daemon died while turn two was running (its session was saved by turn one).
     strand(&dir, &id, &t2, |t| {
@@ -323,11 +323,13 @@ async fn a_running_conversational_task_resumes_its_session_after_a_restart() {
     std::fs::remove_file(&log).unwrap();
 
     let client = daemon(&dir).await;
-    let done = wait_task_state(&client, &id, &t2, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &t2, "done", atlas_core::scaling::HANG).await;
 
     assert_eq!(done["resumed"], true, "{done}");
     let turns = std::fs::read_to_string(&log).unwrap();
-    let turn = turns.lines().next().expect("the engine ran once");
+    // The prompt starts with the permissions fragment, which has several lines: the whole log is the one turn.
+    let turn = turns.trim_end();
+    assert!(!turn.is_empty(), "the engine ran once");
     assert!(
         turn.starts_with("--resume ses-keep "),
         "the stored session id is passed to the engine: {turn}"
@@ -359,12 +361,12 @@ async fn a_waiting_action_task_can_be_answered_after_a_restart() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Patient").await;
     let task = send(&client, &id, "needs input").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     stop(client).await;
     strand(&dir, &id, &task, |t| {
         running(t);
@@ -393,7 +395,7 @@ async fn a_waiting_action_task_can_be_answered_after_a_restart() {
         )
         .await
         .unwrap();
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert_eq!(done["result"], "used main", "{done}");
     assert_eq!(done["answer"], "main", "{done}");
     crate::crew::runner::set_test_agent_bin(None);
@@ -411,7 +413,7 @@ async fn a_waiting_action_conversational_task_continues_its_session_when_answere
     let client = daemon(&dir).await;
     let id = engine_crewmate(&client, "Chatty").await;
     let t1 = send(&client, &id, "ask me").await;
-    wait_task_state(&client, &id, &t1, "done", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &t1, "done", atlas_core::scaling::HANG).await;
     stop(client).await;
     strand(&dir, &id, &t1, |t| {
         running(t);
@@ -435,11 +437,13 @@ async fn a_waiting_action_conversational_task_continues_its_session_when_answere
         )
         .await
         .unwrap();
-    let done = wait_task_state(&client, &id, &t1, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &t1, "done", atlas_core::scaling::HANG).await;
 
     assert_eq!(done["answer"], "develop", "{done}");
     let turns = std::fs::read_to_string(&log).unwrap();
-    let turn = turns.lines().next().expect("one turn ran");
+    // The prompt starts with the permissions fragment, which has several lines: the whole log is the one turn.
+    let turn = turns.trim_end();
+    assert!(!turn.is_empty(), "one turn ran");
     assert!(turn.starts_with("--resume ses-keep "), "{turn}");
     assert!(turn.ends_with("develop"), "the answer is the turn: {turn}");
     crate::crew::engine::set_test_engine_bin(None);
@@ -453,12 +457,12 @@ async fn an_open_ask_is_closed_with_a_step_after_a_restart() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Asker").await;
     let task = send(&client, &id, "ask something").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     stop(client).await;
     strand(&dir, &id, &task, |t| {
         running(t);
@@ -474,7 +478,7 @@ async fn an_open_ask_is_closed_with_a_step_after_a_restart() {
     let quick = fake_agent(tmp.path(), "claude", &Hooks::new().done("ok").script());
     use_agent_bin(&quick);
     let client = daemon(&dir).await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
 
     assert!(
         done.get("ask").is_none_or(Value::is_null),
@@ -500,7 +504,7 @@ async fn finished_tasks_are_not_resumed() {
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Tidy").await;
     let task = send(&client, &id, "one").await;
-    wait_task_state(&client, &id, &task, "done", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     stop(client).await;
 
     let client = daemon(&dir).await;

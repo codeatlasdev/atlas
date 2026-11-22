@@ -1,0 +1,293 @@
+{
+	"cmd_crew_add_key_failed": "Não foi possível adicionar a chave SSH: {reason}",
+	"cmd_crew_apt_empty": "O `playwright install-deps --dry-run` não imprimiu nada",
+	"cmd_crew_apt_extra": "Saída inesperada depois de \"All system dependencies are installed.\": {text}",
+	"cmd_crew_apt_implausible": "O playwright informa {count} dependências de sistema ausentes, o que não é plausível; nada foi executado como root",
+	"cmd_crew_apt_mismatch": "O playwright anunciou {count} dependências de sistema ausentes, mas listou {listed}; nada foi executado como root",
+	"cmd_crew_apt_not_package": "O Atlas não executa nada como root: {text} na lista de dependências não é um nome de pacote",
+	"cmd_crew_apt_package_count": "O Atlas não executa nada como root: {count} pacotes para instalar não é plausível",
+	"cmd_crew_apt_unreadable": "O `playwright install-deps --dry-run` disse algo que este atlas não consegue ler, então nada foi executado como root: {text}",
+	"cmd_crew_ask_export": "Exportar uma cópia antes? [S/n]",
+	"cmd_crew_ask_secrets": "Incluir segredos (chaves de API, tokens de webhook)? [s/N]",
+	"cmd_crew_asset_no_binary": "{asset} não contém um binário `atlas`",
+	"cmd_crew_bad_crewmate_id": "\"{id}\" não é um id de crewmate (veja `atlas crew status`: 36 caracteres em minúsculas) ou \"{agent}\" não é um agente",
+	"cmd_crew_bad_version": "`{version}` não é uma versão. Use X.Y.Z, por exemplo {example}.",
+	"cmd_crew_browsers_capture_ready": "captura pronta em {target} (playwright {version}: chromium, webkit).",
+	"cmd_crew_browsers_ready": "Navegadores prontos em {target}: os crewmates já podem usar a ferramenta de captura.",
+	"cmd_crew_browsers_step_apt": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma biblioteca do sistema para instalar com o apt-get",
+				"countExact=*, countPlural=one": "Instalando {count} biblioteca do sistema com o apt-get (sudo; o único passo que roda como root)",
+				"countExact=*, countPlural=*": "Instalando {count} bibliotecas do sistema com o apt-get (sudo; o único passo que roda como root)"
+			}
+		}
+	],
+	"cmd_crew_browsers_step_deps": "Verificando as bibliotecas do sistema de que os navegadores precisam (como o usuário do crew, nada é instalado)",
+	"cmd_crew_browsers_step_deps_ready": "Bibliotecas do sistema já instaladas",
+	"cmd_crew_browsers_step_dir": "Preparando a pasta de captura (como o usuário do crew)",
+	"cmd_crew_browsers_step_download": "Baixando chromium e webkit (como o usuário do crew, alguns minutos)",
+	"cmd_crew_browsers_step_node": "Verificando node e npm",
+	"cmd_crew_browsers_step_npm": "Instalando o playwright {version} a partir do lockfile (npm ci, como o usuário do crew)",
+	"cmd_crew_cannot_reach": "Não foi possível conectar a {target}: {reason}",
+	"cmd_crew_cannot_reach_bare": "Não foi possível conectar a {target}",
+	"cmd_crew_check_failed": "Não foi possível verificar {target}",
+	"cmd_crew_check_failed_reason": "Não foi possível verificar {target}: {reason}",
+	"cmd_crew_command_failed": "O `{command}` falhou: {reason}",
+	"cmd_crew_download_here_failed": "Também não foi possível baixar aqui ({reason}); enviando o binário em cache",
+	"cmd_crew_download_task_failed": "A tarefa de download falhou",
+	"cmd_crew_enable_failed": "Não foi possível habilitar o serviço: {reason}",
+	"cmd_crew_engine_missing": "O {agent} não foi instalado no servidor ({reason}). Os crewmates que o usam não rodam até ele ser instalado: corrija isso e rode `atlas crew install` de novo, ou instale com o comando do fornecedor, `{line}`.",
+	"cmd_crew_export_exists": "{path} já existe. Escolha outro arquivo com `-o` (uma exportação nunca sobrescreve).",
+	"cmd_crew_export_failed": "Não foi possível exportar de {target}: {reason}",
+	"cmd_crew_export_no_secrets": "Segredos e tokens de webhook ficaram de fora (`--with-secrets` os inclui)",
+	"cmd_crew_export_not_included": "Logins de agentes e checkouts de projetos nunca são exportados: entre de novo nos agentes com `atlas crew login`",
+	"cmd_crew_export_secrets": "Este arquivo contém segredos e tokens de webhook (modo 0600). Mantenha-o privado e exclua-o quando terminar.",
+	"cmd_crew_export_unreadable": "A exportação de {target} está ilegível ({reason}); {path} foi mantido para inspeção",
+	"cmd_crew_exported": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum crewmate foi exportado de {target} para {path}",
+				"countExact=*, countPlural=one": "{count} crewmate exportado de {target} para {path}",
+				"countExact=*, countPlural=*": "{count} crewmates exportados de {target} para {path}"
+			}
+		}
+	],
+	"cmd_crew_fail_apt_install": "O `apt-get install` em {target} falhou: {reason}",
+	"cmd_crew_fail_capture_dir": "Não foi possível criar a pasta de captura em {target}: {reason}",
+	"cmd_crew_fail_install_deps": "O `playwright install-deps --dry-run` em {target} falhou: {reason}",
+	"cmd_crew_fail_npm_ci": "O `npm ci` em {target} falhou: {reason}",
+	"cmd_crew_fail_playwright_install": "O `playwright install` em {target} falhou: {reason}",
+	"cmd_crew_fail_write_file": "Não foi possível gravar {file} em {target}: {reason}",
+	"cmd_crew_get_binary_failed": "Não foi possível enviar o atlas {version} ao host.\n  No host: {on_host}\n  Nesta máquina: {here}\n  Também não há binário em cache em {path}.\n  Verifique o acesso desta máquina à internet (ela respeita https_proxy) ou informe um binário Linux com `--binary`.",
+	"cmd_crew_gone": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{home} excluído em {target} (nenhum crewmate). Não há como recuperar; para salvar uma cópia, rode `atlas crew export {target}` antes de desinstalar.",
+				"countExact=*, countPlural=one": "{home} excluído em {target} ({count} crewmate). Não há como recuperar; para salvar uma cópia, rode `atlas crew export {target}` antes de desinstalar.",
+				"countExact=*, countPlural=*": "{home} excluído em {target} ({count} crewmates). Não há como recuperar; para salvar uma cópia, rode `atlas crew export {target}` antes de desinstalar."
+			}
+		}
+	],
+	"cmd_crew_gone_none": "Nenhum dado do crew foi encontrado em {target}.",
+	"cmd_crew_host_download_failed": "O host não conseguiu baixar o atlas {version} ({reason}); baixando aqui e enviando por SSH",
+	"cmd_crew_hostd_version_mismatch": "O hostd responde como {got}, não como {want}: um processo anterior à atualização ainda pode estar com o socket aberto",
+	"cmd_crew_import_failed": "Não foi possível importar em {target}: {reason}",
+	"cmd_crew_import_summary": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{file}: nenhum crewmate, gerado pelo atlas {version}",
+				"countExact=*, countPlural=one": "{file}: {count} crewmate, gerado pelo atlas {version}",
+				"countExact=*, countPlural=*": "{file}: {count} crewmates, gerado pelo atlas {version}"
+			}
+		}
+	],
+	"cmd_crew_import_summary_secrets": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{file}: nenhum crewmate, gerado pelo atlas {version}, com segredos",
+				"countExact=*, countPlural=one": "{file}: {count} crewmate, gerado pelo atlas {version}, com segredos",
+				"countExact=*, countPlural=*": "{file}: {count} crewmates, gerado pelo atlas {version}, com segredos"
+			}
+		}
+	],
+	"cmd_crew_imported": "Importado para {target}. Entre nos agentes com `atlas crew login` se este servidor não tiver nenhum.",
+	"cmd_crew_install_binary_failed": "Não foi possível instalar o binário em {target}: {reason}",
+	"cmd_crew_install_ready": "Crew server pronto: {account}. Adicione-o no Atlas Desktop → Crew e entre nos agentes (`atlas crew login <agent>`).",
+	"cmd_crew_installer_failed": "o instalador falhou",
+	"cmd_crew_key_missing": "A chave SSH {path} não existe",
+	"cmd_crew_link_failed": "Não foi possível criar o link simbólico do atlas para {user}: {reason}",
+	"cmd_crew_list_failed": "Não foi possível listar os crewmates: {reason}",
+	"cmd_crew_login_install_first": "Instale o {agent} no crew server antes, se precisar:",
+	"cmd_crew_login_opening": "Abrindo a sessão de login: {command}",
+	"cmd_crew_login_opening_crewmate": "Abrindo a sessão de login do crewmate {id}: {command}",
+	"cmd_crew_migration_notice": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum crewmate passou a ter o próprio usuário Linux.",
+				"countExact=*, countPlural=one": "{count} crewmate agora roda como um usuário Linux próprio. Os logins dos agentes eram compartilhados e não são copiados: entre de novo em cada agente com `atlas crew login <server> <agent> --crewmate <id>`. A próxima tarefa de cada projeto refaz o checkout; o antigo fica ao lado, como work.pre-isolation.",
+				"countExact=*, countPlural=*": "{count} crewmates agora rodam como usuários Linux próprios. Os logins dos agentes eram compartilhados e não são copiados: entre de novo em cada agente com `atlas crew login <server> <agent> --crewmate <id>`. A próxima tarefa de cada projeto refaz o checkout; o antigo fica ao lado, como work.pre-isolation."
+			}
+		}
+	],
+	"cmd_crew_missing_tools": "Faltam no host: {tools}",
+	"cmd_crew_missing_tools_install": "No Debian ou no Ubuntu: `sudo apt-get install -y {packages}`",
+	"cmd_crew_mkdir_ssh_failed": "Não foi possível criar a pasta .ssh: {reason}",
+	"cmd_crew_name_mismatch": "Esse não é o nome do servidor. Nada foi excluído.",
+	"cmd_crew_no_crew_user": "(nenhum usuário do crew encontrado)",
+	"cmd_crew_no_reason_given": "nenhum motivo informado",
+	"cmd_crew_no_ssh_key": "Nenhuma chave SSH encontrada (o ssh -G não lista nenhuma que exista). Crie uma com: `ssh-keygen -t ed25519`",
+	"cmd_crew_no_systemd": "O systemd não está rodando como PID 1 (não existe /run/systemd/system): um crew server precisa de um host com systemd, não de um container nem de um sistema OpenRC/runit",
+	"cmd_crew_not_a_crew_server": "{host} não é um crew server (não há serviço {service}). Rode `atlas crew install {target}` antes.",
+	"cmd_crew_not_ready": "{target} não está pronto para um crew server. Nada foi alterado:",
+	"cmd_crew_old_dir_not_removed": "Não foi possível remover a pasta da instalação antiga: {reason}",
+	"cmd_crew_pair_code": "código  {code}",
+	"cmd_crew_pair_expires": "Só funciona uma vez e expira em {secs} s. O celular se pareia direto com {host}: o crew continua trabalhando com o seu computador desligado.",
+	"cmd_crew_pair_failed": "Não foi possível obter um convite de pareamento de {target}: {reason}\n  O crew server está instalado e rodando? Confira com `atlas crew status {target}`.",
+	"cmd_crew_pair_link": "link    {url}",
+	"cmd_crew_pair_no_invite": "O crew server não respondeu com um convite de pareamento",
+	"cmd_crew_pair_open": "Abra o Atlas Mobile → Add a computer → escaneie este código ou digite-o.",
+	"cmd_crew_pair_too_long": "O link de pareamento é longo demais para um QR code",
+	"cmd_crew_pause_failed": "Não foi possível pausar o crew em {target}: {reason}",
+	"cmd_crew_paused": "Crew em {target} pausado",
+	"cmd_crew_probe_failed": "Não foi possível examinar o host: {reason}",
+	"cmd_crew_remove_users_failed": "Não foi possível remover os usuários dos crewmates: {reason}",
+	"cmd_crew_resume_failed": "Não foi possível retomar o crew em {target}: {reason}",
+	"cmd_crew_resumed": "Crew em {target} retomado",
+	"cmd_crew_reuse_user": "Reaproveitando o usuário de sistema existente {user} (a pasta pessoal {home} guarda os dados dos crewmates)",
+	"cmd_crew_server_removed": "Crew server removido de {target}.",
+	"cmd_crew_ssh_launch_failed": "Não foi possível iniciar o ssh. Verifique se o ssh está instalado.",
+	"cmd_crew_ssh_unreachable": "Não foi possível conectar a {target} por SSH: {reason}",
+	"cmd_crew_step_creating_user": "Criando o usuário {user}",
+	"cmd_crew_step_isolation": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Configurando um usuário Linux por crewmate (nenhum existente)",
+				"countExact=*, countPlural=one": "Configurando um usuário Linux por crewmate ({count} existente)",
+				"countExact=*, countPlural=*": "Configurando um usuário Linux por crewmate ({count} existentes)"
+			}
+		}
+	],
+	"cmd_crew_step_preflight": "Verificando {target}",
+	"cmd_crew_step_retire": "Desativando o serviço atlas-bot antigo (os dados são mantidos)",
+	"cmd_crew_step_ssh": "Configurando o acesso SSH para {user}",
+	"cmd_crew_step_staging": "Preparando o binário do atlas",
+	"cmd_crew_step_start": "Iniciando o {service} e esperando o hostd (até {secs} s)",
+	"cmd_crew_step_unit": "Gravando o serviço do systemd",
+	"cmd_crew_sudo_needed_export": "O sudo em {target} pede senha. Conceda sudo sem senha ao usuário SSH para exportar.",
+	"cmd_crew_sudo_needed_import": "O sudo em {target} pede senha. Conceda sudo sem senha ao usuário SSH para importar.",
+	"cmd_crew_sudo_password_rejected": "Senha do sudo incorreta. Tente novamente.",
+	"cmd_crew_sudo_password_required": "O sudo em {target} pede senha. Conceda sudo sem senha a este usuário ou rode em um terminal: {command}",
+	"cmd_crew_sudo_stdin_failed": "Não foi possível ler a senha do sudo da entrada padrão",
+	"cmd_crew_swap_no_previous": "O hostd não subiu em {target} dentro de {secs} s e não havia binário anterior para voltar. Veja os logs: `atlas crew logs {target}`",
+	"cmd_crew_swap_rolled_back": "O novo binário não colocou o hostd no ar dentro de {secs} s, então o binário anterior foi restaurado e está rodando. Veja os logs: `atlas crew logs {target}`",
+	"cmd_crew_temp_dir_failed": "Não foi possível criar uma pasta temporária para o download",
+	"cmd_crew_too_old_export": "O atlas em {target} é antigo demais para exportar. Rode `atlas crew install {target}` para atualizá-lo e tente de novo.",
+	"cmd_crew_too_old_import": "O atlas em {target} é antigo demais para importar. Rode `atlas crew install {target}` para atualizá-lo e tente de novo.",
+	"cmd_crew_type_server_name": "Digite o nome do servidor ({name}) para excluí-lo:",
+	"cmd_crew_uninstall_failed": "Não foi possível desinstalar: {reason}",
+	"cmd_crew_uninstall_needs_decision": "A desinstalação exclui dados e precisa de uma decisão. Rode em um terminal para confirmar ou passe `--yes` (faça uma cópia antes: `atlas crew export {target}`).",
+	"cmd_crew_uninstall_no_user": "o usuário do crew e a pasta pessoal dele, {home}",
+	"cmd_crew_uninstall_service": "o serviço atlas-crew e /usr/local/lib/atlas-crew",
+	"cmd_crew_uninstall_signins": "os logins dos agentes salvos nessa pasta pessoal",
+	"cmd_crew_uninstall_title": "Desinstalar o crew server em {target} exclui:",
+	"cmd_crew_uninstall_user_crewmates": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "o usuário do crew e a pasta pessoal dele, {home} (nenhum crewmate)",
+				"countExact=*, countPlural=one": "o usuário do crew e a pasta pessoal dele, {home} ({count} crewmate): configuração, memória, histórico de tarefas, segredos e checkouts",
+				"countExact=*, countPlural=*": "o usuário do crew e a pasta pessoal dele, {home} ({count} crewmates): configurações, memória, histórico de tarefas, segredos e checkouts"
+			}
+		}
+	],
+	"cmd_crew_uninstall_user_crewmates_size": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "o usuário do crew e a pasta pessoal dele, {home} (nenhum crewmate, {size})",
+				"countExact=*, countPlural=one": "o usuário do crew e a pasta pessoal dele, {home} ({count} crewmate, {size}): configuração, memória, histórico de tarefas, segredos e checkouts",
+				"countExact=*, countPlural=*": "o usuário do crew e a pasta pessoal dele, {home} ({count} crewmates, {size}): configurações, memória, histórico de tarefas, segredos e checkouts"
+			}
+		}
+	],
+	"cmd_crew_unit_masked": "a unidade {unit} está mascarada no servidor e o Atlas não conseguiu desmascará-la ({why}). Rode no servidor: {command}. Depois, tente novamente",
+	"cmd_crew_unit_unmasked": "A unidade {unit} estava mascarada: o Atlas a desmascarou e gravou a unidade real",
+	"cmd_crew_unit_write_failed": "não foi possível gravar {unit}: {why}",
+	"cmd_crew_unknown_agent": "Agente \"{agent}\" desconhecido. Compatíveis: {supported}",
+	"cmd_crew_unsupported_host": "O atlas crew precisa de um host Linux x86_64 ou aarch64 com systemd e sudo (recebido: {uname})",
+	"cmd_crew_update_done": "O atlas em {host} foi atualizado; o binário anterior foi mantido (`atlas crew update {target} --rollback`).",
+	"cmd_crew_update_down": "O hostd está parado em {target}: a atualização falhou e o rollback também não o trouxe de volta. Veja os logs: `atlas crew logs {target}`",
+	"cmd_crew_update_failed": "Não foi possível atualizar {target}: {reason}",
+	"cmd_crew_update_rolled_back": "O novo binário não colocou o hostd no ar dentro de {secs} s, então o Atlas voltou ao anterior, que está rodando. Veja os logs: `atlas crew logs {target}`",
+	"cmd_crew_update_step_restart": "Reiniciando o {service} e esperando o hostd",
+	"cmd_crew_update_step_restore": "Restaurando o binário anterior em {host}",
+	"cmd_crew_update_step_runner": "Runner de captura atualizado em {host}",
+	"cmd_crew_update_step_stage": "Preparando o atlas {version} ({triple}) em {host}",
+	"cmd_crew_update_step_upload": "Enviando {path} para {host}",
+	"cmd_crew_upload_failed": "Não foi possível enviar o binário: {reason}",
+	"cmd_crew_useradd_failed": "Não foi possível criar o usuário do crew: {reason}",
+	"cmd_crew_version_ahead": "atlas {server} (à frente da versão {cli} desta CLI)",
+	"cmd_crew_version_behind": "atlas {server} (atrás da versão {cli} desta CLI: rode `atlas crew update`)",
+	"cmd_crew_version_current": "atlas {version} (atualizado)",
+	"cmd_crew_version_unknown": "versão do atlas desconhecida (o hostd está rodando?)"
+}

@@ -1,6 +1,7 @@
 /// The real [PermissionsPort]: the official plugin of each feature where it reports the state well
-/// (`firebase_messaging` for notifications, `local_auth` for the device lock), `permission_handler` only for
-/// the camera, which no feature plugin can read without opening it. Photos need no permission at all
+/// (`firebase_messaging` for notifications, `local_auth` for the device lock), `permission_handler` for the
+/// camera, which no feature plugin can read without opening it, and for the microphone and speech recognition,
+/// which Atlas's own dictation channel (`core/voice/`) never asks by itself. Photos need no permission at all
 /// (`SystemImagePicker` uses the out-of-process system pickers).
 library;
 
@@ -64,6 +65,14 @@ class SystemPermissions implements PermissionsPort {
           await ph.Permission.camera.status,
         ),
         AtlasPermission.notifications => await _notifications(),
+        AtlasPermission.microphone => fromHandler(
+          await ph.Permission.microphone.status,
+        ),
+        // Android has no separate speech permission: RECORD_AUDIO covers its recognizers.
+        AtlasPermission.speech =>
+          _ios
+              ? fromHandler(await ph.Permission.speech.status)
+              : PermissionState.unavailable,
         AtlasPermission.faceId => await _faceId(),
         // iOS cannot be asked whether the Local Network switch is on; it is "allowed to dial" once the
         // person went through the explanation (the system prompt follows on the first dial).
@@ -87,6 +96,13 @@ class SystemPermissions implements PermissionsPort {
         AtlasPermission.camera => fromHandler(
           await ph.Permission.camera.request(),
         ),
+        AtlasPermission.microphone => fromHandler(
+          await ph.Permission.microphone.request(),
+        ),
+        AtlasPermission.speech =>
+          _ios
+              ? fromHandler(await ph.Permission.speech.request())
+              : PermissionState.unavailable,
         AtlasPermission.notifications => fromAuthorization(
           (await FirebaseMessaging.instance.requestPermission(
             alert: true,

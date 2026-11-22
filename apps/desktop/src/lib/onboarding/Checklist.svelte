@@ -8,6 +8,7 @@
 	import { reducedMotion } from "#lib/shell/cornerMotion.ts";
 	import { onboarding } from "./state.svelte.ts";
 	import { CHECKLIST, nextItem, progress } from "./checklist.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let p = $derived(progress(onboarding.state));
 	let next = $derived(nextItem(onboarding.state));
@@ -35,18 +36,24 @@
 		id="checklist"
 		kind="checklist"
 		role="complementary"
-		label="Getting started"
+		label={m.onboarding_checklist_getting_started()}
 		ondismiss={() => open && corner.toggleChecklist()}
 	>
 		<div class="inner" class:collapsed={!open} data-testid="checklist">
 			<header>
 				<button class="head" onclick={() => corner.toggleChecklist()} aria-expanded={open}>
 					<span class="ring" style:--pct="{(p.done / p.total) * 100}%"></span>
-					<span class="title">{p.all ? "You're all set" : "Getting started"}</span>
+					<span class="title"
+						>{p.all ? m.onboarding_checklist_all_set() : m.onboarding_checklist_getting_started()}</span
+					>
 					<span class="count">{p.done}/{p.total}</span>
 					<ChevronDown size={13} class="chev" />
 				</button>
-				<button class="x" aria-label="Dismiss checklist" onclick={() => void onboarding.dismissChecklist()}>
+				<button
+					class="x"
+					aria-label={m.onboarding_checklist_dismiss_checklist()}
+					onclick={() => void onboarding.dismissChecklist()}
+				>
 					<X size={12} />
 				</button>
 			</header>

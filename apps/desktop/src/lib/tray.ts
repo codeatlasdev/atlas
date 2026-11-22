@@ -4,6 +4,8 @@
  * (`tray_publish`), the popover renders it and sends clicks back as `TrayAction`s. Everything
  * decidable without the DOM lives here, so it is testable.
  */
+import { relativeTime } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import { summarize, type Tone } from "#lib/panel/metrics.ts";
 
 interface TrayService {
@@ -91,31 +93,6 @@ export type TrayAction =
 	/** Open the "Restart the terminal host?" prompt. */
 	| { kind: "host" };
 
-export interface Overall {
-	tone: Tone;
-	label: string;
-}
-
-/** Header line: worst state wins (failed > starting > healthy), else nothing is running. */
-export function overall(projects: TrayProject[]): Overall {
-	const running = projects.filter((p) => p.running);
-	if (!running.length) return { tone: "off", label: "Nothing running" };
-	let failed = 0;
-	let starting = 0;
-	for (const p of running) {
-		for (const s of p.services) {
-			if (s.state === "failed") failed++;
-			else if (s.state === "starting") starting++;
-		}
-	}
-	if (failed) return { tone: "fail", label: failed === 1 ? "1 service failed" : `${failed} services failed` };
-	if (starting)
-		return { tone: "warn", label: starting === 1 ? "1 service starting" : `${starting} services starting` };
-	return running.some((p) => projectTone(p) !== "ok")
-		? { tone: "warn", label: "Some services are not up" }
-		: { tone: "ok", label: running.length === 1 ? "Stack healthy" : "All stacks healthy" };
-}
-
 /** Per-project tone, same rule as the panel's health pill. */
 export function projectTone(p: TrayProject): Tone {
 	return summarize(
@@ -144,15 +121,6 @@ export interface Recommendation {
 
 const FRESH_FAILURE_MS = 60 * 60_000;
 
-/** "just now", "2 min ago", "3 h ago". */
-export function ago(ms: number): string {
-	const s = Math.max(0, Math.round(ms / 1000));
-	if (s < 45) return "just now";
-	const m = Math.round(s / 60);
-	if (m < 60) return `${m} min ago`;
-	return `${Math.round(m / 60)} h ago`;
-}
-
 /**
  * The one thing worth your attention, CleanMyMac's "Today's recommendation":
  * a failed service beats an update, which beats an outdated terminal host.
@@ -166,9 +134,9 @@ export function recommend(s: TraySnapshot, now: number): Recommendation | null {
 		return {
 			id: `fail:${failing.id}:${service}`,
 			icon: "fail",
-			title: `${service} failed ${ago(now - at)}`,
+			title: m.tray_recommend_failed_title({ service, when: relativeTime(at, now) }),
 			detail: failing.name,
-			cta: "View logs",
+			cta: m.tray_recommend_failed_cta(),
 			action: { kind: "logs", id: failing.id, service },
 		};
 	}
@@ -176,9 +144,9 @@ export function recommend(s: TraySnapshot, now: number): Recommendation | null {
 		return {
 			id: `update:${s.update.version}`,
 			icon: "update",
-			title: `Atlas ${s.update.version} is available`,
-			detail: "Update the CLI and the app together",
-			cta: "Update",
+			title: m.tray_recommend_update_title({ version: s.update.version }),
+			detail: m.tray_recommend_update_detail(),
+			cta: m.tray_recommend_update_cta(),
 			action: { kind: "update" },
 		};
 	}
@@ -186,9 +154,9 @@ export function recommend(s: TraySnapshot, now: number): Recommendation | null {
 		return {
 			id: "host",
 			icon: "host",
-			title: "Terminal host needs a restart",
-			detail: "Language features are off until it restarts",
-			cta: "Review",
+			title: m.tray_recommend_host_title(),
+			detail: m.tray_recommend_host_detail(),
+			cta: m.tray_recommend_host_cta(),
 			action: { kind: "host" },
 		};
 	}
@@ -198,7 +166,7 @@ export function recommend(s: TraySnapshot, now: number): Recommendation | null {
 /** `3/4 up`-style services line. */
 export function upLine(p: TrayProject): string {
 	const up = p.services.filter((s) => s.state === "running").length;
-	return `${up}/${p.services.length} up`;
+	return m.tray_up_line({ up, total: p.services.length });
 }
 
 /** Dot tone of one service in a project card. */
@@ -235,18 +203,18 @@ export type CardState = "healthy" | "starting" | "failed" | "idle";
 
 /** The card's one-line state: what is wrong, by name, or that nothing is. Failed beats starting beats healthy. */
 export function projectHeadline(p: TrayProject): { state: CardState; text: string } {
-	if (!p.running) return { state: "idle", text: "Stopped" };
-	if (!p.services.length) return { state: "healthy", text: "No services" };
+	if (!p.running) return { state: "idle", text: m.tray_headline_stopped() };
+	if (!p.services.length) return { state: "healthy", text: m.tray_headline_no_services() };
 	const failed = failedServices(p);
 	if (failed.length) {
-		const shown = failed.slice(0, 2).join(", ");
-		return { state: "failed", text: `${shown}${failed.length > 2 ? ` +${failed.length - 2}` : ""} failed` };
+		const names = `${failed.slice(0, 2).join(", ")}${failed.length > 2 ? ` +${failed.length - 2}` : ""}`;
+		return { state: "failed", text: m.tray_headline_failed({ names, count: failed.length }) };
 	}
 	const starting = p.services.filter((s) => s.state === "starting").length;
-	if (starting) return { state: "starting", text: `${starting} starting` };
+	if (starting) return { state: "starting", text: m.tray_headline_starting({ count: starting }) };
 	const up = p.services.filter((s) => s.state === "running").length;
-	if (up === p.services.length) return { state: "healthy", text: `All ${up} services up` };
-	return { state: "starting", text: `${up}/${p.services.length} up` };
+	if (up === p.services.length) return { state: "healthy", text: m.tray_headline_all_up({ count: up }) };
+	return { state: "starting", text: m.tray_up_line({ up, total: p.services.length }) };
 }
 
 /**
@@ -317,7 +285,11 @@ export function agentDoing(a: Pick<TrayAgent, "state" | "lastMessage">): string 
 		.map((l) => l.trim())
 		.find(Boolean);
 	if (first) return first;
-	return a.state === "blocked" ? "Needs approval" : a.state === "waiting" ? "Waiting for you" : "Working";
+	return a.state === "blocked"
+		? m.tray_agent_needs_approval()
+		: a.state === "waiting"
+			? m.tray_agent_waiting_for_you()
+			: m.tray_page_working();
 }
 
 /** A project row of the popover: the project plus the name that tells it apart from its siblings. */
@@ -453,14 +425,14 @@ export function headerSummary(s: TraySnapshot): { tone: Tone; text: string } {
 	const { needsYou, working } = s.agents;
 	// Most urgent first; when the line would not fit beside the quick actions the least urgent parts are dropped.
 	const parts = [
-		needsYou ? `${needsYou} ${needsYou === 1 ? "needs" : "need"} you` : "",
-		failed ? `${failed} failed` : "",
-		working ? `${working} working` : "",
-		up ? `${up} up` : "",
+		needsYou ? m.tray_summary_needs_you({ count: needsYou }) : "",
+		failed ? m.tray_summary_failed({ count: failed }) : "",
+		working ? m.tray_summary_working({ count: working }) : "",
+		up ? m.tray_summary_up({ count: up }) : "",
 	].filter(Boolean);
 	while (parts.length > 1 && parts.join(" · ").length > HEADER_MAX) parts.pop();
 	const tone: Tone = failed ? "fail" : needsYou ? "warn" : parts.length ? "ok" : "off";
-	return { tone, text: parts.length ? parts.join(" · ") : "All quiet" };
+	return { tone, text: parts.length ? parts.join(" · ") : m.tray_summary_all_quiet() };
 }
 
 /** Characters of the status line that fit beside the mark and four quick actions in the 360 px popover. */

@@ -11,13 +11,14 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
+use atlas_core::scaling::HANG;
 use serde_json::{Value, json};
 
 mod common;
 use common::{free_port, libc_kill, wait_for};
 
 const BIN: &str = env!("CARGO_BIN_EXE_atlas");
-const RPC_TIMEOUT: Duration = Duration::from_secs(20);
+const RPC_TIMEOUT: Duration = HANG;
 
 // ───────────────────────── helpers ─────────────────────────
 
@@ -43,6 +44,8 @@ impl McpClient {
     /// [`McpClient::spawn_with`] with extra environment (an agent host's session variables).
     fn spawn_with_env(args: &[&str], cwd: Option<&Path>, envs: &[(&str, &str)]) -> Self {
         let mut cmd = Command::new(BIN);
+        // The text of these tests is English whatever language the machine is set to.
+        cmd.env("ATLAS_LANG", "en");
         cmd.args(args)
             .envs(envs.iter().copied())
             .stdin(Stdio::piped())
@@ -160,7 +163,7 @@ impl McpClient {
     /// Close stdin and require a prompt clean exit.
     fn close_and_wait_exit(&mut self) -> i32 {
         self.stdin.take();
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + HANG;
         loop {
             if let Some(st) = self.child.try_wait().unwrap() {
                 return st.code().unwrap_or(-1);
@@ -204,6 +207,7 @@ impl Headless {
         let out_path = out_dir.path().join("stdout.txt");
         let out = std::fs::File::create(&out_path).unwrap();
         let child = Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .args(["dev", "--headless", "--dir", root.to_str().unwrap()])
             .stdin(Stdio::null())
             .stdout(out.try_clone().unwrap())
@@ -231,7 +235,7 @@ impl Headless {
             return;
         }
         unsafe { libc_kill(self.pid(), 15) };
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + HANG;
         while Instant::now() < deadline {
             if self.child.try_wait().ok().flatten().is_some() {
                 return;
@@ -381,12 +385,7 @@ fn fixture_web_server_does_not_resolve_names() {
     );
     let port = free_port();
     assert!(
-        serves_with_stalled_dns(
-            p.root(),
-            &["web.py", &port.to_string()],
-            port,
-            Duration::from_secs(5)
-        ),
+        serves_with_stalled_dns(p.root(), &["web.py", &port.to_string()], port, HANG),
         "fixture web.py must listen even when name resolution hangs"
     );
 }
@@ -425,7 +424,7 @@ fn a_service_repeating_one_error_is_degraded_in_atlas_status() {
     let last = std::cell::RefCell::new(Value::Null);
     let row = common::wait_for_with(
         "looper degraded",
-        Duration::from_secs(30),
+        HANG,
         || {
             let st = status(&mut c);
             let row = st["services"]
@@ -497,7 +496,7 @@ fn start_running_as(
     let last = std::cell::RefCell::new(Value::Null);
     common::wait_for_with(
         "services running",
-        Duration::from_secs(30),
+        HANG,
         || {
             let st = status(&mut c);
             let ok = st["running"] == true
@@ -526,7 +525,7 @@ fn action_output_is_readable_via_atlas_logs() {
     let (err, t) = c.call("atlas_run_action", json!({"action": "Hello"}));
     assert!(!err, "{t}");
     let file = p.logs().join("action-hello.log");
-    wait_for("action log file", Duration::from_secs(10), || {
+    wait_for("action log file", HANG, || {
         std::fs::read_to_string(&file)
             .ok()
             .filter(|s| s.contains("hello-from-action"))
@@ -554,7 +553,7 @@ fn action_output_is_readable_via_atlas_logs() {
 
     // `atlas_metrics` returns the memory series the live headless run keeps for the service
     // (the first sample lands within one health tick), and `atlas_status` carries the facts.
-    let m = wait_for("first memory sample", Duration::from_secs(20), || {
+    let m = wait_for("first memory sample", HANG, || {
         let (err, t) = c.call("atlas_metrics", json!({"service": "web"}));
         let v: Value = serde_json::from_str(&t).ok().filter(|_| !err)?;
         v["samples"].as_array().filter(|s| !s.is_empty())?;
@@ -570,18 +569,14 @@ fn action_output_is_readable_via_atlas_logs() {
         err && t.contains("Known services") && t.contains("web"),
         "{t}"
     );
-    let web = wait_for(
-        "memory facts in atlas_status",
-        Duration::from_secs(10),
-        || {
-            let st = status(&mut c);
-            st["services"]
-                .as_array()?
-                .iter()
-                .find(|s| s["name"] == "web" && s["memory_rss"].as_u64().is_some_and(|b| b > 0))
-                .cloned()
-        },
-    );
+    let web = wait_for("memory facts in atlas_status", HANG, || {
+        let st = status(&mut c);
+        st["services"]
+            .as_array()?
+            .iter()
+            .find(|s| s["name"] == "web" && s["memory_rss"].as_u64().is_some_and(|b| b > 0))
+            .cloned()
+    });
     assert_eq!(web["budget_state"], "ok", "{web}");
 }
 
@@ -809,7 +804,7 @@ fn eof_exits_zero_promptly_and_stdout_is_json_only() {
     let mut c = McpClient::spawn(d.path());
     c.send(&json!({"jsonrpc":"2.0","id":9,"method":"ping"}));
     assert_eq!(c.close_and_wait_exit(), 0);
-    let line = c.rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    let line = c.rx.recv_timeout(HANG).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&line).unwrap()["id"], 9);
 }
 
@@ -1080,7 +1075,7 @@ fn running_full_flow() {
     assert_eq!(web["port"].as_u64(), Some(p.web_port as u64));
 
     // logs: wait for the ticker to have written lines.
-    wait_for("ticker logs", Duration::from_secs(15), || {
+    wait_for("ticker logs", HANG, || {
         let (_, t) = c.call("atlas_logs", json!({"service": "ticker"}));
         t.contains("fixture-boom").then_some(())
     });
@@ -1101,7 +1096,7 @@ fn running_full_flow() {
     // search: substring, regex, include_previous (no prev yet → still ok)
     let (_, t) = c.call("atlas_logs_search", json!({"query": "FIXTURE-BOOM"}));
     assert!(t.contains("fixture-boom"), "{t}");
-    wait_for("two ticks", Duration::from_secs(15), || {
+    wait_for("two ticks", HANG, || {
         let (_, t) = c.call("atlas_logs", json!({"service": "ticker"}));
         (t.matches("tick-line").count() >= 2).then_some(())
     });
@@ -1122,12 +1117,12 @@ fn running_full_flow() {
     let (err, t) = c.call("atlas_restart_service", json!({"service": "web"}));
     assert!(!err, "{t}");
     assert_eq!(serde_json::from_str::<Value>(&t).unwrap()["queued"], true);
-    wait_for("web pid to change", Duration::from_secs(20), || {
+    wait_for("web pid to change", HANG, || {
         (pids_file(&p) != pids_before).then_some(())
     });
     let (err, t) = c.call(
         "atlas_wait_ready",
-        json!({"service": "web", "timeout_s": 30}),
+        json!({"service": "web", "timeout_s": HANG.as_secs()}),
     );
     assert!(!err, "{t}");
     assert!(
@@ -1142,7 +1137,7 @@ fn running_full_flow() {
     // stop → stopped/disabled, start → running
     let (err, t) = c.call("atlas_stop_service", json!({"service": "web"}));
     assert!(!err, "{t}");
-    wait_for("web stopped", Duration::from_secs(20), || {
+    wait_for("web stopped", HANG, || {
         let st = status(&mut c);
         matches!(
             service_state(&st, "web").as_deref(),
@@ -1156,7 +1151,7 @@ fn running_full_flow() {
     );
     let (err, t) = c.call("atlas_start_service", json!({"service": "web"}));
     assert!(!err, "{t}");
-    wait_for("web running again", Duration::from_secs(20), || {
+    wait_for("web running again", HANG, || {
         let st = status(&mut c);
         (service_state(&st, "web").as_deref() == Some("running")).then_some(())
     });
@@ -1211,7 +1206,9 @@ fn running_full_flow() {
     let (err, t) = c.call("atlas_run_action", json!({}));
     assert!(err && t.contains("action"), "{t}");
 
-    // Never-ready service: wait_ready times out correctly (short timeout).
+    // Never-ready service: wait_ready gives up at its own timeout. The 2 s is the tool's argument (the feature), the
+    // lower bound proves it really waited; the time it took beyond that is not asserted (a hang is caught by the
+    // RPC ceiling, `HANG`, of the client).
     let started = Instant::now();
     let (err, t) = c.call(
         "atlas_wait_ready",
@@ -1223,8 +1220,8 @@ fn running_full_flow() {
         "{t}"
     );
     assert!(
-        started.elapsed() >= Duration::from_secs(2) && started.elapsed() < Duration::from_secs(10),
-        "{:?}",
+        started.elapsed() >= Duration::from_secs(2),
+        "gave up before its timeout: {:?}",
         started.elapsed()
     );
     let (err, t) = c.call(
@@ -1246,10 +1243,10 @@ fn action_output_is_observable_and_paused_services_resume() {
     // released afterwards so the same action can run again.
     let (err, t) = c.call("atlas_run_action", json!({"action": "Hello"}));
     assert!(!err, "{t}");
-    wait_for("action output", Duration::from_secs(10), || {
+    wait_for("action output", HANG, || {
         h.stdout().contains("hello-from-action").then_some(())
     });
-    wait_for("Hello runnable again", Duration::from_secs(10), || {
+    wait_for("Hello runnable again", HANG, || {
         let (err, _) = c.call("atlas_run_action", json!({"action": "Hello"}));
         (!err).then_some(())
     });
@@ -1263,7 +1260,7 @@ fn action_output_is_observable_and_paused_services_resume() {
         json!({"action": "Wipe", "confirmed": true}),
     );
     assert!(!err, "{t}");
-    wait_for("wipe output", Duration::from_secs(10), || {
+    wait_for("wipe output", HANG, || {
         h.stdout().contains("wiped-the-thing").then_some(())
     });
 
@@ -1273,18 +1270,18 @@ fn action_output_is_observable_and_paused_services_resume() {
     // The same action cannot start twice concurrently.
     let (err, t) = c.call("atlas_run_action", json!({"action": "Pause web"}));
     assert!(err && t.contains("already running"), "{t}");
-    wait_for("web suspended", Duration::from_secs(10), || {
+    wait_for("web suspended", HANG, || {
         let st = status(&mut c);
         (service_state(&st, "web").as_deref() == Some("suspended")).then_some(())
     });
-    wait_for("pause action finished", Duration::from_secs(15), || {
+    wait_for("pause action finished", HANG, || {
         h.stdout().contains("pause-finished").then_some(())
     });
-    wait_for("web resumed", Duration::from_secs(30), || {
+    wait_for("web resumed", HANG, || {
         let st = status(&mut c);
         (service_state(&st, "web").as_deref() == Some("running")).then_some(())
     });
-    let (err, t) = c.call("atlas_wait_ready", json!({"timeout_s": 30}));
+    let (err, t) = c.call("atlas_wait_ready", json!({"timeout_s": HANG.as_secs()}));
     assert!(!err, "{t}");
 }
 
@@ -1304,7 +1301,7 @@ fn concurrent_calls_are_all_answered_with_correct_ids() {
             2 => ("atlas_config", json!({})),
             3 => (
                 "atlas_wait_ready",
-                json!({"service": "web", "timeout_s": 10}),
+                json!({"service": "web", "timeout_s": HANG.as_secs()}),
             ),
             _ => ("atlas_start_service", json!({"service": "ticker"})),
         };
@@ -1337,14 +1334,14 @@ fn stale_socket_is_replaced_perms_0600_and_malformed_lines_are_survived() {
     assert!(sock.exists());
     // A process forked by a parallel test between bind and drop holds the listener
     // fd until its exec (CLOEXEC), so the refusal can take a moment.
-    wait_for("stale socket refusing", Duration::from_secs(2), || {
+    wait_for("stale socket refusing", HANG, || {
         std::os::unix::net::UnixStream::connect(&sock)
             .is_err()
             .then_some(())
     });
 
     let h = Headless::spawn(p.root());
-    wait_for("socket serving", Duration::from_secs(20), || {
+    wait_for("socket serving", HANG, || {
         std::os::unix::net::UnixStream::connect(&sock).ok()
     });
     let mode = std::fs::metadata(&sock).unwrap().permissions().mode() & 0o777;
@@ -1352,7 +1349,7 @@ fn stale_socket_is_replaced_perms_0600_and_malformed_lines_are_survived() {
 
     let roundtrip = |line: &[u8]| -> Value {
         let mut s = std::os::unix::net::UnixStream::connect(&sock).unwrap();
-        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        s.set_read_timeout(Some(HANG)).unwrap();
         s.write_all(line).unwrap();
         s.write_all(b"\n").unwrap();
         let mut reply = String::new();
@@ -1376,7 +1373,7 @@ fn stale_socket_is_replaced_perms_0600_and_malformed_lines_are_survived() {
     // Oversized line is rejected, not buffered forever / crashed on.
     {
         let mut s = std::os::unix::net::UnixStream::connect(&sock).unwrap();
-        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        s.set_read_timeout(Some(HANG)).unwrap();
         // The server answers and closes without draining; a late write may hit EPIPE.
         let _ = s.write_all(&vec![b'a'; 200 * 1024]);
         let _ = s.write_all(b"\n");
@@ -1402,9 +1399,7 @@ fn stale_socket_is_replaced_perms_0600_and_malformed_lines_are_survived() {
     // Clean shutdown removes the socket.
     let mut h = h;
     h.stop();
-    wait_for("socket removed", Duration::from_secs(5), || {
-        (!sock.exists()).then_some(())
-    });
+    wait_for("socket removed", HANG, || (!sock.exists()).then_some(()));
 }
 
 #[test]
@@ -1413,6 +1408,7 @@ fn second_headless_instance_refuses_and_leaves_first_working() {
     let p = project();
     let (_h, mut c) = start_running(&p, &["web", "ticker"]);
     let out = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--headless", "--dir", p.root().to_str().unwrap()])
         .stdin(Stdio::null())
         .output()
@@ -1454,7 +1450,7 @@ fn audit_lines(p: &Project) -> Vec<Value> {
 /// One request on the control socket as the developer's tools send it (no `caller`).
 fn socket_request(p: &Project, line: &str) -> Value {
     let mut s = std::os::unix::net::UnixStream::connect(p.logs().join("atlas.sock")).unwrap();
-    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.set_read_timeout(Some(HANG)).unwrap();
     s.write_all(line.as_bytes()).unwrap();
     s.write_all(b"\n").unwrap();
     let mut reply = String::new();
@@ -1524,7 +1520,7 @@ fn agents_control_deny_refuses_every_control_tool_and_audits_the_refusals() {
     assert!(!err, "{t}");
     let (err, t) = c.call(
         "atlas_wait_ready",
-        json!({"service": "web", "timeout_s": 10}),
+        json!({"service": "web", "timeout_s": HANG.as_secs()}),
     );
     assert!(!err, "{t}");
 
@@ -1560,7 +1556,7 @@ fn agents_allow_list_lets_only_the_listed_service_restart_and_audits_both() {
     let pids_before = pids_file(&p);
     let (err, t) = c.call("atlas_restart_service", json!({"service": "ticker"}));
     assert!(!err, "{t}");
-    wait_for("ticker pid to change", Duration::from_secs(20), || {
+    wait_for("ticker pid to change", HANG, || {
         (pids_file(&p) != pids_before).then_some(())
     });
     let (err, t) = c.call("atlas_restart_service", json!({"service": "web"}));
@@ -1754,7 +1750,7 @@ fn audit_records_the_agent_session_from_the_environment() {
         &[("OMP_SESSION_ID", "sess-42"), ("CLAUDE_SESSION_ID", "")],
     );
     c.handshake_as("omp", "14.1");
-    wait_for("socket serving", Duration::from_secs(20), || {
+    wait_for("socket serving", HANG, || {
         std::os::unix::net::UnixStream::connect(p.logs().join("atlas.sock")).ok()
     });
     let (err, t) = c.call("atlas_restart_service", json!({"service": "web"}));

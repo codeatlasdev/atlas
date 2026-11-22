@@ -1,6 +1,9 @@
 use std::time::Duration;
 
+use serde_json::json;
+
 use super::{ServiceManager, UnhealthyReport};
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 impl ServiceManager {
@@ -240,7 +243,7 @@ impl ServiceManager {
             live,
             ready_error: svc.probes.ready_error.as_deref(),
             repeated: repeated.as_deref(),
-            memory: memory.as_deref(),
+            memory: memory.as_ref(),
         });
         let Some(verdict) = verdict else {
             // Grace: a dev server's hot restart closes its port for a moment.
@@ -252,8 +255,7 @@ impl ServiceManager {
                 if let Some(svc) = self.services.get_mut(name) {
                     svc.probes.unhealthy = None;
                     // Only the memory finding left the service `degraded`: it clears itself.
-                    svc.mem.degrading =
-                        memory.is_some() && verdict.reason.as_deref() == memory.as_deref();
+                    svc.mem.degrading = memory.is_some() && verdict.reason == memory;
                     svc.probes.degraded = verdict.reason;
                     // Up for a full RESET_AFTER: the hang-restart budget starts over.
                     if svc.probes.hang_restarts > 0
@@ -294,24 +296,25 @@ impl ServiceManager {
         if !first {
             return;
         }
-        let message = format!(
-            "unhealthy: no answer from the liveness probe ({misses} misses × {}s timeout){}",
-            timeout.as_secs(),
-            if restart { ", restarting" } else { "" }
+        let code = if restart {
+            "health.hang_restarting"
+        } else {
+            "health.hang"
+        };
+        let note = Note::new(
+            code,
+            json!({"misses": misses, "timeout": timeout.as_secs()}),
         );
         let _ = self.event_tx.send(super::ManagerEvent::CriticalAlert {
             service: name.to_string(),
-            message: message.clone(),
+            note: note.clone(),
         });
-        self.note(name, message);
+        self.note(name, note);
         if restart {
             if self.take_hang_restart(name) {
                 self.restart_service(name).await;
             } else {
-                self.note(
-                    name,
-                    "unhealthy again after its restarts: left running".into(),
-                );
+                self.note(name, Note::new("health.hang_spent", json!({})));
             }
         }
     }
@@ -352,9 +355,14 @@ impl ServiceManager {
         })
     }
 
-    /// Why the service is `degraded` (the failing `ready` probe's error or the repeated line);
+    /// Why the service is `degraded` (the failing `ready` probe's error or the repeated line) in English;
     /// `None` in every other state.
     pub fn probe_error(&self, name: &str) -> Option<String> {
+        self.probe_error_note(name).map(|n| n.message)
+    }
+
+    /// [`Self::probe_error`] as a coded sentence.
+    pub fn probe_error_note(&self, name: &str) -> Option<Note> {
         if self.mirror.is_some() {
             return self.mirror_facts(name)?.probe_error.clone();
         }
@@ -365,9 +373,7 @@ impl ServiceManager {
         svc.probes.degraded.clone()
     }
 
-    /// The readiness/hang facts every consumer reads, under one set of keys: the status file
-    /// (`atlas dev --status`, MCP, the desktop's poll) and the runner wire (`state`/`rows`)
-    /// both merge this object, so they can never drift apart.
+    /// The readiness/hang facts the status file (`atlas dev --status`, MCP, the desktop's poll) reads, English only.
     pub(crate) fn probe_facts_json(&self, name: &str) -> serde_json::Value {
         let report = self.unhealthy_report(name);
         let mut v = serde_json::json!({
@@ -384,6 +390,20 @@ impl ServiceManager {
         {
             o.extend(mem);
         }
+        v
+    }
+
+    /// [`Self::probe_facts_json`] for the runner's wire (`state`/`rows`): the same keys plus the code and args of
+    /// `probe_error` and `memory_leak`, so a client writes them in its own language. Additive: the status file and
+    /// MCP never carry them.
+    pub(crate) fn probe_facts_wire(&self, name: &str) -> serde_json::Value {
+        let mut v = self.probe_facts_json(name);
+        Note::put_flat(&mut v, "probe_error", self.probe_error_note(name).as_ref());
+        Note::put_flat(
+            &mut v,
+            "memory_leak",
+            self.memory_facts(name).and_then(|f| f.leak).as_ref(),
+        );
         v
     }
 
@@ -450,39 +470,32 @@ impl ServiceManager {
         let (Some(max), on_max) = (svc.mem.limits.max, svc.mem.on_max) else {
             return;
         };
-        let fmt = crate::runtime::memory::fmt_size;
         if on_max == OnMemoryMax::Notify {
-            let message = format!(
-                "using {} (max_memory {}), left running (on_memory_max: notify)",
-                fmt(used),
-                fmt(max)
-            );
+            let note = Note::new("memory.notify", json!({"used": used, "max": max}));
             let _ = self.event_tx.send(super::ManagerEvent::CriticalAlert {
                 service: name.to_string(),
-                message: message.clone(),
+                note: note.clone(),
             });
-            self.note(name, message);
+            self.note(name, note);
             return;
         }
         svc.mem.restarts += 1;
         let tries = svc.mem.restarts;
         let give_up = tries > MEM_RESTARTS;
-        let message = if give_up {
-            format!(
-                "using {} (max_memory {}) after {MEM_RESTARTS} restarts, stopped",
-                fmt(used),
-                fmt(max)
+        let note = if give_up {
+            Note::new(
+                "memory.stopped",
+                json!({"used": used, "max": max, "restarts": MEM_RESTARTS}),
             )
         } else {
-            format!(
-                "using {} (max_memory {}), restarting ({tries}/{MEM_RESTARTS})",
-                fmt(used),
-                fmt(max)
+            Note::new(
+                "memory.restarting",
+                json!({"used": used, "max": max, "attempt": tries, "limit": MEM_RESTARTS}),
             )
         };
         let _ = self.event_tx.send(super::ManagerEvent::CriticalAlert {
             service: name.to_string(),
-            message: message.clone(),
+            note: note.clone(),
         });
         if give_up {
             // Stop for good: an endless kill/respawn cycle is the loop this guards against.
@@ -491,7 +504,7 @@ impl ServiceManager {
         } else {
             self.restart_service(name).await;
         }
-        self.note(name, message);
+        self.note(name, note);
     }
 
     /// Make the state follow the budget right away instead of waiting for the next probe tick:
@@ -650,7 +663,7 @@ mod tests {
         let reader = std::thread::spawn(move || {
             let mut reads = 0u32;
             while !stop_r.load(std::sync::atomic::Ordering::Relaxed) {
-                let text = std::fs::read_to_string(&reader_path).unwrap();
+                let text = atlas_core::fs::read_to_string_replaced(&reader_path).unwrap();
                 serde_json::from_str::<serde_json::Value>(&text)
                     .expect("reader must never see a partial file");
                 reads += 1;

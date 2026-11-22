@@ -11,10 +11,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use atlas_core::scaling::HANG;
 use serde_json::Value;
 
 mod common;
-use common::{free_port, libc_kill, wait_for};
+use common::{libc_kill, reserve_port, wait_for};
 
 const BIN: &str = env!("CARGO_BIN_EXE_atlas");
 
@@ -43,11 +44,7 @@ while True:
 "#;
 
 fn port_open(port: u16) -> bool {
-    TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}").parse().unwrap(),
-        Duration::from_millis(200),
-    )
-    .is_ok()
+    TcpStream::connect_timeout(&format!("127.0.0.1:{port}").parse().unwrap(), HANG).is_ok()
 }
 
 struct Fixture {
@@ -56,6 +53,8 @@ struct Fixture {
     fake: PathBuf,
     ssh_log: PathBuf,
     fail_file: PathBuf,
+    /// The claim on `local_port` (see [`common::reserve_port`]), released with the fixture.
+    _lease: common::PortLease,
 }
 
 impl Fixture {
@@ -63,7 +62,8 @@ impl Fixture {
     /// `open_tunnel: true` action `t` writing `ran.txt`.
     fn new(tunnel_enabled: bool) -> Self {
         let dir = tempfile::TempDir::new().unwrap();
-        let local_port = free_port();
+        let lease = reserve_port();
+        let local_port = lease.port();
         let fake = dir.path().join("fake-ssh");
         std::fs::write(&fake, FAKE_SSH).unwrap();
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -96,7 +96,8 @@ actions:
         let fail_file = dir.path().join("fail-msg");
         Self {
             dir,
-            local_port,
+            local_port: lease.port(),
+            _lease: lease,
             fake,
             ssh_log,
             fail_file,
@@ -123,6 +124,7 @@ actions:
         let out_path = self.root().join("headless-stdout.txt");
         let err_path = self.root().join("headless-stderr.txt");
         let child = Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .args(["dev", "--headless", "--dir", self.root().to_str().unwrap()])
             .env("ATLAS_SSH_BIN", &self.fake)
             .env("FAKE_SSH_LOG", &self.ssh_log)
@@ -183,7 +185,7 @@ impl Headless {
         };
         if child.try_wait().ok().flatten().is_none() {
             unsafe { libc_kill(child.id() as i32, 15) };
-            let deadline = Instant::now() + Duration::from_secs(15);
+            let deadline = Instant::now() + HANG;
             while Instant::now() < deadline {
                 if child.try_wait().ok().flatten().is_some() {
                     return;
@@ -196,6 +198,23 @@ impl Headless {
     }
 }
 
+impl Fixture {
+    /// Why a probe of the port failed: the tunnel's own log (it says "already accepting connections; not starting
+    /// ssh" when atlas took someone else's listener), what the fake ssh was asked, which fake ssh still runs, and what
+    /// atlas printed. A one-line "assertion failed" on a CI runner explained nothing (#496).
+    fn diagnose(&self, h: &Headless) -> String {
+        let log = std::fs::read_to_string(self.logs().join("tunnel.log")).unwrap_or_default();
+        format!(
+            "127.0.0.1:{} refused a connection while atlas reports the tunnel up\n-- status tunnel: {}\n-- ssh invocations: {:?}\n-- fake ssh pids: {:?}\n-- .logs/tunnel.log:\n{log}\n-- atlas stdout:\n{}\n-- atlas stderr:\n{}",
+            self.local_port,
+            self.status()["tunnel"],
+            self.invocations(),
+            fake_ssh_pids(self),
+            h.stdout(),
+            h.stderr()
+        )
+    }
+}
 impl Drop for Headless {
     fn drop(&mut self) {
         self.stop();
@@ -230,18 +249,20 @@ fn enabled_tunnel_starts_at_boot_with_expected_ssh_args_and_stops_on_exit() {
     require_python!();
     let f = Fixture::new(true);
     let mut h = f.spawn_headless();
-    f.wait_tunnel("running", Duration::from_secs(30));
+    f.wait_tunnel("running", HANG);
 
     // Status file carries the tunnel object.
     let st = f.status();
     assert_eq!(st["tunnel"]["local_port"], f.local_port);
     assert_eq!(st["tunnel"]["ssh_host"], "fake-host");
     assert_eq!(st["tunnel"]["remote"], "db.internal:5432");
-    assert!(port_open(f.local_port));
+    // Our own ssh was started (a foreign listener adopted instead would leave this empty, #496)...
+    let inv = f.invocations();
+    assert_eq!(inv.len(), 1, "{}", f.diagnose(&h));
+    // ...so the fake ssh holds the port for as long as atlas runs.
+    assert!(port_open(f.local_port), "{}", f.diagnose(&h));
 
     // Exact ssh invocation (BatchMode, keepalive from config, -N, -L).
-    let inv = f.invocations();
-    assert_eq!(inv.len(), 1, "{inv:?}");
     assert_eq!(
         inv[0],
         format!(
@@ -251,7 +272,7 @@ fn enabled_tunnel_starts_at_boot_with_expected_ssh_args_and_stops_on_exit() {
         )
     );
     // ssh stderr is captured into .logs/tunnel.log.
-    wait_for("tunnel.log", Duration::from_secs(5), || {
+    wait_for("tunnel.log", HANG, || {
         std::fs::read_to_string(f.logs().join("tunnel.log"))
             .ok()
             .filter(|t| t.contains("fake ssh: forwarding"))
@@ -259,11 +280,51 @@ fn enabled_tunnel_starts_at_boot_with_expected_ssh_args_and_stops_on_exit() {
 
     // Headless always kills the tunnel on exit.
     h.stop();
-    wait_for("ssh gone", Duration::from_secs(10), || {
+    wait_for("ssh gone", HANG, || {
         fake_ssh_pids(&f).is_empty().then_some(())
     });
     assert!(!port_open(f.local_port));
     assert!(!f.logs().join(".tunnel.pid").exists());
+}
+
+/// Guards #496 (`enabled_tunnel_starts_at_boot…` saw the status say `running` and then a refused connection on
+/// Linux CI). The race, made deterministic: a listener that is not atlas's holds the tunnel's local port when atlas
+/// starts, and goes away later. Contract (docs/runtime.md, SSH tunnel): the foreign listener is used as is and atlas
+/// starts no ssh, since a tunnel opened by hand is a legitimate setup; when it stops answering, the next health pass
+/// starts atlas's own ssh. The old test read the port once and failed whenever the foreign listener died between
+/// the status turning `running` and that read.
+#[test]
+fn a_foreign_listener_on_the_port_is_used_then_replaced_by_atlas_own_ssh_when_it_goes() {
+    require_python!();
+    let f = Fixture::new(true);
+    let foreign =
+        std::net::TcpListener::bind(("127.0.0.1", f.local_port)).expect("the leased port is free");
+    let mut h = f.spawn_headless();
+    f.wait_tunnel("running", HANG);
+    assert!(
+        f.invocations().is_empty(),
+        "atlas must not start ssh over a live foreign listener: {}",
+        f.diagnose(&h)
+    );
+    wait_for("foreign listener noted in tunnel.log", HANG, || {
+        std::fs::read_to_string(f.logs().join("tunnel.log"))
+            .ok()
+            .filter(|t| t.contains("already accepting connections; not starting ssh"))
+    });
+
+    // The foreign listener goes away: atlas notices on its next pass and brings up its own forward.
+    drop(foreign);
+    wait_for("atlas's own ssh took over the port", HANG, || {
+        (f.invocations().len() == 1 && fake_ssh_pids(&f).len() == 1 && port_open(f.local_port))
+            .then_some(())
+    });
+    f.wait_tunnel("running", HANG);
+    assert_eq!(f.invocations().len(), 1, "{}", f.diagnose(&h));
+
+    h.stop();
+    wait_for("ssh gone", HANG, || {
+        fake_ssh_pids(&f).is_empty().then_some(())
+    });
 }
 
 #[test]
@@ -271,7 +332,7 @@ fn disabled_tunnel_is_not_started_and_status_is_null() {
     require_python!();
     let f = Fixture::new(false);
     let mut h = f.spawn_headless();
-    wait_for("status file", Duration::from_secs(20), || {
+    wait_for("status file", HANG, || {
         (f.status()["services"]["ticker"]["state"] == "running").then_some(())
     });
     assert!(f.status()["tunnel"].is_null(), "{}", f.status());
@@ -285,16 +346,16 @@ fn killed_ssh_is_reconnected() {
     require_python!();
     let f = Fixture::new(true);
     let _h = f.spawn_headless();
-    f.wait_tunnel("running", Duration::from_secs(30));
+    f.wait_tunnel("running", HANG);
     let first = fake_ssh_pids(&f);
     assert_eq!(first.len(), 1, "{first:?}");
 
     kill_all_fake(&f);
-    wait_for("fake ssh respawned", Duration::from_secs(40), || {
+    wait_for("fake ssh respawned", HANG, || {
         let now = fake_ssh_pids(&f);
         (now.len() == 1 && now[0] != first[0] && port_open(f.local_port)).then_some(())
     });
-    f.wait_tunnel("running", Duration::from_secs(20));
+    f.wait_tunnel("running", HANG);
     assert!(f.invocations().len() >= 2, "{:?}", f.invocations());
 }
 
@@ -303,7 +364,7 @@ fn action_with_open_tunnel_starts_a_disabled_tunnel_runs_then_closes_it() {
     require_python!();
     let f = Fixture::new(false);
     let _h = f.spawn_headless();
-    wait_for("services up", Duration::from_secs(20), || {
+    wait_for("services up", HANG, || {
         (f.status()["services"]["ticker"]["state"] == "running").then_some(())
     });
     assert!(!port_open(f.local_port));
@@ -311,21 +372,21 @@ fn action_with_open_tunnel_starts_a_disabled_tunnel_runs_then_closes_it() {
     let resp = call_control(f.root(), "run_action", serde_json::json!({"action": "o"}));
     assert_eq!(resp["ok"], true, "{resp}");
 
-    wait_for("action ran", Duration::from_secs(30), || {
+    wait_for("action ran", HANG, || {
         f.root().join("ran.txt").exists().then_some(())
     });
     // Exactly one ssh was started for the action...
     assert_eq!(f.invocations().len(), 1);
     // ...and the on-demand tunnel is closed once the action finished: ssh gone,
     // port free, no `.tunnel.pid` left to be reused, status back to null.
-    wait_for("ssh gone", Duration::from_secs(15), || {
+    wait_for("ssh gone", HANG, || {
         fake_ssh_pids(&f).is_empty().then_some(())
     });
-    wait_for("port closed", Duration::from_secs(10), || {
+    wait_for("port closed", HANG, || {
         (!port_open(f.local_port)).then_some(())
     });
     assert!(!f.logs().join(".tunnel.pid").exists());
-    wait_for("status null", Duration::from_secs(10), || {
+    wait_for("status null", HANG, || {
         f.tunnel_state().is_none().then_some(())
     });
 
@@ -333,10 +394,10 @@ fn action_with_open_tunnel_starts_a_disabled_tunnel_runs_then_closes_it() {
     std::fs::remove_file(f.root().join("ran.txt")).unwrap();
     let resp = call_control(f.root(), "run_action", serde_json::json!({"action": "o"}));
     assert_eq!(resp["ok"], true, "{resp}");
-    wait_for("action ran again", Duration::from_secs(30), || {
+    wait_for("action ran again", HANG, || {
         f.root().join("ran.txt").exists().then_some(())
     });
-    wait_for("second ssh gone", Duration::from_secs(15), || {
+    wait_for("second ssh gone", HANG, || {
         (f.invocations().len() == 2 && fake_ssh_pids(&f).is_empty()).then_some(())
     });
 }
@@ -346,10 +407,10 @@ fn boot_enabled_tunnel_survives_an_open_tunnel_action() {
     require_python!();
     let f = Fixture::new(true);
     let _h = f.spawn_headless();
-    f.wait_tunnel("running", Duration::from_secs(30));
+    f.wait_tunnel("running", HANG);
     let resp = call_control(f.root(), "run_action", serde_json::json!({"action": "o"}));
     assert_eq!(resp["ok"], true, "{resp}");
-    wait_for("action ran", Duration::from_secs(30), || {
+    wait_for("action ran", HANG, || {
         f.root().join("ran.txt").exists().then_some(())
     });
     std::thread::sleep(Duration::from_secs(2));
@@ -357,7 +418,7 @@ fn boot_enabled_tunnel_survives_an_open_tunnel_action() {
         port_open(f.local_port),
         "boot tunnel is not closed by an action"
     );
-    f.wait_tunnel("running", Duration::from_secs(5));
+    f.wait_tunnel("running", HANG);
     assert_eq!(f.invocations().len(), 1);
 }
 
@@ -366,12 +427,12 @@ fn action_without_open_tunnel_never_touches_the_tunnel() {
     require_python!();
     let f = Fixture::new(false);
     let _h = f.spawn_headless();
-    wait_for("services up", Duration::from_secs(20), || {
+    wait_for("services up", HANG, || {
         (f.status()["services"]["ticker"]["state"] == "running").then_some(())
     });
     let resp = call_control(f.root(), "run_action", serde_json::json!({"action": "x"}));
     assert_eq!(resp["ok"], true, "{resp}");
-    wait_for("action ran", Duration::from_secs(20), || {
+    wait_for("action ran", HANG, || {
         f.root().join("ran-notunnel.txt").exists().then_some(())
     });
     assert!(f.invocations().is_empty());
@@ -383,13 +444,13 @@ fn open_tunnel_action_fails_without_running_when_tunnel_cannot_come_up() {
     let f = Fixture::new(false);
     std::fs::write(&f.fail_file, "Permission denied (publickey).").unwrap();
     let h = f.spawn_headless();
-    wait_for("services up", Duration::from_secs(20), || {
+    wait_for("services up", HANG, || {
         (f.status()["services"]["ticker"]["state"] == "running").then_some(())
     });
     let resp = call_control(f.root(), "run_action", serde_json::json!({"action": "o"}));
     assert_eq!(resp["ok"], true, "{resp}");
 
-    wait_for("action failure reported", Duration::from_secs(30), || {
+    wait_for("action failure reported", HANG, || {
         h.stderr()
             .contains("action Needs tunnel: failed")
             .then_some(())
@@ -411,7 +472,7 @@ fn open_tunnel_action_fails_without_running_when_tunnel_cannot_come_up() {
     );
     // A failed on-demand tunnel is closed with the action too (no retry loop
     // left running in the background): status goes back to null.
-    wait_for("tunnel closed", Duration::from_secs(10), || {
+    wait_for("tunnel closed", HANG, || {
         f.tunnel_state().is_none().then_some(())
     });
 }
@@ -423,7 +484,7 @@ fn tunnel_left_running_is_reused_only_when_verified() {
     // simulate "left running" by recording the fake ssh ourselves.
     let f = Fixture::new(true);
     let mut h1 = f.spawn_headless();
-    f.wait_tunnel("running", Duration::from_secs(30));
+    f.wait_tunnel("running", HANG);
     let pid = fake_ssh_pids(&f)[0];
     // Detach the ssh from run 1 so it survives atlas's exit, and record it.
     // (Setsid'd child: killing atlas does not signal it; atlas SIGKILLed → no cleanup.)
@@ -442,12 +503,10 @@ fn tunnel_left_running_is_reused_only_when_verified() {
     // Run 2: reuses the verified tunnel — no second ssh invocation.
     let before = f.invocations().len();
     let mut h2 = f.spawn_headless();
-    wait_for(
-        "run 2 to report the tunnel",
-        Duration::from_secs(30),
-        || h2.stdout().contains("reusing tunnel").then_some(()),
-    );
-    f.wait_tunnel("running", Duration::from_secs(30));
+    wait_for("run 2 to report the tunnel", HANG, || {
+        h2.stdout().contains("reusing tunnel").then_some(())
+    });
+    f.wait_tunnel("running", HANG);
     assert_eq!(f.invocations().len(), before, "must reuse, not respawn");
     assert!(h2.stderr().is_empty() || !h2.stderr().contains("failed"));
     // Our fake-ssh name matches ATLAS_SSH_BIN's basename, so it's adopted and
@@ -456,7 +515,7 @@ fn tunnel_left_running_is_reused_only_when_verified() {
     h2.stop();
     wait_for(
         &format!("adopted ssh killed\nstdout:\n{so}\nstderr:\n{se}"),
-        Duration::from_secs(10),
+        HANG,
         || fake_ssh_pids(&f).is_empty().then_some(()),
     );
 }
@@ -478,7 +537,7 @@ fn pid_record_pointing_at_a_non_ssh_process_is_ignored_and_never_killed() {
     )
     .unwrap();
     let mut h = f.spawn_headless();
-    f.wait_tunnel("running", Duration::from_secs(30));
+    f.wait_tunnel("running", HANG);
     // A fresh ssh was started (record rejected), and the bystander is untouched.
     assert_eq!(f.invocations().len(), 1);
     assert!(bystander.try_wait().unwrap().is_none(), "bystander killed!");
@@ -493,11 +552,9 @@ fn call_control(root: &Path, cmd: &str, args: Value) -> Value {
     use std::io::{BufRead, BufReader, Write};
     use std::os::unix::net::UnixStream;
     let sock = root.join(".logs/atlas.sock");
-    wait_for("control socket", Duration::from_secs(20), || {
-        sock.exists().then_some(())
-    });
+    wait_for("control socket", HANG, || sock.exists().then_some(()));
     let mut s = UnixStream::connect(&sock).unwrap();
-    s.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+    s.set_read_timeout(Some(HANG)).unwrap();
     let mut line = serde_json::json!({"cmd": cmd, "args": args}).to_string();
     line.push('\n');
     s.write_all(line.as_bytes()).unwrap();
@@ -580,7 +637,8 @@ fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() 
     require_python!();
     let dir = tempfile::TempDir::new().unwrap();
     let (remote_port, _echo) = echo_server();
-    let local_port = free_port();
+    let lease = reserve_port();
+    let local_port = lease.port();
     let fake = dir.path().join("fake-ssh");
     std::fs::write(&fake, FORWARDING_SSH).unwrap();
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -594,6 +652,7 @@ fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() 
     let (log, pids) = (dir.path().join("ssh.log"), dir.path().join("ssh.pids"));
     let out = dir.path().join("out.txt");
     let child = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--headless", "--dir", dir.path().to_str().unwrap()])
         .env("ATLAS_SSH_BIN", &fake)
         .env("FAKE_SSH_LOG", &log)
@@ -614,7 +673,7 @@ fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() 
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or(Value::Null)
     };
-    wait_for("remote db running", Duration::from_secs(30), || {
+    wait_for("remote db running", HANG, || {
         (status()["services"]["db"]["state"] == "running").then_some(())
     });
     // No local copy: atlas ran the forward, with the tunnel's options, on the service's port.
@@ -625,7 +684,7 @@ fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() 
         "{inv}"
     );
     // The local port reaches the remote service.
-    wait_for("echo through the forward", Duration::from_secs(10), || {
+    wait_for("echo through the forward", HANG, || {
         (echo_through(local_port).as_deref() == Some("ping")).then_some(())
     });
     // The SSH link drops: the forward is restarted and the service is reachable again.
@@ -636,7 +695,7 @@ fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() 
         .unwrap();
     // SAFETY: the exact pid our fake ssh wrote for itself.
     unsafe { libc_kill(first, 9) };
-    wait_for("forward restarted", Duration::from_secs(40), || {
+    wait_for("forward restarted", HANG, || {
         let n = std::fs::read_to_string(&pids)
             .unwrap_or_default()
             .lines()

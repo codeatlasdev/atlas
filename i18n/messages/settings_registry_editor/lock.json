@@ -1,0 +1,17 @@
+{
+  "pt-BR": {
+    "settings_registry_editor_buffer_line_height_description": "6e9bf47401cf",
+    "settings_registry_editor_buffer_size_description": "2d96b29ccf4f",
+    "settings_registry_editor_description": "31752cc16f47",
+    "settings_registry_editor_group_editing": "9bacee5dbd65",
+    "settings_registry_editor_label": "23278fb6dbe7",
+    "settings_registry_editor_lsp_custom_description": "6209f854c3e9",
+    "settings_registry_editor_lsp_custom_label": "09070a3d4cb9",
+    "settings_registry_editor_lsp_project_description": "848cd507ad25",
+    "settings_registry_editor_lsp_project_label": "edd770054329",
+    "settings_registry_editor_lsp_servers_description": "8dec1a6fff8c",
+    "settings_registry_editor_tab_editor_description": "ee97962fb31d",
+    "settings_registry_editor_tab_languages_description": "402a3af3efc7",
+    "settings_registry_editor_tab_languages_label": "e6140fcdf1d7"
+  }
+}

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/src/rust/frb_generated.dart';
@@ -13,6 +14,8 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/backdrop.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
+import 'package:atlas_mobile/core/ui/popup_watch.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
@@ -31,100 +34,109 @@ final _router = buildRouter();
 /// The app's routes. Tests build their own router to drive the real shell (one at a time: the root navigator's
 /// key is shared).
 @visibleForTesting
-GoRouter buildRouter() => GoRouter(
-  navigatorKey: _rootNavigatorKey,
-  routes: [
-    // ── Shell: one branch per tab; the bar is visible here ─────────────────
-    StatefulShellRoute(
-      builder: (context, state, shell) => ShellScaffold(shell: shell),
-      navigatorContainerBuilder: (context, shell, children) =>
-          FadeBranches(index: shell.currentIndex, children: children),
-      branches: [
-        // Branch 0 – Computers
-        StatefulShellBranch(
-          routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())],
-        ),
-        // Branch 1 – Atlas Crew
-        StatefulShellBranch(
-          routes: [
-            GoRoute(path: '/crew', builder: (_, _) => const CrewScreen()),
-          ],
-        ),
-        // Branch 2 – Inbox
-        StatefulShellBranch(
-          routes: [
-            GoRoute(path: '/inbox', builder: (_, _) => const InboxScreen()),
-          ],
-        ),
-        // Branch 3 – Settings
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/settings',
-              builder: (_, _) => const SettingsScreen(),
-            ),
-          ],
-        ),
-      ],
-    ),
+GoRouter buildRouter() {
+  // Every tab navigator reports its popups, so the shell hides the bar under any sheet or dialog.
+  final popups = PopupWatch();
+  return GoRouter(
+    navigatorKey: _rootNavigatorKey,
+    routes: [
+      // ── Shell: one branch per tab; the bar is visible here ─────────────────
+      StatefulShellRoute(
+        builder: (context, state, shell) =>
+            ShellScaffold(shell: shell, popups: popups.open),
+        navigatorContainerBuilder: (context, shell, children) =>
+            FadeBranches(index: shell.currentIndex, children: children),
+        branches: [
+          // Branch 0 – Computers
+          StatefulShellBranch(
+            observers: [popups.observer()],
+            routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())],
+          ),
+          // Branch 1 – Atlas Crew
+          StatefulShellBranch(
+            observers: [popups.observer()],
+            routes: [
+              GoRoute(path: '/crew', builder: (_, _) => const CrewScreen()),
+            ],
+          ),
+          // Branch 2 – Inbox
+          StatefulShellBranch(
+            observers: [popups.observer()],
+            routes: [
+              GoRoute(path: '/inbox', builder: (_, _) => const InboxScreen()),
+            ],
+          ),
+          // Branch 3 – Settings
+          StatefulShellBranch(
+            observers: [popups.observer()],
+            routes: [
+              GoRoute(
+                path: '/settings',
+                builder: (_, _) => const SettingsScreen(),
+              ),
+            ],
+          ),
+        ],
+      ),
 
-    // ── Detail routes on the root navigator: bar hides while these are open
-    GoRoute(
-      parentNavigatorKey: _rootNavigatorKey,
-      path: '/pair',
-      pageBuilder: (context, state) =>
-          routePage(context, state, const PairScreen()),
-    ),
-    GoRoute(
-      parentNavigatorKey: _rootNavigatorKey,
-      path: '/project',
-      pageBuilder: (context, state) {
-        final args = state.extra! as Map<String, dynamic>;
-        return routePage(
-          context,
-          state,
-          ProjectDetailScreen(
-            device: args['device'] as MacDevice,
-            project: args['project'] as ProjectInfo,
-          ),
-        );
-      },
-    ),
-    GoRoute(
-      parentNavigatorKey: _rootNavigatorKey,
-      path: '/terminal',
-      pageBuilder: (context, state) {
-        final args = state.extra! as Map<String, dynamic>;
-        return routePage(
-          context,
-          state,
-          TerminalScreen(
-            device: args['device'] as MacDevice,
-            pty: args['pty'] as String,
-            title: args['title'] as String?,
-            pane: args['pane'] as String?,
-          ),
-        );
-      },
-    ),
-    GoRoute(
-      parentNavigatorKey: _rootNavigatorKey,
-      path: '/crew/:nodeId/:crewmateId',
-      pageBuilder: (context, state) {
-        final args = (state.extra ?? {}) as Map<String, dynamic>;
-        return routePage(
-          context,
-          state,
-          CrewmateChatScreen(
-            device: args['device'] as MacDevice,
-            crewmateId: state.pathParameters['crewmateId']!,
-            scrollToTaskId: args['scrollToTaskId'] as String?,
-          ),
-        );
-      },
-    ),
-  ],
-);
+      // ── Detail routes on the root navigator: bar hides while these are open
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: '/pair',
+        pageBuilder: (context, state) =>
+            routePage(context, state, const PairScreen()),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: '/project',
+        pageBuilder: (context, state) {
+          final args = state.extra! as Map<String, dynamic>;
+          return routePage(
+            context,
+            state,
+            ProjectDetailScreen(
+              device: args['device'] as MacDevice,
+              project: args['project'] as ProjectInfo,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: '/terminal',
+        pageBuilder: (context, state) {
+          final args = state.extra! as Map<String, dynamic>;
+          return routePage(
+            context,
+            state,
+            TerminalScreen(
+              device: args['device'] as MacDevice,
+              pty: args['pty'] as String,
+              title: args['title'] as String?,
+              pane: args['pane'] as String?,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: '/crew/:nodeId/:crewmateId',
+        pageBuilder: (context, state) {
+          final args = (state.extra ?? {}) as Map<String, dynamic>;
+          return routePage(
+            context,
+            state,
+            CrewmateChatScreen(
+              device: args['device'] as MacDevice,
+              crewmateId: state.pathParameters['crewmateId']!,
+              scrollToTaskId: args['scrollToTaskId'] as String?,
+            ),
+          );
+        },
+      ),
+    ],
+  );
+}
 
 // ── Shell scaffold ─────────────────────────────────────────────────────────
 
@@ -134,8 +146,11 @@ GoRouter buildRouter() => GoRouter(
 /// Its only provider is [firstRunProvider], which changes once; the Inbox count lives in
 /// [_InboxBadgedTabBar] so a crew push does not rebuild the shell.
 class ShellScaffold extends ConsumerWidget {
-  const ShellScaffold({super.key, required this.shell});
+  const ShellScaffold({super.key, required this.shell, required this.popups});
   final StatefulNavigationShell shell;
+
+  /// True while a sheet or dialog is open on a tab: the bar steps out of the way (see [PopupWatch]).
+  final ValueListenable<bool> popups;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -161,7 +176,10 @@ class ShellScaffold extends ConsumerWidget {
                       top: false,
                       child: Padding(
                         padding: const EdgeInsets.only(bottom: Space.md),
-                        child: _InboxBadgedTabBar(shell: shell),
+                        child: _HidesUnderPopups(
+                          popups: popups,
+                          child: _InboxBadgedTabBar(shell: shell),
+                        ),
                       ),
                     ),
                   ),
@@ -173,6 +191,40 @@ class ShellScaffold extends ConsumerWidget {
           if (firstRun)
             const Positioned.fill(child: AtlasBackdrop(child: Onboarding())),
         ],
+      ),
+    );
+  }
+}
+
+/// The bar, gone while a popup is open: slid down and faded (cut with Reduce motion), never tappable and never
+/// read by a screen reader while hidden, so nothing of it can sit on a sheet's buttons.
+class _HidesUnderPopups extends StatelessWidget {
+  const _HidesUnderPopups({required this.popups, required this.child});
+  final ValueListenable<bool> popups;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = Motion.reduced(context) ? Duration.zero : Motion.normal;
+    return ValueListenableBuilder<bool>(
+      valueListenable: popups,
+      child: child,
+      builder: (context, hidden, child) => IgnorePointer(
+        ignoring: hidden,
+        child: ExcludeSemantics(
+          excluding: hidden,
+          child: AnimatedSlide(
+            offset: hidden ? const Offset(0, 1.5) : Offset.zero,
+            duration: d,
+            curve: Motion.ease,
+            child: AnimatedOpacity(
+              opacity: hidden ? 0 : 1,
+              duration: d,
+              curve: Motion.ease,
+              child: child,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -254,6 +306,8 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
       title: 'Atlas',
       debugShowCheckedModeBanner: false,
       theme: atlasTheme(),
+      localizationsDelegates: atlasLocalizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       routerConfig: _router,
       // The app's ground under every route; tapping a push opens the agent it is about, over whatever tab is
       // showing.

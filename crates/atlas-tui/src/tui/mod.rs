@@ -10,6 +10,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use atlas_core::crash;
+use atlas_i18n::t;
 use crossterm::{
     cursor,
     event::{DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange},
@@ -173,10 +174,7 @@ async fn attach(root_dir: &Path, select: &config::SelectionRequest, runner_pid: 
         .map(|(n, _)| n.as_str())
         .collect();
     if runner_services != local_services {
-        anyhow::bail!(
-            "atlas.yaml changed since the runner (pid {runner_pid}) started; \
-             run `atlas down` and then `atlas dev` to pick up the new config"
-        );
+        anyhow::bail!("{}", t!("tui_runtime_config_changed", pid = runner_pid));
     }
 
     // Local mirror: same config-derived data as a real run, but it never spawns or
@@ -196,7 +194,7 @@ async fn attach(root_dir: &Path, select: &config::SelectionRequest, runner_pid: 
         app::spawn_reader(sub),
     );
     if select.is_narrowed() {
-        app.toast_info("attached to the running runner; service selection arguments ignored");
+        app.toast_info(t!("tui_runtime_attached_ignored"));
     }
     // SIGTERM/SIGHUP (terminal closed) detach: never stop the runner's services.
     let signal_tx = app.manager_sender();
@@ -210,22 +208,28 @@ async fn attach(root_dir: &Path, select: &config::SelectionRequest, runner_pid: 
     match app.remote.as_ref().and_then(|r| r.leave) {
         Some(app::Leave::Stopped) => {
             // `StopRunner` already sent `shutdown`; just wait for the runner to finish.
-            eprintln!("stopping runner…");
+            eprintln!("{}", t!("tui_runtime_leave_stopping"));
             match crate::runner::wait_gone(root_dir, runner_pid, std::time::Duration::from_secs(20))
                 .await
             {
                 crate::runner::DownOutcome::Timeout { pid } => {
-                    eprintln!("runner (pid {pid}) is still stopping; check: atlas dev --status")
+                    eprintln!("{}", t!("tui_runtime_leave_still_stopping", pid = pid))
                 }
-                _ => eprintln!("atlas runner stopped"),
+                _ => eprintln!("{}", t!("tui_runtime_leave_stopped")),
             }
         }
-        Some(app::Leave::RunnerGone) => eprintln!("atlas runner stopped"),
-        _ => eprintln!(
-            "detached — services keep running · atlas dev to reattach · atlas down to stop"
-        ),
+        Some(app::Leave::RunnerGone) => eprintln!("{}", t!("tui_runtime_leave_stopped")),
+        _ => eprintln!("{}", t!("tui_runtime_leave_detached")),
     }
     Ok(())
+}
+
+/// The answer to a `[y/N]` prompt: an explicit yes, in English or in the language of the prompt (`[s/N]` in pt-BR).
+fn is_yes(answer: &str) -> bool {
+    matches!(
+        answer.trim().to_lowercase().as_str(),
+        "y" | "yes" | "s" | "sim"
+    )
 }
 
 pub async fn run(root_dir: &Path, select: &config::SelectionRequest) -> Result<()> {
@@ -255,23 +259,25 @@ pub async fn run(root_dir: &Path, select: &config::SelectionRequest) -> Result<(
         }
         if info.as_ref().is_some_and(|i| i.is_busy()) {
             // Alive, only loaded: never offer to kill it.
-            anyhow::bail!("atlas dev is running but busy; try again in a moment");
+            anyhow::bail!("{}", t!("tui_runtime_busy"));
         }
         if info.as_ref().is_some_and(|i| i.mode == "runner") {
             return attach(root_dir, select, info.map_or(0, |i| i.pid)).await;
         }
         // An owner TUI (or an unresponsive atlas): the classic prompt.
         eprint!(
-            "\x1b[1;33m◆\x1b[0m atlas dev already running (PID {prior_pid}).\n  Kill it and restart? [y/N] "
+            "\x1b[1;33m◆\x1b[0m {}\n  {} ",
+            t!("tui_runtime_running_notice", pid = prior_pid),
+            t!("tui_runtime_kill_confirm")
         );
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
-        if matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+        if is_yes(&input) {
             SingletonLock::kill_prior(prior_pid).await;
             // Remove stale lock file so acquire can create a fresh one
             let _ = std::fs::remove_file(&lock_path);
         } else {
-            eprintln!("\x1b[2m  Keeping existing session. Exiting.\x1b[0m");
+            eprintln!("\x1b[2m  {}\x1b[0m", t!("tui_runtime_keep_session"));
             return Ok(());
         }
     }

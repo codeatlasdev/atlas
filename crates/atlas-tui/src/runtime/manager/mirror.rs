@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use super::ServiceManager;
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 use crate::runtime::tunnel::TunnelStatus;
 
@@ -28,7 +29,7 @@ pub struct UnhealthyReport {
 pub struct MirrorFacts {
     pub exit_code: Option<i32>,
     pub restarts: u32,
-    pub note: Option<String>,
+    pub note: Option<Note>,
     pub completed_ok: bool,
     pub paused_by: Option<String>,
     pub deselected: bool,
@@ -36,7 +37,7 @@ pub struct MirrorFacts {
     /// Readiness column (`None` = no `ready` probe).
     pub ready: Option<bool>,
     /// Why the service is `degraded`.
-    pub probe_error: Option<String>,
+    pub probe_error: Option<Note>,
     /// Set while the service is `unhealthy`.
     pub unhealthy: Option<UnhealthyReport>,
     /// RSS, trend, budget standing and leak suspicion (`memory_*`, `budget_state` on the wire).
@@ -113,7 +114,10 @@ mod tests {
             MirrorFacts {
                 exit_code: Some(3),
                 restarts: 2,
-                note: Some("restarting in 4s (2/5)".into()),
+                note: Some(Note::new(
+                    "sched.restarting_in",
+                    serde_json::json!({"secs": 4, "attempt": 2, "limit": "5"}),
+                )),
                 completed_ok: false,
                 paused_by: None,
                 deselected: true,

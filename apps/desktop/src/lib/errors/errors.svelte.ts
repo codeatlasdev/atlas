@@ -7,11 +7,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { crumbs } from "./breadcrumbs.ts";
 import { gatherContext } from "./context.ts";
-import { classify, hostErrorReport, parseDiagnostics } from "./diagnostics.ts";
+import { hostErrorReport, parseDiagnostics } from "./diagnostics.ts";
+import { isHostFailure } from "#lib/hostText.ts";
 import {
 	fingerprint,
 	isBenign,
 	messageOf,
+	RESTART_HOST,
 	report,
 	withContext,
 	type ErrorOrigin,
@@ -23,6 +25,11 @@ const DEDUPE_MS = 10_000;
 const MAX_SEEN = 50;
 /** An outage keeps producing the same failure for as long as it lasts: one toast per minute, not per call. */
 const HOST_DEDUPE_MS = 60_000;
+/**
+ * How long the host must stay unreachable before the outage is shown. A live upgrade (update, app start) drops every
+ * client for a moment and the app reconnects within a second or two; that is no outage worth Restart / Report (#500).
+ */
+const HOST_GRACE_MS = 3_000;
 
 /** Host failures read the same everywhere: strip the home directory the OS error carried. */
 const hostText = (m: string) => m.replace(/\/(?:Users|home)\/[^/\s)]+/g, "~").trim();
@@ -36,6 +43,10 @@ class Errors {
 	crashing = $state<Record<string, true>>({});
 	#version: Promise<string | undefined> | undefined;
 	#seen = new Map<string, { at: number; id: number }>();
+	/** Host failures that have not lasted `hostGraceMs` yet, by key: shown when the timer fires, dropped by `hostReachable`. */
+	#waiting = new Map<string, { text: string; repeats: number; timer: number }>();
+	/** Tests set 0 to see an outage at once. */
+	hostGraceMs = HOST_GRACE_MS;
 	#next = 1;
 
 	/** Cached `system_info().app.version`; undefined when the call fails (tray webview, tests). */
@@ -61,7 +72,7 @@ class Errors {
 	async capture(e: unknown, where: string, origin: ErrorOrigin = "error") {
 		const message = messageOf(e);
 		if (isBenign(e, message)) return;
-		if (classify(message) === "host") return this.captureHost(message);
+		if (isHostFailure(e, message)) return this.captureHost(message);
 		const r = await this.enrich({ ...report(e, { where, origin }), version: await this.version() });
 		crumbs.add(`error: ${r.message.split("\n")[0]}`);
 		console.error(`[atlas] ${where}: ${r.message}`, e instanceof Error ? e : "");
@@ -98,13 +109,31 @@ class Errors {
 			live.repeats += 1;
 			return;
 		}
+		const waiting = this.#waiting.get(key);
+		if (waiting) {
+			waiting.repeats += 1;
+			return;
+		}
+		if (this.hostGraceMs <= 0) return this.#raiseHost(key, text, 0);
+		const w = {
+			text,
+			repeats: 0,
+			timer: window.setTimeout(() => {
+				this.#waiting.delete(key);
+				this.#raiseHost(key, text, w.repeats);
+			}, this.hostGraceMs),
+		};
+		this.#waiting.set(key, w);
+	}
+
+	#raiseHost(key: string, text: string, repeats: number) {
 		const id = this.#next++;
-		this.#seen.set(key, { at: now, id });
+		this.#seen.set(key, { at: Date.now(), id });
 		crumbs.add(`host: ${text.split("\n")[0]}`);
 		// Pushed before any await: concurrent callers (three tabs, a poll) must see it and fold into it.
 		const t = {
 			id,
-			repeats: 0,
+			repeats,
 			host: true,
 			report: {
 				message: text,
@@ -121,6 +150,18 @@ class Errors {
 		});
 	}
 
+	/**
+	 * The terminal host answers again (`host://reconnected`, a `pty_list` that succeeded): what was said about it being
+	 * away is no longer true. Failures still inside the grace are dropped, shown toasts are dismissed, and the next
+	 * outage starts from a clean slate. Other errors stay.
+	 */
+	hostReachable() {
+		for (const w of this.#waiting.values()) clearTimeout(w.timer);
+		this.#waiting.clear();
+		if (this.toasts.some((t) => t.host)) this.toasts = this.toasts.filter((t) => !t.host);
+		for (const k of [...this.#seen.keys()]) if (k.startsWith("host:")) this.#seen.delete(k);
+	}
+
 	/** Versions, OS and the redacted log tails; best effort, the screen is already showing a failure. */
 	async diagnose(r: ErrorReport): Promise<ErrorReport> {
 		const raw = await invoke("host_diagnostics").catch(() => null);
@@ -135,7 +176,7 @@ class Errors {
 	/** "Restart terminal host": ends its terminals; works when the host answers and when it does not. */
 	async restartHost(toastId?: number) {
 		if (toastId !== undefined) this.dismiss(toastId);
-		await invoke("host_restart_force").catch((e) => this.capture(e, "restart terminal host", "command"));
+		await invoke("host_restart_force").catch((e) => this.capture(e, RESTART_HOST, "command"));
 	}
 
 	/** Open the details dialog with the diagnostics attached (Copy as Markdown / Report read them). */

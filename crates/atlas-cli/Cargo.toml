@@ -1,6 +1,6 @@
 [package]
 name = "atlas-cli"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.27"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -26,7 +26,6 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 anyhow = { workspace = true }
 semver = { workspace = true }
-chrono = { workspace = true }
 sha2 = "0.11"
 hex = "0.4"
 self-replace = "1.5"
@@ -34,6 +33,7 @@ flate2 = { workspace = true }
 tar = "0.4"
 atlas-tui = { path = "../atlas-tui" }
 atlas-core = { path = "../atlas-core" }
+atlas-i18n = { path = "../atlas-i18n" }
 atlas-skills = { path = "../atlas-skills" }
 atlas-host = { path = "../atlas-host" }
 base64 = { workspace = true }
@@ -41,6 +41,11 @@ dirs = { workspace = true }
 tempfile = { workspace = true }
 qrcode = { version = "0.14", default-features = false }
 toml_edit = { version = "0.25.17", default-features = false, features = ["parse", "display"] }
+
+[dev-dependencies]
+# Test processes resolve English unless a test asks otherwise (`atlas_core::lang::TEST_ENV`);
+# `scaling::HANG` is the ceiling for tests that wait on a real event.
+atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
 
 [build-dependencies]
 # Version info of atlas.exe (ProductName, versions): what SignPath's artifact configuration and the

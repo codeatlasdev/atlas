@@ -1,0 +1,6 @@
+{
+	"update_empty_version": "Error of `atlas update` when GitHub answers with an empty version tag. Rare: a broken release feed.",
+	"update_failed": "Line printed after the red error prefix when the self-update that runs before a command (or the background one) fails. {error} is the reason, English or not.",
+	"update_older_release_managed": "Error from atlas update when it would roll back to an older release but a package manager (Homebrew, a distro package) owns this Atlas, so only that tool can install it.",
+	"update_restart_failed": "Line printed after the red error prefix when atlas updated itself but could not start the new version. {error} is the reason."
+}

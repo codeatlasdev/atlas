@@ -29,8 +29,9 @@ function fakeAtlas(dir: string, name: string, log: string, { code = 0, queue = t
 
 /** A PATH with only the basics, so a developer's real atlas never leaks into a test. */
 const bare = "/usr/bin:/bin";
+// `timeout` is a hang ceiling, like the 120 s `--timeout` of `bun run release:test`: a loaded runner stalls spawns for seconds.
 const run = (args: string[], env: Record<string, string>) =>
-	Bun.spawnSync(shArgv(script, ...args), { env: { PATH: bare, HOME: env.HOME ?? "/nonexistent", ...env }, timeout: 10_000 });
+	Bun.spawnSync(shArgv(script, ...args), { env: { PATH: bare, HOME: env.HOME ?? "/nonexistent", ...env }, timeout: 120_000 });
 /** A path as Git Bash reads it in PATH (`C:\x` → `/c/x`); unchanged elsewhere. */
 const posix = (p: string) =>
 	process.platform === "win32" ? p.replace(/^([A-Za-z]):/, (_, d: string) => `/${d.toLowerCase()}`).replaceAll("\\", "/") : p;
@@ -160,6 +161,17 @@ describe("heavy.sh with an atlas that predates the queue, or none", () => {
 		const env = fallbackEnv(dir);
 		writeFileSync(env.ATLAS_HEAVY_LOCK, "999999\n"); // the pid file of a process that no longer exists
 		const p = run(["sh", "-c", "exit 3"], env);
+		expect(p.exitCode).toBe(3);
+	});
+
+	// Incident (2026-11-16): /tmp (a tmpfs) filled up, `echo $$ >"$lock"` created the file but wrote nothing, and every
+	// later heavy job waited forever on "heavy: waiting for  to finish": an empty lock names no owner to check.
+	test("an empty lock (its writer could not write its pid) does not block the next job forever", () => {
+		const dir = mkdtempSync(join(tmpdir(), "heavy-"));
+		const env = fallbackEnv(dir);
+		writeFileSync(env.ATLAS_HEAVY_LOCK, "");
+		const p = run(["sh", "-c", "echo ran; exit 3"], env);
+		expect(p.stdout.toString().trim()).toBe("ran");
 		expect(p.exitCode).toBe(3);
 	});
 

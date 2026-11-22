@@ -9,14 +9,17 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use atlas_core::login_env::{self, Probe};
+use atlas_i18n::t;
 use serde::{Deserialize, Serialize};
 
 const SPAWN_WAIT: Duration = Duration::from_secs(8);
 
-/// Start the first probe in the background (call once at launch), with the Settings override applied.
+/// Start the first probe in the background (call once at launch), with the Settings override applied. `warm`, not
+/// `reprobe`: whoever asked for the environment first (the hostd spawn) already started the probe, and a second
+/// interactive login shell for the same answer cost 0.3 s to 6 s+ of CPU at every launch (#285).
 pub fn start() {
     login_env::set_override(load_settings().shell);
-    std::thread::spawn(|| report(login_env::reprobe()));
+    std::thread::spawn(|| report(login_env::current()));
 }
 
 /// Re-probe now (after a settings change); blocks.
@@ -29,6 +32,7 @@ pub fn reprobe() -> Probe {
 
 fn report(p: Probe) {
     if let Some(e) = &p.error {
+        // i18n-ignore: log
         eprintln!("atlas-desktop: shell env probe failed ({}): {e}", p.shell);
     }
 }
@@ -124,9 +128,9 @@ pub async fn shell_set(shell: Option<String>) -> Result<ShellInfo, String> {
     if let Some(s) = &shell
         && !is_executable(Path::new(s))
     {
-        return Err(format!("{s} is not an executable file"));
+        return Err(t!("native_notify_shell_not_executable", path = s.as_str()));
     }
-    let p = settings_path().ok_or("cannot locate home directory")?;
+    let p = settings_path().ok_or_else(|| t!("native_notify_no_home"))?;
     set_shell_at(&p, shell)?;
     tauri::async_runtime::spawn_blocking(|| info(Some(reprobe())))
         .await
@@ -248,7 +252,7 @@ pub fn settings_get() -> Settings {
 pub fn settings_patch(
     patch: serde_json::Map<String, serde_json::Value>,
 ) -> Result<Settings, String> {
-    let p = settings_path().ok_or("cannot locate home directory")?;
+    let p = settings_path().ok_or_else(|| t!("native_notify_no_home"))?;
     patch_settings_at(&p, patch)
 }
 

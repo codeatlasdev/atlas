@@ -1,5 +1,6 @@
 //! Folding `ManagerEvent`s (from the local manager) into app state.
 
+use atlas_i18n::t;
 use std::time::Instant;
 
 use super::super::messages::Effect;
@@ -29,14 +30,19 @@ impl App {
                 self.splash_done = true;
             }
             ManagerEvent::AllStopped => {}
-            ManagerEvent::CriticalAlert { service, message } => {
+            ManagerEvent::CriticalAlert { service, note } => {
+                let text = note.render();
                 if self.toast.is_none() {
                     self.set_toast(
-                        format!("CRITICAL: {service} – {message}"),
+                        t!(
+                            "tui_runtime_app_toast_critical",
+                            service = service.as_str(),
+                            message = text.as_str()
+                        ),
                         ToastVariant::Warning,
                     );
                 }
-                self.push_event(EventKind::Alert, service, message);
+                self.push_event(EventKind::Alert, service, text);
             }
             ManagerEvent::ActionProgress { label, line } => {
                 if let Some(op) = self.operation.as_mut()
@@ -50,7 +56,13 @@ impl App {
                 let (msg, variant) = if ok {
                     (label.clone(), ToastVariant::Success)
                 } else {
-                    (format!("{label} failed"), ToastVariant::Error)
+                    (
+                        t!(
+                            "tui_runtime_app_toast_action_failed",
+                            label = label.as_str()
+                        ),
+                        ToastVariant::Error,
+                    )
                 };
                 self.toast = Some((msg, variant, Instant::now()));
                 self.finish_operation(&label, ok);
@@ -59,9 +71,9 @@ impl App {
                 }
             }
             ManagerEvent::StatusChanged => {}
-            ManagerEvent::ServiceNote { name, message } => {
-                let kind = classify_note(&message);
-                self.push_event(kind, name, message);
+            ManagerEvent::ServiceNote { name, note } => {
+                let kind = classify_note(&note);
+                self.push_event(kind, name, note.render());
             }
             ManagerEvent::LogReady { name } => self.manager.mark_log_ready(&name),
             ManagerEvent::TunnelState { state } => {
@@ -72,18 +84,27 @@ impl App {
                 self.push_event(
                     EventKind::Tunnel,
                     "tunnel".to_string(),
-                    format!("{state:?}").to_lowercase(),
+                    state.label().to_lowercase(),
                 );
                 self.manager.write_status_file();
             }
             ManagerEvent::DepsInstalled => {
-                self.set_toast("Dependencies installed", ToastVariant::Info);
+                self.set_toast(
+                    t!("tui_runtime_app_toast_deps_installed"),
+                    ToastVariant::Info,
+                );
                 self.deps_done();
             }
             // Like tools/dev: a failed install is reported but does not block the
             // services (they fail with their own clear errors if deps are missing).
             ManagerEvent::DepsFailed { reason } => {
-                self.set_toast(format!("pre_command failed: {reason}"), ToastVariant::Error);
+                self.set_toast(
+                    t!(
+                        "tui_runtime_app_toast_deps_failed",
+                        reason = reason.render().as_str()
+                    ),
+                    ToastVariant::Error,
+                );
                 self.deps_done();
             }
             ManagerEvent::InfraFailed { names, reason } => {

@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
 import { BRACKET_CLASSES, scanBrackets } from "./bracketColors.ts";
+import { growth, linearBound } from "../../../test/scaling.ts";
 
 test("depth increases on openers and returns on closers", () => {
 	const r = scanBrackets("({[]})", 0, [], 0, 100);
@@ -41,9 +42,16 @@ test("work is capped and reported", () => {
 	expect(r.truncated).toBe(true);
 });
 
-test("a 10k-line viewport scans fast", () => {
-	const text = "foo(bar[1], {a: (2)});\n".repeat(10_000);
-	const t = performance.now();
-	scanBrackets(text, 0, [], 0, Infinity);
-	expect(performance.now() - t).toBeLessThan(500);
+// The scan runs on the visible text on every viewport change: it must cost time linear in the lines it is given (CPU time
+// at 8x the lines over the cost at 1x, test/scaling.ts: ~8 for a linear pass, ~64 for a quadratic one), not a wall-clock
+// budget, which a loaded machine fails with nothing regressed.
+test("a viewport scan costs linear time in its lines", () => {
+	const open = (lines: number) => {
+		const text = "foo(bar[1], {a: (2)});\n".repeat(lines);
+		return () => scanBrackets(text, 0, [], 0, Infinity);
+	};
+	expect(scanBrackets("foo(bar[1], {a: (2)});\n".repeat(10_000), 0, [], 0, Infinity).brackets).toHaveLength(
+		80_000,
+	);
+	expect(growth(open, 500)).toBeLessThan(linearBound());
 });

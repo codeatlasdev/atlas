@@ -1,6 +1,8 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
 import fixture from "../__fixtures__/hygiene-report.json";
+import { list } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import { byDisk, bytes, fixSummary, fixedText, indexedDirs, projectTotal } from "./hygiene.ts";
 
 // Contract: the fixture is the REAL serialization of `atlas_core::hygiene::Report` (Rust test
@@ -19,7 +21,7 @@ test("sizes use binary units and never show a fraction of a kilobyte", () => {
 	expect(bytes(1024)).toBe("1 KB");
 	expect(bytes(1536 * 1024)).toBe("1.5 MB");
 	expect(bytes(3 * 1024 ** 3)).toBe("3.0 GB");
-	expect(bytes(2048 * 1024 ** 4)).toBe("2048.0 TB");
+	expect(bytes(2048 * 1024 ** 4)).toBe("2,048.0 TB");
 });
 
 test("the biggest project leads and the input is not reordered", () => {
@@ -30,7 +32,13 @@ test("the biggest project leads and the input is not reordered", () => {
 });
 
 test("the fix summary names only what there is to do, and nothing when clean", () => {
-	expect(fixSummary(fixture)).toBe("end 1 orphaned process, free 2 KB, keep Spotlight out of 1 folder");
+	expect(fixSummary(fixture)).toBe(
+		list([
+			m.settings_general_hygiene_todo_end({ count: 1 }),
+			m.settings_general_hygiene_todo_free({ size: "2 KB" }),
+			m.settings_general_hygiene_todo_spotlight({ count: 1 }),
+		]),
+	);
 	const clean = {
 		...fixture,
 		orphans: [],

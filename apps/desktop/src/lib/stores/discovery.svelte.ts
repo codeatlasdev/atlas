@@ -5,6 +5,7 @@ import { addable, parsePrefs, type Found } from "#lib/components/sidebar/discove
 import { sound } from "#lib/sound/sound.svelte.ts";
 import { discoverySound } from "#lib/sound/triggers.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 type ScanEvent =
 	| ({ t: "found" } & Found)
@@ -116,7 +117,7 @@ class Discovery {
 	async init(dir: string): Promise<string | undefined> {
 		const p = await store.run(`init:${dir}`, () => api.initProject(dir));
 		if (!p) return;
-		toast.success(`Created atlas.yaml in ${p.name}`);
+		toast.success(m.shell_toasts_atlas_yaml_created({ name: p.name }));
 		await store.refresh();
 		// The folder now has a config: show it as a regular project.
 		const i = this.found.findIndex((x) => x.path === dir);

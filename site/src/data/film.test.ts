@@ -2,10 +2,12 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { filmClock, filmSeconds, filmWords, FILM_DURATION, mobileFilmUi, needsRotate } from "./film";
+import { filmClock, filmSeconds, filmWords as spoken, FILM_DURATION, mobileFilmUi, needsRotate } from "./film";
 
 const src = join(import.meta.dir, "..");
 const chapters = JSON.parse(readFileSync(join(src, "../public/media/film-chapters.json"), "utf8"));
+// The spoken length is a catalog message: these tests pin the language instead of taking whichever one an earlier test left in the runtime.
+const filmWords = (s: number) => spoken(s, "en");
 
 // Incident (2026-10-13): the heading said "78 seconds", the player's idle button "1:18" and its running clock "0:27 / 1:17"
 // (floor), all typed by hand. One rule now: the TOTAL is the duration rounded to whole seconds, everything derives from it.
@@ -29,6 +31,19 @@ test("a re-cut changes the copy: lengths around the boundaries", () => {
 	expect(filmWords(61)).toBe("1 minute 1 second");
 	expect(filmClock(9.5)).toBe("0:10");
 	expect(filmWords(1)).toBe("1 second");
+	expect(filmWords(125)).toBe("2 minutes 5 seconds");
+	expect(filmWords(66)).toBe("1 minute 6 seconds");
+	expect(filmWords(181)).toBe("3 minutes 1 second");
+});
+
+// Incident (2026-11-18, i18n pt-zero rule): CLDR puts 0 in pt-BR's `one`, so a length of 0 s (metadata not loaded yet,
+// filmSeconds clamps NaN to 0) was announced as "0 segundo".
+test("pt-BR: a zero length is plural (\"0 segundos\"), never \"0 segundo\"", () => {
+	expect(spoken(0, "pt-BR")).toBe("0 segundos");
+	expect(spoken(Number.NaN, "pt-BR")).toBe("0 segundos");
+	expect(spoken(1, "pt-BR")).toBe("1 segundo");
+	expect(spoken(60, "pt-BR")).toBe("1 minuto");
+	expect(spoken(0, "en")).toBe("0 seconds");
 });
 
 test("invalid durations never print NaN", () => {

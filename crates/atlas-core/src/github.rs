@@ -11,7 +11,9 @@
 //!   version the channel accepts, see [`crate::channel::resolve`];
 //! - release notes are the `## [X.Y.Z] - date` sections of `CHANGELOG.md` at that tag
 //!   (the release body is the same section, extracted by `release.yml`);
-//! - assets come from the public `releases/download` URLs.
+//! - assets come from the public `releases/download` URLs;
+//! - a version on the yank list (`data/yanked.json` on `main`, [`crate::yanked`]) is never offered:
+//!   it is dropped from the candidates of every channel before one is picked.
 //!
 //! Failure policy: no lookup ever answers with a different release than the one asked for.
 //! An unreadable feed is [`GithubError::Feed`]; a newest tag whose `manifest.json` could not
@@ -25,6 +27,7 @@ use std::process::{Command, Stdio};
 use thiserror::Error;
 
 use crate::channel::{self, Channel};
+use crate::yanked::{self, Yank, YankList};
 
 pub const MISSING: &str = "curl not found — install it and try again";
 
@@ -164,6 +167,33 @@ impl Net {
 }
 
 impl Net {
+    /// The yank list of `repo` (`data/yanked.json` on `main`, the same raw host as the changelog).
+    /// Any failure (offline, 404, a file that does not parse) is logged and answers an empty list:
+    /// the list may only remove offers, so not knowing it must never stop an update.
+    fn yanked(&self, repo: &str) -> YankList {
+        let mut c = self.curl();
+        // A missing list (404) is an answer, not a flake: no retries, or every update check waits 3 s for it
+        // (`base_curl` retries every error three times, a second apart). The later option wins.
+        c.args(["--retry", "0"]);
+        c.arg(format!(
+            "https://raw.githubusercontent.com/{repo}/main/{}",
+            yanked::PATH
+        ));
+        let read = run(c).and_then(|body| {
+            YankList::parse(&String::from_utf8_lossy(&body))
+                .map_err(|e| GithubError::Failed(format!("{} does not parse: {e}", yanked::PATH)))
+        });
+        read.unwrap_or_else(|e| {
+            eprintln!("atlas: could not read the yank list, offering every release: {e}");
+            YankList::default()
+        })
+    }
+
+    /// The yank entry of the version a client runs, `None` when it is not yanked.
+    fn yank_of(&self, repo: &str, version: &str) -> Option<Yank> {
+        self.yanked(repo).find(version).cloned()
+    }
+
     /// `CHANGELOG.md` of `repo` at `tag`.
     fn changelog(&self, repo: &str, tag: &str) -> Result<String, GithubError> {
         let mut c = self.curl();
@@ -313,17 +343,28 @@ impl Net {
     /// feed pages (`?after=` the oldest tag seen) while a run of prereleases hides every
     /// Stable. The first page is `first` (already fetched by the caller), so the common case
     /// costs nothing. `Ok(None)` means there is no Stable; a feed page that cannot be read is
-    /// an error, because a Stable may be behind it.
+    /// an error, because a Stable may be behind it. A yanked tag is never the answer (a run of
+    /// yanked Stables is read past like a run of prereleases), including when `latest` names it.
     fn stable_tag(
         &self,
         repo: &str,
         first: &[String],
         latest: Option<&str>,
+        yanked: &YankList,
     ) -> Result<Option<String>, GithubError> {
         let mut seen: Vec<String> = first.to_vec();
         let mut page = first.len();
+        let latest = latest.filter(|t| !yanked.is_yanked(t));
+        let live = |seen: &[String]| {
+            stable_from(
+                seen.iter()
+                    .map(String::as_str)
+                    .filter(|t| !yanked.is_yanked(t)),
+                latest,
+            )
+        };
         for _ in 0..STABLE_PAGES {
-            let found = stable_from(seen.iter().map(String::as_str), latest);
+            let found = live(&seen);
             // A feed page is 10 long; a shorter one is the end of the history.
             if found.is_some() || page < 10 {
                 return Ok(found);
@@ -338,7 +379,7 @@ impl Net {
             }
             seen.extend(older);
         }
-        Ok(stable_from(seen.iter().map(String::as_str), latest))
+        Ok(live(&seen))
     }
 
     /// `HEAD` on the release's `manifest.json`: the tag is pushed before the release is built
@@ -391,11 +432,16 @@ impl Net {
     fn channel_tag(&self, repo: &str, channel: Channel) -> Result<String, GithubError> {
         let latest = self.latest_tag(repo);
         let feed = atom_tags(&self.atom(repo)?);
-        let stable = self.stable_tag(repo, &feed, latest.as_deref().ok())?;
+        let yanked = self.yanked(repo);
+        let stable = self.stable_tag(repo, &feed, latest.as_deref().ok(), &yanked)?;
         let found = if channel == Channel::Stable {
             stable.clone()
         } else {
-            let mut candidates: Vec<&str> = feed.iter().map(String::as_str).collect();
+            let mut candidates: Vec<&str> = feed
+                .iter()
+                .map(String::as_str)
+                .filter(|t| !yanked.is_yanked(t))
+                .collect();
             candidates.extend(stable.as_deref());
             self.newest_published(repo, channel, candidates, stable.as_deref())?
         };
@@ -404,6 +450,12 @@ impl Net {
             Ok(_) => GithubError::Failed(format!("{repo} has no Stable release")),
         })
     }
+}
+
+/// Whether `version` (what a client runs) was withdrawn, and why. Reads the yank list from `main`; an
+/// unreadable list answers `None` (logged), so this never blocks anything.
+pub fn yank_of(repo: &str, version: &str) -> Option<Yank> {
+    Net::system().yank_of(repo, version)
 }
 
 /// The tag `channel` follows, without fetching the changelog (what update checks need). An
@@ -498,8 +550,12 @@ impl Net {
         // different channel's release.
         let latest = self.latest_tag(repo).ok();
         let feed = self.atom(repo).map(|x| atom_tags(&x));
+        let yanked = self.yanked(repo);
         let stable = match &feed {
-            Ok(f) => self.stable_tag(repo, f, latest.as_deref()).ok().flatten(),
+            Ok(f) => self
+                .stable_tag(repo, f, latest.as_deref(), &yanked)
+                .ok()
+                .flatten(),
             Err(_) => None,
         };
         let tags = |c: Channel| -> Option<String> {
@@ -507,7 +563,11 @@ impl Net {
                 return stable.clone();
             }
             let feed = feed.as_ref().ok()?;
-            let mut cand: Vec<&str> = feed.iter().map(String::as_str).collect();
+            let mut cand: Vec<&str> = feed
+                .iter()
+                .map(String::as_str)
+                .filter(|t| !yanked.is_yanked(t))
+                .collect();
             cand.extend(stable.as_deref());
             self.newest_published(repo, c, cand, stable.as_deref())
                 .ok()
@@ -918,6 +978,12 @@ case "$last" in
     [ -f "$d/fail-download" ] && {{ echo 'curl: (28) Operation too slow' >&2; exit 28; }}
     have=0; [ $resume = 1 ] && [ -f "$out" ] && have=$(wc -c < "$out" | tr -d ' ')
     if [ "$have" -gt 0 ]; then tail -c +$((have + 1)) "$d/payload" >> "$out"; else cp "$d/payload" "$out"; fi ;;
+  */data/yanked.json)
+    # Never retried: curl would repeat a 404 three times, a second apart, in every update check.
+    retry=; prev=; for a; do [ "$prev" = --retry ] && retry=$a; prev=$a; done
+    [ "$retry" = 0 ] || {{ echo "stub curl: the yank list must not be retried (--retry $retry)" >&2; exit 2; }}
+    [ -f "$d/yanked" ] || {{ echo 'curl: (22) The requested URL returned error: 404' >&2; exit 22; }}
+    cat "$d/yanked" ;;
   */CHANGELOG.md)
     tag=${{last%/CHANGELOG.md}}; tag=${{tag##*/}}
     [ -f "$d/changelog-$tag" ] || {{ echo 'curl: (22) The requested URL returned error: 404' >&2; exit 22; }}
@@ -1217,6 +1283,145 @@ esac
         }
     }
 
+    // #313: the yank list takes effect without a release. A yanked version is never offered, by any
+    // channel, in the offer or in the channel cards; the next older one that is published is.
+    #[cfg(unix)]
+    fn yank(dir: &Path, versions: &[&str]) {
+        let entries: Vec<String> = versions
+            .iter()
+            .map(|v| format!(r#"{{"version":"{v}","reason":"corrupts the workspace"}}"#))
+            .collect();
+        put(
+            dir,
+            "yanked",
+            &format!(r#"{{"yanked":[{}]}}"#, entries.join(",")),
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_yanked_alpha_is_skipped_for_the_next_published_one_without_probing_it() {
+        let dir = tempfile::tempdir().unwrap();
+        put(
+            dir.path(),
+            "latest",
+            "https://github.com/o/r/releases/tag/v1.5.0-alpha.3",
+        );
+        put(
+            dir.path(),
+            "feed",
+            &atom_of(&["v1.5.0-alpha.3", "v1.5.0-alpha.2", "v1.4.0"]),
+        );
+        // alpha.3 has no `code-` file: probing it would be an error, so passing proves it is skipped first.
+        put(dir.path(), "code-v1.5.0-alpha.2", "200");
+        yank(dir.path(), &["1.5.0-alpha.3"]);
+        let net = stub_curl(dir.path());
+        assert_eq!(
+            net.channel_tag("o/r", Channel::Alpha).unwrap(),
+            "v1.5.0-alpha.2"
+        );
+        // Beta never saw an alpha: still the Stable.
+        assert_eq!(net.channel_tag("o/r", Channel::Beta).unwrap(), "v1.4.0");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_yanked_stable_falls_back_to_the_previous_stable_even_when_the_latest_redirect_names_it() {
+        let dir = tempfile::tempdir().unwrap();
+        put(
+            dir.path(),
+            "latest",
+            "https://github.com/o/r/releases/tag/v1.4.1",
+        );
+        put(dir.path(), "feed", &atom_of(&["v1.4.1", "v1.4.0"]));
+        yank(dir.path(), &["1.4.1"]);
+        let net = stub_curl(dir.path());
+        for c in Channel::ALL {
+            assert_eq!(net.channel_tag("o/r", c).unwrap(), "v1.4.0", "{c}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn channel_cards_never_offer_a_yanked_version() {
+        let dir = tempfile::tempdir().unwrap();
+        put(
+            dir.path(),
+            "latest",
+            "https://github.com/o/r/releases/tag/v1.5.0-alpha.3",
+        );
+        put(
+            dir.path(),
+            "feed",
+            &atom_of(&["v1.5.0-alpha.3", "v1.5.0-alpha.2", "v1.4.0"]),
+        );
+        put(dir.path(), "code-v1.5.0-alpha.2", "200");
+        yank(dir.path(), &["1.5.0-alpha.3"]);
+        let net = stub_curl(dir.path());
+        let installed = semver::Version::parse("1.4.0").unwrap();
+        let views = net.channel_views("o/r", &installed, Channel::Alpha);
+        let alpha = views.iter().find(|v| v.channel == Channel::Alpha).unwrap();
+        assert_eq!(alpha.offered.as_deref(), Some("1.5.0-alpha.2"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_yank_list_never_blocks_an_update() {
+        let dir = tempfile::tempdir().unwrap();
+        put(
+            dir.path(),
+            "latest",
+            "https://github.com/o/r/releases/tag/v1.5.0-alpha.3",
+        );
+        put(dir.path(), "feed", &atom_of(&["v1.5.0-alpha.3", "v1.4.0"]));
+        put(dir.path(), "code-v1.5.0-alpha.3", "200");
+        let net = stub_curl(dir.path());
+        // 404 (no file), an HTML error page and a half-written file all mean "nothing is yanked".
+        for body in [
+            None,
+            Some("<html>502</html>"),
+            Some(r#"{"yanked":[{"version""#),
+        ] {
+            let _ = std::fs::remove_file(dir.path().join("yanked"));
+            if let Some(b) = body {
+                put(dir.path(), "yanked", b);
+            }
+            assert_eq!(
+                net.channel_tag("o/r", Channel::Alpha).unwrap(),
+                "v1.5.0-alpha.3",
+                "{body:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_committed_yank_list_is_what_the_client_reads() {
+        // The real file, as main serves it, through the real fetch path.
+        let dir = tempfile::tempdir().unwrap();
+        put(
+            dir.path(),
+            "yanked",
+            include_str!("../../../data/yanked.json"),
+        );
+        let net = stub_curl(dir.path());
+        assert_eq!(
+            net.yanked("o/r"),
+            crate::yanked::YankList::parse(include_str!("../../../data/yanked.json")).unwrap()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_running_yanked_version_is_reported_with_its_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        yank(dir.path(), &["1.5.0-alpha.3"]);
+        let net = stub_curl(dir.path());
+        let y = net.yank_of("o/r", "1.5.0-alpha.3").unwrap();
+        assert_eq!(y.reason, "corrupts the workspace");
+        assert!(net.yank_of("o/r", "1.5.0-alpha.4").is_none());
+    }
+
     // G6: curl flags. Metadata retries and has a connect timeout; downloads have a stall guard
     // and resume instead of a total time cap.
     #[test]
@@ -1258,14 +1463,21 @@ esac
     }
 
     // The watcher's stall guard: a download that stops growing is an error, one that keeps
-    // growing slowly is fine.
+    // growing slowly is fine. The hung process lives for 60 s and says so in `finished` if it gets to the end: a
+    // watcher that waited for it instead of killing it leaves that file (no stopwatch involved).
     #[cfg(unix)]
     #[test]
     fn a_stalled_download_is_an_error_and_the_process_is_stopped() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("a.bin");
-        let script = format!("printf aaaa > {}; sleep 30", dest.display());
-        let started = std::time::Instant::now();
+        let finished = dir.path().join("finished");
+        let pidfile = dir.path().join("pid");
+        let script = format!(
+            "echo $$ > {}; printf aaaa > {}; sleep 60; touch {}",
+            pidfile.display(),
+            dest.display(),
+            finished.display()
+        );
         let e = watch_download(
             sh(&script),
             &dest,
@@ -1279,8 +1491,17 @@ esac
         .unwrap_err();
         assert!(e.to_string().contains("stalled at 4 bytes"), "{e}");
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(10),
+            !finished.exists(),
             "the hung process must be killed, not waited for"
+        );
+        let pid: u32 = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(
+            !crate::sys::pid_alive(pid),
+            "the hung process is still running"
         );
     }
 
@@ -1289,10 +1510,11 @@ esac
     fn a_slow_download_that_keeps_moving_is_never_cut_off() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("a.bin");
-        // 6 chunks 150 ms apart (~0.9 s total) against a 400 ms stall limit: slower than the
-        // limit overall, but never idle for as long as it.
+        // 6 chunks 250 ms apart (~1.5 s total) against a 1.2 s stall limit: slower than the limit
+        // overall, but never idle for as long as it. (150 ms against 400 ms was too thin a margin:
+        // a loaded macOS CI runner took longer than 400 ms between two `printf`s.)
         let script = format!(
-            "for i in 1 2 3 4 5 6; do printf x >> {d}; sleep 0.15; done",
+            "for i in 1 2 3 4 5 6; do printf x >> {d}; sleep 0.25; done",
             d = dest.display()
         );
         let mut last = (0, 0);
@@ -1302,7 +1524,7 @@ esac
             6,
             Watch {
                 poll: std::time::Duration::from_millis(10),
-                stall: std::time::Duration::from_millis(400),
+                stall: std::time::Duration::from_millis(1200),
             },
             |d, t| last = (d, t),
         )

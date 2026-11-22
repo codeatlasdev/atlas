@@ -1,0 +1,211 @@
+{
+	"cmd_hostd_approval_unanswered": "{crewmate} waited for approval to run {tool}, but nobody answered. The call was denied.",
+	"cmd_hostd_ask_restart": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Restart now and end {count} terminal?",
+				"countPlural=*": "Restart now and end {count} terminals?"
+			}
+		}
+	],
+	"cmd_hostd_check_fix": "Fix:",
+	"cmd_hostd_check_fix_asks": "asks first",
+	"cmd_hostd_check_fix_asks_ends": "asks first; ends the terminals above",
+	"cmd_hostd_check_fix_live": "hands the terminals over live, nothing is lost",
+	"cmd_hostd_check_fix_restart": "restart now (ends running terminals)",
+	"cmd_hostd_check_not_running": "Terminal host is not running ({dir}).",
+	"cmd_hostd_check_older": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Terminal host {version} (pid {pid}, up {uptime}, no terminals) is older than Atlas {bundled}.",
+				"countExact=*, countPlural=one": "Terminal host {version} (pid {pid}, up {uptime}, {count} terminal) is older than Atlas {bundled}.",
+				"countExact=*, countPlural=*": "Terminal host {version} (pid {pid}, up {uptime}, {count} terminals) is older than Atlas {bundled}."
+			}
+		}
+	],
+	"cmd_hostd_check_older_features": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Terminal host {version} (pid {pid}, up {uptime}, no terminals) is older than Atlas {bundled}; {features} are off until it restarts.",
+				"countExact=*, countPlural=one": "Terminal host {version} (pid {pid}, up {uptime}, {count} terminal) is older than Atlas {bundled}; {features} are off until it restarts.",
+				"countExact=*, countPlural=*": "Terminal host {version} (pid {pid}, up {uptime}, {count} terminals) is older than Atlas {bundled}; {features} are off until it restarts."
+			}
+		}
+	],
+	"cmd_hostd_check_running_terminals": "Running terminals:",
+	"cmd_hostd_crew_paused": "crew paused",
+	"cmd_hostd_crew_resumed": "crew resumed",
+	"cmd_hostd_ctx_handoff": "handoff",
+	"cmd_hostd_current": "Terminal host {version} is current.",
+	"cmd_hostd_disconnected": "hostd disconnected",
+	"cmd_hostd_exported": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "exported no crewmates",
+				"countExact=*, countPlural=one": "exported {count} crewmate",
+				"countExact=*, countPlural=*": "exported {count} crewmates"
+			}
+		}
+	],
+	"cmd_hostd_feature_agents": "agent status",
+	"cmd_hostd_feature_lsp": "language features",
+	"cmd_hostd_feature_pty_attach_raw": "fast terminal rendering",
+	"cmd_hostd_features_list": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count"
+			],
+			"selectors": [
+				"countExact"
+			],
+			"match": {
+				"countExact=1": "{first}",
+				"countExact=2": "{first} and {second}",
+				"countExact=*": "{first}, {second}, and {third}"
+			}
+		}
+	],
+	"cmd_hostd_imported": "imported {name} ({new_id})",
+	"cmd_hostd_imported_renamed": "imported {name} ({new_id}), was {old_id}",
+	"cmd_hostd_kept": "Kept as is. Restart it later: atlas hostd --restart (or quit the terminals and run atlas hostd --reconcile).",
+	"cmd_hostd_login_no_terminal": "hostd answered without a terminal",
+	"cmd_hostd_mode_ask": "Ask",
+	"cmd_hostd_mode_bypass": "Bypass",
+	"cmd_hostd_mode_edits": "Accept edits",
+	"cmd_hostd_not_running": "Terminal host is not running.",
+	"cmd_hostd_not_running_desktop": "atlas hostd is not running; open Atlas Desktop",
+	"cmd_hostd_not_running_in": "atlas hostd is not running ({dir})",
+	"cmd_hostd_pair_no_address": "the pairing endpoint has no address a phone could dial (no relay, no LAN address): is this machine online?",
+	"cmd_hostd_project_down_still_stopping": "Atlas (pid {pid}) is still stopping the stack",
+	"cmd_hostd_reconcile_upgraded": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Terminal host upgraded to {version}; no terminals kept.",
+				"countExact=*, countPlural=one": "Terminal host upgraded to {version}; {count} terminal kept.",
+				"countExact=*, countPlural=*": "Terminal host upgraded to {version}; {count} terminals kept."
+			}
+		}
+	],
+	"cmd_hostd_restarted_ended": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Terminal host restarted ({version}); no terminals ended.",
+				"countExact=*, countPlural=one": "Terminal host restarted ({version}); {count} terminal ended.",
+				"countExact=*, countPlural=*": "Terminal host restarted ({version}); {count} terminals ended."
+			}
+		}
+	],
+	"cmd_hostd_restarted_idle": "Terminal host restarted ({version}); no terminal was running.",
+	"cmd_hostd_stop_timeout": "the old terminal host did not stop",
+	"cmd_hostd_stopped": "atlas hostd stopped",
+	"cmd_hostd_telegram_mode_line": "{name}: {mode}",
+	"cmd_hostd_telegram_mode_none": "No crewmates configured.",
+	"cmd_hostd_telegram_mode_not_found": "Crewmate '{name}' not found.",
+	"cmd_hostd_telegram_mode_refused": "Not changed: {why}",
+	"cmd_hostd_telegram_mode_set": "{name} is now in {mode} mode. It applies from the next tool call.",
+	"cmd_hostd_telegram_mode_usage": "Usage: /mode lists every crewmate's mode; /mode <crewmate> <ask|edits|bypass> changes one.",
+	"cmd_hostd_telegram_voice_answer_allowed": "Allowed once, by voice.",
+	"cmd_hostd_telegram_voice_answer_choice": "Answered: {choice}",
+	"cmd_hostd_telegram_voice_answer_comment": "Nothing was decided: \"{text}\" is not exactly allow or deny. Tap Allow or Deny on the request.",
+	"cmd_hostd_telegram_voice_answer_denied": "Denied, by voice.",
+	"cmd_hostd_telegram_voice_answer_several": "More than one thing waits for you, so a voice answer could land on the wrong one. Answer on the card.",
+	"cmd_hostd_telegram_voice_answer_tap_bypass": "This one needs a tap: the crewmate is in Bypass. Nothing was decided.",
+	"cmd_hostd_telegram_voice_answer_tap_card": "This card needs a tap on screen. Nothing was decided.",
+	"cmd_hostd_telegram_voice_answer_tap_destructive": "This one needs a tap: the command can destroy data. Nothing was decided.",
+	"cmd_hostd_telegram_voice_answer_tap_rail": "This one needs a tap: it touches a protected path, or the task came from GitHub or a webhook. Nothing was decided.",
+	"cmd_hostd_telegram_voice_answer_unclear": "I did not understand that as an answer. Nothing was decided.",
+	"cmd_hostd_telegram_voice_cancelled": "Cancelled. Nothing was sent.",
+	"cmd_hostd_telegram_voice_echo": "{text}\n\nEngine: {engine}. For {crewmate}. Nothing is sent until you tap Send as task.",
+	"cmd_hostd_telegram_voice_echo_edited": "{text}\n\nFor {crewmate}, as you corrected it. Nothing is sent until you tap Send as task.",
+	"cmd_hostd_telegram_voice_edit": "Send the corrected text as your next message. Nothing is sent until you tap Send as task.",
+	"cmd_hostd_telegram_voice_failed": "Not transcribed: {engine} failed ({detail}). No other engine was tried.",
+	"cmd_hostd_telegram_voice_failed_plain": "Not transcribed: {why}",
+	"cmd_hostd_telegram_voice_gone": "This voice note is no longer waiting.",
+	"cmd_hostd_telegram_voice_not_installed": "No voice engine is installed on the crew server. Run atlas crew voice install.",
+	"cmd_hostd_telegram_voice_off": "Voice is turned off on this crew. Turn it on in Atlas Desktop.",
+	"cmd_hostd_telegram_voice_send": "Send as task",
+	"cmd_hostd_telegram_voice_sent": "Sent as a task.",
+	"cmd_hostd_telegram_voice_silent": "I did not hear any words in that voice note.",
+	"cmd_hostd_telegram_voice_too_big": "Voice notes over {mb} MB cannot be fetched (Telegram's limit). Send a shorter one.",
+	"cmd_hostd_telegram_voice_truncated": "Only the first {seconds} seconds were transcribed.",
+	"cmd_hostd_telegram_voice_unreadable": "I could not read that voice note.",
+	"cmd_hostd_telegram_voice_which": "Which crewmate? Send the voice note with the caption /task <name>",
+	"cmd_hostd_terminal_untitled": "terminal",
+	"cmd_hostd_upgrade_failed": "Live upgrade of the terminal host failed: {error}",
+	"cmd_hostd_upgrade_lost_terminals": "the upgraded terminal host lost terminals ({before} -> {after})",
+	"cmd_hostd_upgrade_no_start": "the upgraded terminal host did not come up",
+	"cmd_hostd_upgraded_kept": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "atlas hostd upgraded; no terminals kept",
+				"countExact=*, countPlural=one": "atlas hostd upgraded; {count} terminal kept",
+				"countExact=*, countPlural=*": "atlas hostd upgraded; {count} terminals kept"
+			}
+		}
+	],
+	"cmd_hostd_version_mismatch": "the new terminal host reports {reported} (expected {expected})",
+	"cmd_hostd_version_unknown": "unknown",
+	"cmd_hostd_yes_no": "[y/N]"
+}

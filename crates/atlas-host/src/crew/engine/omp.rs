@@ -1,10 +1,10 @@
 //! omp engine — RPC mode.
 //!
 //! Protocol (per-turn):
-//! 1. Spawn `omp --mode rpc [--auto-approve | --extension <path>] [--resume <session.jsonl>]`
-//!    with piped stdin/stdout.  When `yolo` (approval == Auto) we pass `--auto-approve`.
-//!    When `!yolo` (approval == Ask) we write a TypeScript extension to `<crewmate_dir>/omp-approval.ts`
-//!    and load it with `--extension`; it blocks tool_call events via hostd's /decision endpoint.
+//! 1. Spawn `omp --mode rpc --extension <path> [--resume <session.jsonl>]` with piped stdin/stdout. Never
+//!    `--auto-approve`: we write a TypeScript extension to `<crewmate_dir>/omp-approval.ts` and load it with
+//!    `--extension`; it blocks tool_call events via hostd's /decision endpoint, where the crewmate's mode, the
+//!    rails and the task's grants decide (`crew::approval`).
 //! 2. Send `{"id":"r1","type":"prompt","message":"<prompt>"}` on stdin.
 //! 3. Read stdout lines until `prompt_result` for id `r1` arrives.
 //!    Collect `agent_end` reply text and `message_end` usage along the way.
@@ -16,22 +16,42 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+use crate::agents::hook_server::CREWMATE_DECISION_WAIT;
 use crate::crew::store::{CrewmateSession, UsageRecord};
 
 use super::{TurnCtx, TurnResult, launch, program, turn_timeout};
 
-/// Settings every crewmate's omp runs with, as a `--config` overlay. A crew server is a headless server: omp's sleep
-/// prevention asks systemd-logind over D-Bus, which a server or container often lacks, and every start then waited
-/// 25 s for the D-Bus timeout (seen on atlas-test-ship: first step 33 s in, the reply summary always timed out).
-const CREW_OVERLAY: &str = "power:\n  sleepPrevention: \"off\"\n";
+/// How long the approval extension waits for hostd's answer, and the limit omp puts on the extension's handler: each
+/// one outlives the one inside it (hostd's own wait, then this, then omp's), so a prompt nobody answers ends where
+/// it can say so, with an audit entry, and not as omp's "timed out after Nms" (#524).
+pub(crate) const EXTENSION_WAIT: std::time::Duration =
+    std::time::Duration::from_secs(CREWMATE_DECISION_WAIT.as_secs() + 60);
+pub(crate) const HANDLER_LIMIT: std::time::Duration =
+    std::time::Duration::from_secs(EXTENSION_WAIT.as_secs() + 60);
+
+/// Settings every crewmate's omp runs with, as a `--config` overlay.
+/// - A crew server is headless: omp's sleep prevention asks systemd-logind over D-Bus, which a server or container
+///   often lacks, and every start then waited 25 s for the D-Bus timeout (seen on atlas-test-ship: first step 33 s
+///   in, the reply summary always timed out).
+/// - omp abandons any extension `tool_call` handler after `extensionHandlers.toolCallTimeoutMs` (default 30 s; time
+///   in its own dialogs does not count, a `fetch` to hostd does) and blocks the tool. The approval extension waits
+///   for the owner, so the limit is raised above its own wait ([`HANDLER_LIMIT`]; #524: every approval answered
+///   after 30 s failed with "omp-approval.ts timed out after 30000ms").
+fn crew_overlay() -> String {
+    format!(
+        "power:\n  sleepPrevention: \"off\"\nextensionHandlers:\n  toolCallTimeoutMs: {}\n",
+        HANDLER_LIMIT.as_millis()
+    )
+}
 
 /// `--config <file>` for an omp started by a crewmate; the file sits in the crewmate's dir and is rewritten when it differs.
 pub(crate) fn overlay_args(crewmate_dir: &std::path::Path) -> Vec<String> {
     let path = crewmate_dir.join("omp-crew.yml");
+    let overlay = crew_overlay();
     // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
-    if std::fs::read_to_string(&path).ok().as_deref() != Some(CREW_OVERLAY) {
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(overlay.as_str()) {
         // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
-        let _ = std::fs::write(&path, CREW_OVERLAY);
+        let _ = std::fs::write(&path, overlay);
     }
     vec!["--config".to_string(), path.to_string_lossy().into_owned()]
 }
@@ -63,14 +83,12 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
         .arg("rpc")
         .args(overlay_args(ctx.crewmate_dir));
 
-    if ctx.yolo {
-        cmd.arg("--auto-approve");
-    } else {
-        // Write the approval extension and load it; it reaches hostd through the ATLAS_* env.
-        let ext_path = ctx.crewmate_dir.join("omp-approval.ts");
-        write_approval_extension(&ext_path, ctx.hook_port, ctx.hook_token, ctx.pane_key)?;
-        cmd.arg("--extension").arg(&ext_path);
-    }
+    // Always the approval extension, never `--auto-approve`: hostd decides every call (`crew::approval`) from the
+    // crewmate's current mode, so a switch applies to the next call and no flag widens what omp may do.
+    // The extension reaches hostd through the ATLAS_* env.
+    let ext_path = ctx.crewmate_dir.join("omp-approval.ts");
+    write_approval_extension(&ext_path, ctx.hook_port, ctx.hook_token, ctx.pane_key)?;
+    cmd.arg("--extension").arg(&ext_path);
 
     if let Some(session_file) = &ctx.session.session_file {
         cmd.arg("--resume").arg(session_file);
@@ -273,7 +291,7 @@ pub(crate) fn write_approval_extension_pub(
 /// Write the TypeScript omp approval extension to `path`.
 /// The extension listens for `tool_call` events via the omp Extension API and
 /// POSTs to hostd's `/hook/omp/decision` endpoint, blocking until the user
-/// allows or denies the tool call (up to 30 minutes).
+/// allows or denies the tool call (hostd waits [`CREWMATE_DECISION_WAIT`], 30 minutes).
 fn write_approval_extension(
     path: &std::path::Path,
     hook_port: u16,
@@ -292,7 +310,8 @@ export default function atlasApproval(pi) {{
     const PANE  = process.env.ATLAS_PANE_KEY   || "{pane}";
 
     pi.on("tool_call", async (event) => {{
-        let decision = null;
+        // Fail-closed: the tool runs only on an explicit "allow"; every other end blocks it and says which.
+        let reason = "the approval request failed";
         try {{
             const resp = await fetch(
                 `http://127.0.0.1:${{PORT}}/hook/omp/decision`,
@@ -306,29 +325,40 @@ export default function atlasApproval(pi) {{
                         pane_key: PANE,
                         payload: {{ tool_name: event.toolName, tool_input: event.input }},
                     }}),
-                    signal: AbortSignal.timeout(1_800_000), // 30 min
+                    // Longer than hostd's own wait, which answers first (and audits it).
+                    signal: AbortSignal.timeout({wait_ms}),
                 }},
             );
-            if (resp.ok) {{
+            if (!resp.ok) {{
+                reason = `the approval request failed: hostd answered ${{resp.status}}`;
+            }} else {{
                 const data = await resp.json();
-                // Only "allow" when we get an explicit allow decision.
-                if (data && data.decision === "allow") {{
-                    decision = "allow";
+                // What hostd wants the agent to read as a message of its own (a mode change, an allowed call's
+                // comment): a steering message, delivered whatever the decision.
+                if (data && typeof data.steer === "string" && data.steer) {{
+                    try {{ pi.sendUserMessage(data.steer, {{ deliverAs: "steer" }}); }} catch (_) {{}}
                 }}
+                if (data && data.decision === "allow") return;
+                // The reason hostd gives (the owner's comment, a rail, nobody answered) comes back to the agent as is.
+                reason = data && typeof data.message === "string" && data.message
+                    ? data.message
+                    : data && data.decision === "deny"
+                        ? "the owner denied this tool call"
+                        : "nobody answered the approval request in time";
             }}
-        }} catch {{
-            // Network error, timeout, malformed JSON — fall through to block.
+        }} catch (e) {{
+            reason = e && e.name === "TimeoutError"
+                ? "nobody answered the approval request in time"
+                : `the approval request failed: ${{e && e.message}}`;
         }}
-        // Fail-closed: block unless we received an explicit "allow".
-        if (decision !== "allow") {{
-            return {{ block: true, reason: "no approval received" }};
-        }}
+        return {{ block: true, reason }};
     }});
 }}
 "#,
         port = hook_port,
         token = hook_token,
         pane = pane_key,
+        wait_ms = EXTENSION_WAIT.as_millis(),
     );
     if let Some(parent) = path.parent() {
         // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
@@ -490,7 +520,7 @@ mod kill_tests {
             format!(
                 "#!/bin/sh\nread -r _prompt\n\
                  printf '{{\"type\":\"tool_execution_start\",\"toolCallId\":\"c1\",\"toolName\":\"bash\",\"args\":{{}}}}\\n'\n\
-                 (sleep 60 & echo $! > \"{}\"; wait) &\nwait\n",
+                 (sleep 600 & echo $! > \"{}\"; wait) &\nwait\n",
                 pidfile.display()
             ),
         )
@@ -526,7 +556,6 @@ mod kill_tests {
                     pane_key: "",
                     extra_env: &env,
                     work_dir: dir.to_str().unwrap(),
-                    yolo: true,
                     tools: None,
                     cancel: &cancel,
                     exec: &crate::crew::engine::Exec::local(),
@@ -542,7 +571,7 @@ mod kill_tests {
                 break pid;
             }
             assert!(
-                start.elapsed() < Duration::from_secs(15),
+                start.elapsed() < atlas_core::scaling::HANG,
                 "omp never ran its tool"
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -558,7 +587,7 @@ mod kill_tests {
         *crate::crew::engine::TEST_ENGINE_PROGRAM.lock() = None;
         assert!(err.contains("cancel"), "{err}");
         let start = Instant::now();
-        while !gone(tool) && start.elapsed() < Duration::from_secs(5) {
+        while !gone(tool) && start.elapsed() < atlas_core::scaling::HANG {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(

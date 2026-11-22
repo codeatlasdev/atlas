@@ -135,7 +135,7 @@ async fn an_isolated_terminal_agent_runs_in_its_directory_and_reports_through_it
         .await
         .unwrap();
     let task_id = v["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(&client, &id, &task_id, "done", Duration::from_secs(20)).await;
+    wait_task_state(&client, &id, &task_id, "done", atlas_core::scaling::HANG).await;
 
     let dir = slug_dir(&r, &id);
     // The endpoint file is in the crewmate's runtime dir, and it is the crewmate's own token, not hostd's.
@@ -313,7 +313,7 @@ printf '{"type":"result","session_id":"ses-iso","result":"cwd=%s cfg=%s secret=%
         .await
         .unwrap();
     let task_id = t["task"]["id"].as_str().unwrap().to_string();
-    let task = wait_task_state(&client, &id, &task_id, "done", Duration::from_secs(20)).await;
+    let task = wait_task_state(&client, &id, &task_id, "done", atlas_core::scaling::HANG).await;
     let reply = task["reply"]
         .as_str()
         .or(task["result"].as_str())
@@ -370,7 +370,7 @@ async fn a_crewmate_without_a_user_is_provisioned_by_its_first_task_and_keeps_it
             role: "r".into(),
             agent: "claude".into(),
             workdir: None,
-            approval: crate::crew::store::Approval::Auto,
+            mode: crate::crew::store::Mode::Bypass,
             routines: vec![],
             triggers: vec![],
             look: None,
@@ -383,6 +383,7 @@ async fn a_crewmate_without_a_user_is_provisioned_by_its_first_task_and_keeps_it
             project: None,
             setup_step: None,
             short_replies: None,
+            spoken_replies: false,
             created_at: 1,
         })
         .unwrap();
@@ -398,7 +399,7 @@ async fn a_crewmate_without_a_user_is_provisioned_by_its_first_task_and_keeps_it
         .await
         .unwrap();
     let task_id = t["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(&client, id, &task_id, "done", Duration::from_secs(20)).await;
+    wait_task_state(&client, id, &task_id, "done", atlas_core::scaling::HANG).await;
     let user = user_of(id);
     assert!(
         r.prov_log
@@ -475,7 +476,7 @@ async fn read_pty(dir: &std::path::Path, pty: &str, needle: &str) -> String {
             }
         }
     };
-    let _ = tokio::time::timeout(Duration::from_secs(15), read).await;
+    let _ = tokio::time::timeout(atlas_core::scaling::HANG, read).await;
     out
 }
 
@@ -657,7 +658,7 @@ echo '{"type":"result","is_error":true,"result":"Please run /login","session_id"
         .await
         .unwrap();
     let task_id = t["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(&client, &id, &task_id, "failed", Duration::from_secs(20)).await;
+    wait_task_state(&client, &id, &task_id, "failed", atlas_core::scaling::HANG).await;
     let row = |s: &serde_json::Value| {
         s["engines"]
             .as_array()
@@ -753,7 +754,7 @@ async fn isolated_task_that_dies(r: Rig, kind: &str, script: &str) -> (String, S
         .await
         .unwrap();
     let task_id = t["task"]["id"].as_str().unwrap().to_string();
-    let task = wait_task_state(&client, &id, &task_id, "failed", Duration::from_secs(20)).await;
+    let task = wait_task_state(&client, &id, &task_id, "failed", atlas_core::scaling::HANG).await;
     client.call("shutdown", json!({})).await.ok();
     (
         task["state"].as_str().unwrap_or("").to_string(),
@@ -833,7 +834,7 @@ async fn an_omp_turn_that_dies_for_another_reason_is_not_blamed_on_memory() {
         .unwrap();
     let task_id = t["task"]["id"].as_str().unwrap().to_string();
     // It may end done (an empty reply) or failed: both are the engine's story, neither mentions memory.
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     let task = loop {
         let l = client
             .call("crewmate_tasks", json!({"id": id, "limit": 20}))
@@ -886,7 +887,7 @@ async fn a_server_with_isolation_installed_and_no_helper_refuses_tasks_and_start
         .await
         .unwrap();
     let task_id = v["task"]["id"].as_str().unwrap().to_string();
-    let t = wait_task_state(&client, &id, &task_id, "failed", Duration::from_secs(20)).await;
+    let t = wait_task_state(&client, &id, &task_id, "failed", atlas_core::scaling::HANG).await;
     assert!(t["error"].as_str().unwrap().contains(why), "{t}");
     tokio::time::sleep(Duration::from_secs(1)).await;
     assert!(!marker.exists(), "the agent was started without isolation");

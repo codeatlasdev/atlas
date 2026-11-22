@@ -1,6 +1,6 @@
 [package]
 name = "atlas-core"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.27"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -27,12 +27,17 @@ ring = "0.17"
 tokio = { workspace = true }
 sha2 = "0.11"
 hex = "0.4"
+sys-locale = "0.3"
 # .gitignore-aware walking and glob matching: the task cache expands `inputs:` globs with it.
 ignore = "0.4"
+# `Include` globs of ~/.ssh/config (`ssh_config.rs`): already in the tree through `ignore`.
+globset = "0.4"
 tempfile = { workspace = true, optional = true }
+jiff = { workspace = true }
+jiff-tzdb = { workspace = true }
 
 [features]
-# Fixtures for spawn-path tests in dependent crates (`login_env::fixtures`).
+# Fixtures for tests in dependent crates (`login_env::fixtures`, `scaling`).
 test-fixtures = ["dep:tempfile"]
 
 [target.'cfg(unix)'.dependencies]
@@ -45,12 +50,19 @@ windows-sys = { version = "0.61", features = [
     "Win32_NetworkManagement_IpHelper",
     "Win32_Security_Cryptography",
     "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_IO",
+    "Win32_System_Kernel",
+    "Win32_System_LibraryLoader",
     "Win32_System_Pipes",
     "Win32_System_ProcessStatus",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_UI_Shell",
+    # ShellExecuteW takes a SHOW_WINDOW_CMD: without this the function is not generated, and atlas-core built alone
+    # (`-p atlas-core`) does not compile on Windows; a workspace build only got it from another crate's features.
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]

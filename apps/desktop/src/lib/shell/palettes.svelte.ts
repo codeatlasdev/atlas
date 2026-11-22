@@ -2,9 +2,11 @@
  * The four command surfaces of the shell (jump, commands, go-to-file, go-to-symbol): their
  * open state and the item lists each `<Palette>` renders.
  */
-import type { PaletteItem } from "#lib/components/Palette.svelte";
+import { PALETTE_LIMIT, type PaletteItem } from "#lib/components/Palette.svelte";
+import { m } from "#lib/i18n/m.ts";
 import { openService, runAction } from "#lib/actions.svelte.ts";
 import { fileIcon } from "#lib/icons.ts";
+import type { FileIndex } from "#lib/quickOpen.ts";
 import { allCommands, noteRun, recent, shortcutFor } from "#lib/keymap.svelte.ts";
 import { activeEditor } from "#lib/shell/editors.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
@@ -17,7 +19,7 @@ import { ops } from "#lib/symbols.ts";
 import { groupCommands } from "#lib/shell/commandOrder.ts";
 import { goTab, goWorktree, recentWorktrees, wtLabel } from "#lib/shell/navigate.ts";
 
-/** Open flags for each palette plus the file list the "Go to file" palette searches. */
+/** Open flags for each palette; `quickRev` counts the times "Go to file" got a (new) file list. */
 export const palettes = $state({
 	jump: false,
 	/** The Atlas Crew palette (crewmates + crew commands); ⌘K opens it instead of Jump while the Crew workspace is shown. */
@@ -25,14 +27,20 @@ export const palettes = $state({
 	commands: false,
 	files: false,
 	symbols: false,
-	quickFiles: [] as string[],
+	quickRev: 0,
 });
+
+/** What "Go to file" searches: the selected worktree's files, ranked by an index that lives as long as the list does. */
+let quick: FileIndex | undefined;
 
 /** ⌘P: load the selected worktree's files, then open the palette. */
 export async function openQuick() {
 	const w = ws.selected;
 	if (!w) return;
-	palettes.quickFiles = await worktreeFiles(w.id);
+	// The ranking code loads with the first ⌘P, not at startup (it is not needed for the first paint).
+	const [files, { indexFor }] = await Promise.all([worktreeFiles(w.id), import("#lib/quickOpen.ts")]);
+	quick = indexFor(files);
+	palettes.quickRev++;
 	palettes.files = true;
 }
 
@@ -57,15 +65,18 @@ export function commandItems(): PaletteItem[] {
 	for (const s of store.configs[cur.id]?.services.filter((s) => s.target) ?? [])
 		items.push({
 			id: `svc:${s.name}`,
-			group: "Project",
-			label: s.target!.how === "browser" ? `Open ${s.name}` : `Copy ${s.name} URL`,
+			group: m.shell_commands_group_project(),
+			label:
+				s.target!.how === "browser"
+					? m.shell_commands_open_service({ name: s.name })
+					: m.shell_commands_copy_service_url({ name: s.name }),
 			run: () => void openService(s),
 		});
 	if (cur.running)
 		for (const a of store.configs[cur.id]?.actions.filter((a) => !a.session) ?? [])
 			items.push({
 				id: `action:${a.key}`,
-				group: "Project",
+				group: m.shell_commands_group_project(),
 				label: a.label,
 				run: () => runAction(cur.id, a.key),
 			});
@@ -82,7 +93,7 @@ export function jumpItems(): PaletteItem[] {
 	recentTabs.forEach((t) =>
 		items.push({
 			id: t!.id,
-			group: "Recent chats & terminals",
+			group: m.shell_commands_group_recent_chats(),
 			label: (t!.pty && ws.titles[t!.pty]) || t!.label,
 			description: wtLabel(t!.worktreeId),
 			run: (split) => goTab(t!.id, split),
@@ -91,7 +102,7 @@ export function jumpItems(): PaletteItem[] {
 	for (const w of recentWorktrees().slice(0, 6))
 		items.push({
 			id: w.id,
-			group: "Recent worktrees",
+			group: m.shell_commands_group_recent_worktrees(),
 			project: w.repoId,
 			label: wtLabel(w.id),
 			description: w.path,
@@ -119,23 +130,26 @@ export function createItems(q: string): PaletteItem[] {
 	return [
 		{
 			id: "create",
-			group: "Create",
-			label: `Create worktree "${q}"`,
+			group: m.shell_commands_group_create(),
+			label: m.shell_commands_create_worktree({ name: q }),
 			description: store.projects.find((p) => p.id === repoId)?.name ?? "",
 			run: () => void worktrees.create({ repoId, name: q, agent: agents.defaultAgent }),
 		},
 	];
 }
 
-/** "Go to file": the cached file list of the selected worktree; ⇧ opens in a split. */
-export function fileItems(): PaletteItem[] {
+/** "Go to file": the best matches of `q` in the cached file list of the selected worktree; ⇧ opens in a split. */
+export function fileItems(q: string): PaletteItem[] {
+	void palettes.quickRev;
 	const w = ws.selected;
-	if (!w) return [];
-	return palettes.quickFiles.map((f) => {
+	if (!w || !quick) return [];
+	const files = quick.files;
+	return quick.top(q, PALETTE_LIMIT).map((n) => {
+		const f = files[n];
 		const i = f.lastIndexOf("/");
 		return {
 			id: f,
-			group: "Files",
+			group: m.shell_commands_group_files(),
 			label: f.slice(i + 1),
 			icon: fileIcon(f.slice(i + 1)),
 			description: i > 0 ? f.slice(0, i) : undefined,
@@ -157,13 +171,16 @@ export function symbolItems(): PaletteItem[] {
 	// Language-server symbols (with containers) when the server answered, else the syntax tree's.
 	const symbols =
 		lspSymbols.view === view && lspSymbols.list
-			? lspSymbols.list.map((s) => ({ ...s, kind: s.container ? `${s.kind} in ${s.container}` : s.kind }))
+			? lspSymbols.list.map((s) => ({
+					...s,
+					kind: s.container ? m.shell_commands_symbol_in({ kind: s.kind, container: s.container }) : s.kind,
+				}))
 			: ops.outline(view.state);
 	return symbols.map((s, i) => ({
 		id: `${i}`,
-		group: "Symbols",
+		group: m.shell_commands_group_symbols(),
 		label: s.name,
-		description: `${s.kind} · line ${s.line}`,
+		description: m.shell_commands_symbol_line({ kind: s.kind, line: s.line }),
 		run: () => {
 			ops.reveal(view, s.from);
 			view.focus();

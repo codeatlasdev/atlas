@@ -3,8 +3,8 @@
  * lives (worktree or outside), which identifier to underline, and the back/forward chain of jump
  * positions. No DOM, no stores: `actions.ts` / `extension.ts` / `workspace.ts` are the glue.
  */
-import { EditorSelection, EditorState, type Text } from "@codemirror/state";
-import { posToOffset, uriToPath, type Position } from "#lib/lsp/convert.ts";
+import type { EditorState } from "@codemirror/state";
+import { uriToPath, type Position } from "#lib/lsp/convert.ts";
 
 // --- the click ----------------------------------------------------------------------------------
 
@@ -23,8 +23,6 @@ export function isGoToModifier(e: Mods, mac: boolean): boolean {
 
 export const isGoToClick = (e: Mods & { button: number }, mac: boolean) =>
 	e.button === 0 && isGoToModifier(e, mac);
-
-export const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 // --- the reply ----------------------------------------------------------------------------------
 
@@ -77,11 +75,6 @@ export function toTargets(res: unknown): Target[] {
 		out.push({ path: uriToPath(uri), start: r.start, end: r.end });
 	}
 	return out;
-}
-
-/** Selection covering `start..end`, clamped to the document (a server may point past a line's end). */
-export function selectionOf(doc: Text, start: Position, end: Position) {
-	return EditorSelection.single(posToOffset(doc, start), posToOffset(doc, end)).main;
 }
 
 // --- where the file lives -----------------------------------------------------------------------
@@ -219,9 +212,4 @@ export function tabFor(
 	if (r.kind === "worktree") return { worktreeId: r.worktreeId, path: r.rel, readOnly: r.readOnly === true };
 	if (!hostWorktree) return null;
 	return { worktreeId: hostWorktree, path: r.abs, readOnly: true };
-}
-
-/** Dependency and external sources: browsable (caret, selection, find, folding) but nothing can change the text. */
-export function readOnlyExtension() {
-	return [EditorState.readOnly.of(true), EditorState.transactionFilter.of((tr) => (tr.docChanged ? [] : tr))];
 }

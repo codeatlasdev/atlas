@@ -9,6 +9,8 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { Combobox } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
+	import { typeInSearchField } from "#lib/crew/searchKeys.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		baseUrl,
@@ -45,45 +47,33 @@
 	});
 
 	const options = $derived(
-		[...(value && !models.includes(value) ? [value] : []), ...models].map((m) => ({ value: m, label: m })),
+		[...(value && !models.includes(value) ? [value] : []), ...models].map((name) => ({
+			value: name,
+			label: name,
+		})),
 	);
 	const placeholder = $derived(
 		!baseUrl.trim() || !apiKey.trim()
-			? "Fill the URL and key first"
+			? m.crew_workspace_model_picker_fill_first()
 			: loading
-				? "Loading models…"
+				? m.crew_workspace_model_picker_loading_models()
 				: models.length
-					? `Choose one of ${models.length} models`
-					: "Type a model id",
+					? m.crew_workspace_model_picker_choose({ count: models.length })
+					: m.crew_workspace_model_picker_type_id(),
 	);
 </script>
 
-<!-- The kit's Combobox forwards every key of its search field to the listbox, whose type-to-select swallows a letter
-     that starts an item ("a" for "anthropic/…", "auto/…") and jumps the highlight instead of typing it. Printable keys
-     typed in the search field stop here, so they only type; arrows, Enter and Esc still reach the list. -->
+<!-- Printable keys typed in the search field only type (see searchKeys.ts). -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	class="model-picker"
-	onkeydowncapture={(e) => {
-		const t = e.target as HTMLElement;
-		if (
-			t.classList.contains("ca-combobox__input") &&
-			e.key.length === 1 &&
-			!e.metaKey &&
-			!e.ctrlKey &&
-			!e.altKey
-		)
-			e.stopPropagation();
-	}}
->
+<div class="model-picker" onkeydowncapture={typeInSearchField}>
 	<Combobox
 		bind:value={value as string}
 		{options}
 		{placeholder}
-		searchPlaceholder="Search models"
-		emptyText={loading ? "Loading…" : "No match: press Enter to use what you typed"}
+		searchPlaceholder={m.crew_workspace_model_picker_search()}
+		emptyText={loading ? m.common_state_loading() : m.crew_workspace_model_picker_no_match()}
 		creatable
-		ariaLabel="Model"
+		ariaLabel={m.crew_settings_engine_section_model()}
 		error={error || undefined}
 		class={id}
 	/>

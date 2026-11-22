@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use serde_json::json;
 
 /// How long the desktop gets to answer `path_open` (it may have to register the project).
@@ -18,11 +19,15 @@ pub fn is_path_word(word: &OsString, exists: impl Fn(&OsString) -> bool) -> bool
     w == "." || w == ".." || w.contains(['/', '\\']) || exists(word)
 }
 
-/// `atlas <path>`: open it in Atlas Desktop (a file opens its project, then the file).
+/// `atlas <path>`: open it in Atlas Desktop (a file opens its project, then the file; a loose text file with no
+/// project opens in the light editor and adds no project).
 pub fn open_path(word: &OsString, line: Option<u32>) -> Result<()> {
     let path = absolute(Path::new(word))?;
     if !path.exists() {
-        bail!("{} does not exist", path.display());
+        bail!(
+            "{}",
+            t!("cmd_link_open_missing", path = path.display().to_string())
+        );
     }
     if atlas_core::desktop_ctl::running() {
         let mut args = json!({ "path": path.to_string_lossy() });
@@ -30,19 +35,24 @@ pub fn open_path(word: &OsString, line: Option<u32>) -> Result<()> {
             args["line"] = l.into();
         }
         let r = atlas_core::desktop_ctl::call("path_open", &args, OPEN_TIMEOUT)?;
-        println!("opened {} in Atlas Desktop", describe(&path, &r));
+        println!("{}", t!("cmd_link_opened", path = describe(&path, &r)));
         return Ok(());
     }
     // Not running: launch the app with the path as argv; it opens it on start.
-    let app = super::desktop::installed_app().with_context(|| {
-        "Atlas Desktop is not installed; run `atlas desktop` to install it".to_string()
-    })?;
+    let app =
+        super::desktop::installed_app().with_context(|| t!("cmd_link_desktop_not_installed"))?;
     super::desktop::open(&app, &[path.clone().into_os_string()])?;
-    println!("launching Atlas Desktop with {}", path.display());
+    println!(
+        "{}",
+        t!("cmd_link_launching", path = path.display().to_string())
+    );
     Ok(())
 }
 
 fn describe(path: &Path, reply: &serde_json::Value) -> String {
+    if reply["standalone"].as_bool() == Some(true) {
+        return path.display().to_string();
+    }
     reply["root"]
         .as_str()
         .map_or_else(|| path.display().to_string(), str::to_string)
@@ -50,7 +60,8 @@ fn describe(path: &Path, reply: &serde_json::Value) -> String {
 
 /// The path as an absolute, `\\?\`-free, forward-slash-on-Windows path (what the desktop stores).
 fn absolute(p: &Path) -> Result<PathBuf> {
-    let full = std::path::absolute(p).with_context(|| format!("cannot resolve {}", p.display()))?;
+    let full = std::path::absolute(p)
+        .with_context(|| t!("cmd_link_resolve_failed", path = p.display().to_string()))?;
     let canon = dunce_canonical(&full);
     Ok(canon)
 }
@@ -99,7 +110,7 @@ fn quote(arg: &str, windows: bool) -> String {
 /// `atlas -- <cmd…>`: add the command as a service of `resolve(cwd)`'s stack.
 pub async fn run_adhoc(argv: &[String]) -> Result<()> {
     if argv.is_empty() {
-        bail!("usage: atlas -- <command> [args…]");
+        bail!("{}", t!("cmd_link_adhoc_usage"));
     }
     let cwd = std::env::current_dir()?;
     let root = absolute(&atlas_core::project_root::resolve(&cwd))?;
@@ -112,7 +123,7 @@ pub async fn run_adhoc(argv: &[String]) -> Result<()> {
                     .await
                     .map_err(|e| anyhow::anyhow!(e))?;
             if !resp.ok {
-                bail!(resp.error.unwrap_or_else(|| "add_service refused".into()));
+                bail!(resp.error.unwrap_or_else(|| t!("cmd_link_add_refused")));
             }
             let data = resp.data.unwrap_or_default();
             report(
@@ -123,21 +134,22 @@ pub async fn run_adhoc(argv: &[String]) -> Result<()> {
             Ok(())
         }
         Some(info) if info.is_busy() => {
-            bail!("atlas dev is running but busy; try again in a moment")
+            bail!("{}", t!("cmd_link_dev_busy"))
         }
         Some(info) => bail!(
-            "atlas dev is running in a terminal for {} (pid {}); quit it, or stop it with atlas down, then run this again",
-            root.display(),
-            info.pid
+            "{}",
+            t!(
+                "cmd_link_dev_in_terminal",
+                root = root.display().to_string(),
+                pid = info.pid
+            )
         ),
         None => {
             let select = atlas_tui::SelectionRequest::default();
             let adhoc = [command.clone()];
             match atlas_tui::detach(&root, &select, &adhoc).await? {
                 atlas_tui::runner::Detached::Started { pid } => {
-                    println!(
-                        "atlas runner started (pid {pid}) · attach: atlas dev · stop: atlas down"
-                    );
+                    println!("{}", t!("cmd_link_runner_started", pid = pid));
                 }
                 atlas_tui::runner::Detached::AlreadyRunning { .. } => {
                     // Lost a race with another starter: it is a runner now, add live.
@@ -149,7 +161,7 @@ pub async fn run_adhoc(argv: &[String]) -> Result<()> {
                     .await
                     .map_err(|e| anyhow::anyhow!(e))?;
                     if !resp.ok {
-                        bail!(resp.error.unwrap_or_else(|| "add_service refused".into()));
+                        bail!(resp.error.unwrap_or_else(|| t!("cmd_link_add_refused")));
                     }
                 }
             }
@@ -165,10 +177,16 @@ pub async fn run_adhoc(argv: &[String]) -> Result<()> {
 
 fn report(root: &Path, service: &str, port: Option<u64>) {
     let log = root.join(".logs").join(format!("{service}.log"));
-    println!("service {service} started (not saved to atlas.yaml)");
-    println!("  logs: {}", log.display().to_string().replace('\\', "/"));
+    println!("{}", t!("cmd_link_service_started", service = service));
+    println!(
+        "  {}",
+        t!(
+            "cmd_link_service_logs",
+            path = log.display().to_string().replace('\\', "/")
+        )
+    );
     if let Some(p) = port {
-        println!("  port: {p} (http://localhost:{p})");
+        println!("  {}", t!("cmd_link_service_port", port = p));
     }
 }
 
@@ -178,6 +196,18 @@ mod tests {
 
     fn w(s: &str) -> OsString {
         OsString::from(s)
+    }
+
+    // A loose text file opens in the light editor and no project is made for it: the CLI names the file, not the
+    // folder it sits in (which the reply also carries).
+    #[test]
+    fn a_standalone_open_is_reported_by_the_file_not_its_folder() {
+        let file = Path::new("/Users/m/Downloads/notes.md");
+        let loose =
+            json!({ "id": null, "root": "/Users/m/Downloads", "path": file, "standalone": true });
+        assert_eq!(describe(file, &loose), "/Users/m/Downloads/notes.md");
+        let project = json!({ "id": "p", "root": "/Users/m/repo", "path": "README.md" });
+        assert_eq!(describe(file, &project), "/Users/m/repo");
     }
 
     #[test]
@@ -221,5 +251,13 @@ mod tests {
         assert_eq!(quote("a b", true), "\"a b\"");
         assert_eq!(quote(r#"say "hi""#, true), r#""say \"hi\"""#);
         assert_eq!(quote("plain-1.2", true), "plain-1.2");
+    }
+
+    // `atlas --` alone never gets here (clap shows the help), but `run_adhoc` is public: an empty command is
+    // refused with the usage line, before it looks for a project or a runner.
+    #[tokio::test]
+    async fn an_empty_command_is_refused_with_the_usage_line() {
+        let err = run_adhoc(&[]).await.unwrap_err().to_string();
+        assert_eq!(err, t!("cmd_link_adhoc_usage"));
     }
 }

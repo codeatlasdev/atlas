@@ -250,6 +250,7 @@ async fn answer_card(
         }
         AnswerResult::Answer(other) => {
             // An answer this card does not offer: the work stays refused, and so does the task.
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: crewmate {} task {}: unknown answer {other:?} to a refusal",
                 crewmate.id, task.id
@@ -288,6 +289,7 @@ fn retry(hub: &Hub, crewmate: &Crewmate, task: &mut Task, card: &Card) {
     task.reply = None;
     task.reply_full = None;
     task.summarized = false;
+    task.spoken = String::new();
     task.finished_at = None;
     task.started_at = None;
     task.answer = None;

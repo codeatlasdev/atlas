@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use atlas_core::update_cache::{UpdateCache, now_secs};
+use atlas_i18n::t;
 
 use super::self_update::{
     self, UpdateOutcome, current_version, load_cache, newer_than, save_cache,
@@ -72,9 +73,12 @@ fn env_flag(name: &str) -> bool {
     std::env::var(name).is_ok_and(|v| !v.is_empty() && v != "0")
 }
 
-/// Parse a `[Y/n]` answer: Enter / y / yes → true, anything else → false.
+/// Parse a `[Y/n]` answer (`[S/n]` in pt-BR): Enter / y / yes / s / sim → true, anything else → false.
 pub(crate) fn parse_yes_default(line: &str) -> bool {
-    matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
+    matches!(
+        line.trim().to_lowercase().as_str(),
+        "" | "y" | "yes" | "s" | "sim"
+    )
 }
 
 fn ask(question: &str, input: &mut impl BufRead) -> bool {
@@ -91,8 +95,11 @@ fn ask(question: &str, input: &mut impl BufRead) -> bool {
 fn print_box(current: &str, new: &str) {
     let url = format!("{CHANGELOG_URL}/v{new}");
     let lines = [
-        format!("⬆ Atlas update available: v{current} → v{new}"),
-        format!("Changelog: {url}"),
+        format!(
+            "⬆ {}",
+            t!("cmd_update_box_title", current = current, latest = new)
+        ),
+        t!("cmd_update_box_changelog", url = url),
     ];
     let w = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0);
     eprintln!();
@@ -178,11 +185,22 @@ where
         // Homebrew, a declined confirmation, already current: nothing changed, carry on.
         Ok(UpdateOutcome::Unchanged | UpdateOutcome::Managed) => Flow::Continue,
         Err(e) => {
-            eprintln!("\x1b[1;31merror:\x1b[0m update failed: {e}");
+            eprintln!(
+                "{} {}",
+                crate::chrome::error(),
+                t!("update_failed", error = crate::chrome::error_text(&e))
+            );
             for cause in e.chain().skip(1) {
-                eprintln!("  caused by: {cause}");
+                eprintln!(
+                    "  {} {}",
+                    crate::chrome::caused_by(),
+                    crate::chrome::cause_text(cause)
+                );
             }
-            if ask(&format!("Continue with v{current}? [Y/n] "), input) {
+            if ask(
+                &format!("{} ", t!("cmd_update_ask_continue", current = current)),
+                input,
+            ) {
                 Flow::Continue
             } else {
                 Flow::Abort
@@ -220,7 +238,8 @@ pub(crate) async fn preflight(interactive_path: bool) -> Flow {
         Decision::Skip => Flow::Continue,
         Decision::Hint(v) => {
             eprintln!(
-                "\x1b[2m⬆ atlas v{v} is available (running a linked/dev build; `atlas update` skipped)\x1b[0m"
+                "\x1b[2m⬆ {}\x1b[0m",
+                t!("cmd_update_hint_linked", version = v.as_str())
             );
             Flow::Continue
         }
@@ -228,14 +247,18 @@ pub(crate) async fn preflight(interactive_path: bool) -> Flow {
             print_box(current_version(), &v);
             let stdin = std::io::stdin();
             let mut input = stdin.lock();
-            if ask("Update now? [Y/n] ", &mut input) {
+            if ask(&format!("{} ", t!("cmd_update_ask_now")), &mut input) {
                 on_accept(
                     current_version(),
                     &mut input,
                     || self_update::run_update(self_update::Request::default()),
                     || {
                         let e = reexec();
-                        eprintln!("\x1b[1;31merror:\x1b[0m could not restart atlas: {e}");
+                        eprintln!(
+                            "{} {}",
+                            crate::chrome::error(),
+                            atlas_i18n::t!("update_restart_failed", error = e.to_string())
+                        );
                     },
                 )
                 .await
@@ -255,24 +278,48 @@ pub(crate) async fn run_on_exit_update() {
     let Some(version) = atlas_tui::update_notice::on_exit_requested() else {
         return;
     };
-    eprintln!("\x1b[1;34m◆\x1b[0m Updating atlas to v{version}…");
+    eprintln!(
+        "\x1b[1;34m◆\x1b[0m {}",
+        t!("cmd_update_exit_updating", version = version.as_str())
+    );
     match self_update::run_update(self_update::Request::default()).await {
         Ok(UpdateOutcome::Installed) => {
-            eprintln!("\x1b[1;32m✓\x1b[0m atlas updated to v{version}");
+            eprintln!(
+                "\x1b[1;32m✓\x1b[0m {}",
+                t!("cmd_update_exit_updated", version = version.as_str())
+            );
             if atlas_tui::update_notice::attached() {
                 eprintln!(
-                    "  The runner keeps the old version until: \x1b[1matlas down && atlas dev --detach\x1b[0m"
+                    "  {}",
+                    t!(
+                        "cmd_update_exit_runner_old",
+                        command = "\x1b[1matlas down && atlas dev --detach\x1b[0m"
+                    )
                 );
             }
         }
         // Another tool owns this install and the user was told what to run.
         Ok(UpdateOutcome::Unchanged | UpdateOutcome::Managed) => {}
         Err(e) => {
-            eprintln!("\x1b[1;31merror:\x1b[0m update failed: {e}");
+            eprintln!(
+                "{} {}",
+                crate::chrome::error(),
+                t!("update_failed", error = crate::chrome::error_text(&e))
+            );
             for cause in e.chain().skip(1) {
-                eprintln!("  caused by: {cause}");
+                eprintln!(
+                    "  {} {}",
+                    crate::chrome::caused_by(),
+                    crate::chrome::cause_text(cause)
+                );
             }
-            eprintln!("  Run \x1b[1matlas update\x1b[0m to retry.");
+            eprintln!(
+                "  {}",
+                t!(
+                    "cmd_update_exit_retry",
+                    command = "\x1b[1matlas update\x1b[0m"
+                )
+            );
         }
     }
 }

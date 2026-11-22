@@ -12,12 +12,14 @@
 	import TerminalThemeSelect from "./theme/TerminalThemeSelect.svelte";
 	import ThemeGrid from "./theme/ThemeGrid.svelte";
 	import ThemeIssues from "./theme/ThemeIssues.svelte";
+	import { accentLabel } from "./theme/labels.ts";
+	import { m } from "#lib/i18n/m.ts";
 
-	const MODES = [
-		{ value: "system", label: "System", icon: Monitor },
-		{ value: "light", label: "Light", icon: Sun },
-		{ value: "dark", label: "Dark", icon: Moon },
-	];
+	let modes = $derived([
+		{ value: "system", label: m.settings_theme_mode_system(), icon: Monitor },
+		{ value: "light", label: m.settings_theme_mode_light(), icon: Sun },
+		{ value: "dark", label: m.settings_theme_mode_dark(), icon: Moon },
+	]);
 
 	let importing = $state(false);
 	/** Theme the Export row acts on; follows the active theme until the user picks another. */
@@ -28,23 +30,27 @@
 
 <GhosttyBanner />
 
-<Group title="Color theme">
+<Group title={m.settings_registry_appearance_group_color_theme()}>
 	<Row
 		id="theme-mode"
-		label="Theme"
-		description="Follow your system's appearance, or always use light or dark."
+		label={m.settings_registry_appearance_theme_mode_label()}
+		description={m.settings_theme_tab_theme_description()}
 	>
 		<SegmentedControl
-			aria-label="Theme"
+			aria-label={m.settings_registry_appearance_theme_mode_label()}
 			size="sm"
 			value={themes.selection.mode}
-			items={MODES}
+			items={modes}
 			onchange={(v) => void themes.setTheme({ mode: v as "system" | "light" | "dark" })}
 		/>
 	</Row>
 	<CreditCard />
 	<ThemeGrid />
-	<Row id="theme-light" label="Light theme" description="Colors used in light mode.">
+	<Row
+		id="theme-light"
+		label={m.settings_registry_appearance_theme_light_label()}
+		description={m.settings_theme_tab_light_theme_description()}
+	>
 		<div class="select">
 			<Select
 				size="sm"
@@ -54,7 +60,11 @@
 			/>
 		</div>
 	</Row>
-	<Row id="theme-dark" label="Dark theme" description="Colors used in dark mode.">
+	<Row
+		id="theme-dark"
+		label={m.settings_registry_appearance_theme_dark_label()}
+		description={m.settings_theme_tab_dark_theme_description()}
+	>
 		<div class="select">
 			<Select
 				size="sm"
@@ -66,33 +76,35 @@
 	</Row>
 	<Row
 		id="theme-terminal"
-		label="Terminal theme"
-		description="Colors of terminals and agents. Same as app follows the theme above."
+		label={m.settings_registry_appearance_theme_terminal_label()}
+		description={m.settings_theme_tab_terminal_theme_description()}
 	>
 		<TerminalThemeSelect />
 	</Row>
 	<ThemeIssues />
 </Group>
 
-<Group title="Import and export">
+<Group title={m.settings_theme_tab_import_and_export()}>
 	<Row
 		id="theme-import"
 		stack
-		label="Import theme"
-		description="From Ghostty, iTerm, VS Code, Alacritty or Base16, or a zip or folder of themes. Your themes live in ~/.atlas/themes and reload as you save."
+		label={m.settings_registry_appearance_theme_import_label()}
+		description={m.settings_theme_tab_import_description()}
 	>
 		<Button size="sm" variant="outlined" onclick={() => (importing = true)}>
-			<Upload size={13} /> Import…
+			<Upload size={13} />
+			{m.settings_theme_tab_import()}
 		</Button>
 		<Button size="sm" variant="ghost" onclick={revealThemesFolder}>
-			<FolderOpen size={13} /> Reveal themes folder
+			<FolderOpen size={13} />
+			{m.settings_theme_tab_reveal_themes_folder()}
 		</Button>
 	</Row>
 	<Row
 		id="theme-export"
 		stack
-		label="Export theme"
-		description="Share a theme as JSON or as a Ghostty config."
+		label={m.settings_registry_appearance_theme_export_label()}
+		description={m.settings_theme_tab_export_description()}
 	>
 		<div class="select">
 			<Select
@@ -108,7 +120,7 @@
 			disabled={!exportTarget}
 			onclick={() => copyTheme(exportTarget, "json")}
 		>
-			Copy as JSON
+			{m.settings_theme_tab_copy_as_json()}
 		</Button>
 		<Button
 			size="sm"
@@ -116,7 +128,7 @@
 			disabled={!exportTarget}
 			onclick={() => copyTheme(exportTarget, "ghostty")}
 		>
-			Copy as Ghostty config
+			{m.settings_theme_tab_copy_as_ghostty_config()}
 		</Button>
 		<Button
 			size="sm"
@@ -124,21 +136,25 @@
 			disabled={!exportTarget}
 			onclick={() => saveTheme(exportTarget, "json")}
 		>
-			Save to file…
+			{m.settings_theme_tab_save_to_file()}
 		</Button>
 	</Row>
 </Group>
 
-<Group title="Accent color">
-	<Row id="accent" label="Accent color" description="Highlights buttons, selections and focus.">
+<Group title={m.settings_registry_appearance_accent_label()}>
+	<Row
+		id="accent"
+		label={m.settings_registry_appearance_accent_label()}
+		description={m.settings_registry_appearance_accent_description()}
+	>
 		<div class="swatches">
 			{#each THEME_PRESETS as t (t.id)}
 				<button
 					class="sw"
 					class:on={colorScheme.preset === t.id}
 					style="--sw: {t.swatchColor}; --on: {readableOn(t.swatchColor)}"
-					title={t.label}
-					aria-label={t.label}
+					title={accentLabel(t)}
+					aria-label={accentLabel(t)}
 					aria-pressed={colorScheme.preset === t.id}
 					onclick={() => colorScheme.setPreset(t.id)}
 				>

@@ -70,8 +70,9 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
         f.write_all(data)?;
         f.sync_all()?;
         drop(f);
-        // Replaces an existing target on every platform (MoveFileEx on Windows).
-        fs::rename(&tmp, path)
+        // Replaces an existing target on every platform, and on Windows without a moment in which a reader opening
+        // the target finds it missing (#545).
+        crate::sys::replace_file(&tmp, path)
     })();
     if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
@@ -86,6 +87,36 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
         let _ = d.sync_all();
     }
     Ok(())
+}
+
+/// Read a file that another process replaces with [`write_atomic`] (`.tui-status.json` every second, the metrics and
+/// history files). On Unix a plain read. On Windows, an open that races the replace can be refused with "Access is
+/// denied": the open had already found the old file when the rename marked it for deletion (`STATUS_DELETE_PENDING`),
+/// a window the writer cannot close (#545, seen on CI after the POSIX rename and its retries landed). That refusal is
+/// retried briefly (1, 2, 4, 8, 16 ms); the next open finds the new file. `NotFound` is not retried: a file that does
+/// not exist is the common answer (no run) and must stay fast.
+pub fn read_replaced(path: &Path) -> io::Result<Vec<u8>> {
+    let mut attempt = 0;
+    loop {
+        match fs::read(path) {
+            Err(e) if attempt < 5 && replaced_meanwhile(&e) => {
+                std::thread::sleep(std::time::Duration::from_millis(1 << attempt));
+                attempt += 1;
+            }
+            r => return r,
+        }
+    }
+}
+
+/// [`read_replaced`] as UTF-8 text.
+pub fn read_to_string_replaced(path: &Path) -> io::Result<String> {
+    String::from_utf8(read_replaced(path)?)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+/// The refusal an open gets while the file it found is being replaced (Windows `ERROR_ACCESS_DENIED`).
+fn replaced_meanwhile(e: &io::Error) -> bool {
+    cfg!(windows) && e.raw_os_error() == Some(5)
 }
 
 #[cfg(test)]
@@ -137,7 +168,10 @@ mod tests {
     }
 
     /// #301: writers sharing one temp name (`tmp~`) interleaved bytes or lost the rename to each
-    /// other. Two threads hammering one path leave one whole value and no temp file.
+    /// other. Two threads hammering one path leave one whole value and no temp file. 100 writes
+    /// each: every one is a flushed 150-200 KB file, and 1000 each took 40 s to over 60 s on the
+    /// Windows runner (nextest's slow mark) for no extra chance to interleave (the shared name
+    /// fails within the first few).
     #[test]
     fn concurrent_writers_to_one_path_never_corrupt_it_or_leave_temp_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -148,7 +182,7 @@ mod tests {
             for v in values.iter() {
                 let path = &path;
                 s.spawn(move || {
-                    for _ in 0..1000 {
+                    for _ in 0..100 {
                         write_atomic(path, v.as_bytes(), Mode::Default).unwrap();
                     }
                 });
@@ -199,5 +233,57 @@ mod tests {
         let path = dir.path().join("a/b/f");
         write_atomic(&path, b"x", Mode::Default).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"x");
+    }
+
+    /// #545 (`status_write_is_atomic_under_concurrent_reads`, Windows): a reader opening the target while it is
+    /// replaced found it missing (`NotFound`) now and then, because `std::fs::rename` is `MoveFileExW`, which does not
+    /// promise that the name never disappears. The contract is for a reader that reads with [`read_replaced`]: the old
+    /// file or the new one, never an error, as often as it can open it. A plain `fs::read` can still be refused
+    /// ("Access is denied", the old file delete-pending under an open in flight): seen on the Windows runner after
+    /// 35494 opens with the POSIX rename and its retries. (Unix never had the window.)
+    #[test]
+    fn replacing_a_file_never_leaves_its_name_missing_for_a_reader_that_opens_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        fs::write(&path, "0").unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let reader = {
+            let (path, done) = (path.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut opens = 0u32;
+                while !done.load(Ordering::Relaxed) {
+                    let got = read_to_string_replaced(&path).unwrap_or_else(|e| {
+                        panic!("the name was missing for a reader after {opens} opens: {e}")
+                    });
+                    assert!(got.parse::<u32>().is_ok(), "{got:?}");
+                    opens += 1;
+                }
+                opens
+            })
+        };
+        for n in 1..2000 {
+            let tmp = dir.path().join(format!("status.json.tmp-{n}"));
+            fs::write(&tmp, n.to_string()).unwrap();
+            crate::sys::replace_file(&tmp, &path).unwrap();
+        }
+        done.store(true, Ordering::Relaxed);
+        assert!(reader.join().unwrap() > 0);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "1999");
+        assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+    }
+
+    /// The old file lives on for whoever already holds it open (on every OS), and the name goes to the new one.
+    #[test]
+    fn a_reader_that_already_holds_the_old_file_keeps_reading_it_after_the_replace() {
+        use std::io::Read;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f");
+        fs::write(&path, "old content").unwrap();
+        let mut held = fs::File::open(&path).unwrap();
+        write_atomic(&path, b"new", Mode::Default).unwrap();
+        let mut seen = String::new();
+        held.read_to_string(&mut seen).unwrap();
+        assert_eq!(seen, "old content");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
     }
 }

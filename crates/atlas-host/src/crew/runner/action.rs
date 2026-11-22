@@ -51,10 +51,11 @@ pub(crate) fn parse_atlas_action(text: &str) -> Option<TaskAction> {
     })
 }
 
-/// The reply as people should read it: without the `ATLAS_ACTION:` line, which is for Atlas (it becomes the card).
+/// The reply as people should read it: without the `ATLAS_ACTION:` line, which is for Atlas (it becomes the card),
+/// and without the `spoken:` line, which is for listening (`Task::spoken`).
 pub(crate) fn visible_reply(text: &str) -> String {
     text.lines()
-        .filter(|l| !l.trim().starts_with(ATLAS_ACTION_PREFIX))
+        .filter(|l| !l.trim().starts_with(ATLAS_ACTION_PREFIX) && !super::spoken::is_line(l))
         .collect::<Vec<_>>()
         .join("\n")
         .trim()
@@ -114,6 +115,29 @@ pub(super) fn park_task(hub: &Hub, crewmate: &Crewmate, task: &mut Task, action:
     task.state = TaskState::WaitingAction;
     task.action = Some(action);
     // A parked task the log does not know would come back as "running" after a restart; say so.
+    let _ = persist(hub, &crewmate.id, task);
+    broadcast_task(hub, &crewmate.id, task);
+}
+
+/// The owner's answer to the card was taken: the task is running again, stored and broadcast, so every client
+/// stops showing a live card the moment the answer is accepted and not when the follow-up turn ends (#524: the card
+/// stayed live for the whole turn and the next click was dropped). The card stays on the task, with `answer`, so
+/// the chat can show what was asked and what was picked.
+pub(super) fn answer_accepted(
+    hub: &Hub,
+    crewmate: &Crewmate,
+    task: &mut Task,
+    action: &TaskAction,
+    resolved: &str,
+) {
+    task.answer = user_answer(action, resolved);
+    running_again(hub, crewmate, task);
+}
+
+/// Store and broadcast `task` as running (again, after a card, or after waiting for a slot that said "server busy").
+pub(super) fn running_again(hub: &Hub, crewmate: &Crewmate, task: &mut Task) {
+    task.state = TaskState::Running;
+    task.waiting_for = None;
     let _ = persist(hub, &crewmate.id, task);
     broadcast_task(hub, &crewmate.id, task);
 }

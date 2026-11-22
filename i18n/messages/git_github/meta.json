@@ -1,0 +1,80 @@
+{
+	"git_github_add_remote": "Button of the Pull request tab, and title of the dialog it opens, that adds a git remote.",
+	"git_github_add_remote_body": "Body of the dialog that adds a git remote.",
+	"git_github_add_remote_confirm": "Confirm button of the dialog that adds a git remote.",
+	"git_github_auto_merge_enabled": "Success toast after enabling auto-merge on a pull request.",
+	"git_github_check_cancelled": {
+		"description": "State chip of one check. Raw value CANCELLED of gh pr checks.",
+		"distinct": "a check (masculine); the other is a task (feminine)"
+	},
+	"git_github_check_error": "State chip of one check. Raw value ERROR of gh pr checks.",
+	"git_github_check_failure": "State chip of one check. Raw value FAILURE of gh pr checks.",
+	"git_github_check_in_progress": "State chip of one check. Raw value IN_PROGRESS of gh pr checks.",
+	"git_github_check_neutral": "State chip of one check. Raw value NEUTRAL of gh pr checks.",
+	"git_github_check_pending": "State chip of one check. Raw value PENDING of gh pr checks.",
+	"git_github_check_queued": "State chip of one check. Raw value QUEUED of gh pr checks.",
+	"git_github_check_skipped": "State chip of one check. Raw value SKIPPED of gh pr checks.",
+	"git_github_check_success": "State chip of one check. Raw value SUCCESS of gh pr checks.",
+	"git_github_check_timed_out": "State chip of one check. Raw value TIMED_OUT of gh pr checks.",
+	"git_github_checks_chip_failed": "Chip of a pull request whose checks failed.",
+	"git_github_checks_chip_ok": "Chip of a pull request whose checks all passed.",
+	"git_github_checks_chip_pending": "Chip of a pull request whose checks are still running.",
+	"git_github_checks_title": "Heading of the checks list in the Pull request tab.",
+	"git_github_cli_missing_body": "Body of the Pull request tab when gh is missing.",
+	"git_github_cli_missing_title": "Title of the Pull request tab when gh is missing.",
+	"git_github_command_failed": "Error toast for any other gh failure; the Details action shows gh's own output.",
+	"git_github_commented": "Success toast after commenting on a pull request.",
+	"git_github_create_branch": "Button of the Pull request tab on the default branch: opens the branch picker.",
+	"git_github_create_failed": "Error toast when `gh pr create` failed; the Details action shows gh's own output.",
+	"git_github_created": "Success toast after creating a pull request.",
+	"git_github_default_branch_body": "Body of the Pull request tab on the default branch.",
+	"git_github_default_branch_title": "Title of the Pull request tab when the checked out branch is the default branch.",
+	"git_github_error_title": "Title of the Pull request tab when gh failed. The body is gh's own message.",
+	"git_github_marked_ready": "Success toast after a draft pull request was marked ready for review.",
+	"git_github_merge_commit": "Merge menu item of the Pull request tab.",
+	"git_github_merge_rebase": "Merge menu item of the Pull request tab.",
+	"git_github_merge_squash": "Merge menu item of the Pull request tab.",
+	"git_github_merged": "Success toast after a pull request was merged.",
+	"git_github_no_commits_body": "Body of the Pull request tab when the repository has no commit.",
+	"git_github_no_commits_title": "Title of the Pull request tab when the repository has no commit.",
+	"git_github_no_remote_body": "Body of the Pull request tab when no remote exists.",
+	"git_github_no_remote_title": "Title of the Pull request tab when no remote exists.",
+	"git_github_not_github_body": "Body of the Pull request tab when a remote is not GitHub and none is named.",
+	"git_github_not_github_body_remote": "Body of the Pull request tab when a remote is not GitHub. {name} is the remote's name, {url} its address.",
+	"git_github_not_github_title": "Title of the Pull request tab when the remotes point to another forge.",
+	"git_github_not_pushed_body": "Body of the Pull request tab when the branch has no upstream. {remote} is the remote's name.",
+	"git_github_not_pushed_title": "Title of the Pull request tab when the branch has no upstream.",
+	"git_github_pr_closed": "Status chip of a pull request that was closed without merge. Raw value CLOSED of gh.",
+	"git_github_pr_draft": "Status chip of a draft pull request.",
+	"git_github_pr_merged": {
+		"description": "Status chip of a pull request that was merged. Raw value MERGED of gh.",
+		"distinct": "the state chip of a pull request; the other is the success toast of the merge action"
+	},
+	"git_github_pr_open": {
+		"description": "Status chip of a pull request that is open.",
+		"distinct": "a status word on a chip, not the Open action"
+	},
+	"git_github_push_branch": "Button of the Pull request tab that pushes the branch and sets its upstream.",
+	"git_github_pushed": "Success toast after the Pull request tab pushed a branch.",
+	"git_github_ready_body": "Body of the Pull request tab when the branch has no pull request.",
+	"git_github_ready_title": "Title of the Pull request tab when the branch is pushed and has no pull request.",
+	"git_github_review_approved": "Chip of a pull request review decision. Raw value APPROVED of gh.",
+	"git_github_review_changes": "Chip of a pull request review decision. Raw value CHANGES_REQUESTED of gh.",
+	"git_github_review_commented": {
+		"description": "Tag of a review in the pull request timeline. Raw value COMMENTED of gh.",
+		"distinct": "a review tag in the timeline; the other is the success toast after commenting"
+	},
+	"git_github_review_dismissed": "Tag of a review in the pull request timeline. Raw value DISMISSED of gh.",
+	"git_github_review_required": "Chip of a pull request review decision. Raw value REVIEW_REQUIRED of gh.",
+	"git_github_rollup_failed": {
+		"description": "Word next to the Checks heading: at least one check failed.",
+		"distinct": "summarizes several checks, so 'com falha' agrees with any number; 'falhou' is one thing's outcome"
+	},
+	"git_github_rollup_ok": "Word next to the Checks heading: all checks passed.",
+	"git_github_rollup_pending": {
+		"description": "Word next to the Checks heading: checks are still running.",
+		"distinct": "summarizes several checks (plural); the other is one check"
+	},
+	"git_github_sign_in": "Title and button of the Pull request tab when gh is signed out.",
+	"git_github_signed_out_body": "Body of the Pull request tab when gh is signed out."
+}

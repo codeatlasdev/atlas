@@ -1,0 +1,16 @@
+{
+	"jsGzip": 618496,
+	"cssGzip": 51200,
+	"slack": 8192,
+	"forbidden": [
+		"@codemirror/*",
+		"@lezer/*",
+		"codemirror",
+		"@xterm/*",
+		"yaml",
+		"marked",
+		"prettier",
+		"echarts"
+	],
+	"known": []
+}

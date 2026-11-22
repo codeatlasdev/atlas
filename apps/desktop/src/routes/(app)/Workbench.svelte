@@ -8,11 +8,12 @@
 	import Welcome from "#lib/components/Welcome.svelte";
 	import SearchPanel from "#lib/search/SearchPanel.svelte";
 	import RightDock from "#lib/shell/RightDock.svelte";
-	import { docks } from "#lib/stores/docks.svelte.ts";
+	import { docks, showExplorerOnce } from "#lib/stores/docks.svelte.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { leaves, ws } from "#lib/stores/workspace.svelte.ts";
 	import { untrack } from "svelte";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const space = useSpace();
 	let wt = $derived(space.worktree);
@@ -23,9 +24,16 @@
 		const id = wt?.id;
 		if (docks.bottom && id) untrack(() => ws.bottomGroup(id));
 	});
+	// A plain folder is its files: show the explorer the first time it is the space on screen (not a mounted neighbour).
+	$effect(() => {
+		const id = wt?.id;
+		if (id && wt?.plain && space.current) untrack(() => showExplorerOnce(id));
+	});
 
 	/** No tab in the main pane tree (the bottom dock has its own group). */
 	let empty = $derived(!!layout && leaves(layout).every((id) => !ws.group(id)?.order.length));
+	/** A plain folder: the Changes panel has nothing to show, so it says why instead of failing on `git status`. */
+	let folder = $derived(space.project?.kind === "folder");
 </script>
 
 {#snippet dockPanel(id: string, edge: "left" | "right")}
@@ -37,14 +45,17 @@
 				: docks.leftPanel === "search"
 					? "Search"
 					: "Source control"}
-			title="This panel hit an error"
-			hint="The rest of Atlas is unaffected."
+			title={m.shell_workbench_this_panel_hit_an_error()}
+			hint={m.shell_contain_default_hint()}
 		>
 			{#if docks.leftPanel === "explorer"}<Explorer
 					worktreeId={id}
-				/>{:else if docks.leftPanel === "search"}<SearchPanel worktreeId={id} />{:else}<SourceControl
-					worktreeId={id}
-				/>{/if}
+				/>{:else if docks.leftPanel === "search"}<SearchPanel worktreeId={id} />{:else if folder}
+				<div class="notgit" role="status">
+					<b>{m.shell_workbench_not_a_git_repository()}</b>
+					<span>{m.shell_workbench_this_folder_has_no_version()}</span>
+				</div>
+			{:else}<SourceControl worktreeId={id} />{/if}
 		</Contain>
 	</div>
 	{#if edge === "left"}<DockResizer side="left" {edge} />{/if}
@@ -86,6 +97,19 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
+	}
+	.notgit {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 16px 14px;
+		font-size: 12.5px;
+		color: var(--ca-text-secondary);
+	}
+	.notgit b {
+		color: var(--ca-text-primary);
+		font-weight: 600;
 	}
 	.center {
 		flex: 1;

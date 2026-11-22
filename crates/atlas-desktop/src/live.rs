@@ -14,7 +14,6 @@ use notify::{RecursiveMode, Watcher};
 use serde_json::{Value, json};
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_notification::NotificationExt;
 
 const POLL: Duration = Duration::from_secs(2);
 const NOTIFY_EVERY: Duration = Duration::from_secs(300);
@@ -154,6 +153,7 @@ async fn run(app: AppHandle, id: String, root: PathBuf) {
             Ok(mut sub) => {
                 let mut first = std::mem::take(&mut sub.snapshot);
                 first["t"] = "snapshot".into();
+                localize(&mut first);
                 let _ = app.emit(&topic, first);
                 let mut got_events = false;
                 let mut batch = LogBatch::default();
@@ -186,6 +186,8 @@ async fn run(app: AppHandle, id: String, root: PathBuf) {
                         let _ = app.emit(&topic, b);
                     }
                     notify_if_needed(&app, &root, &ev);
+                    let mut ev = ev;
+                    localize(&mut ev);
                     let _ = app.emit(&topic, ev);
                 }
                 if let Some(b) = batch.take() {
@@ -237,15 +239,71 @@ fn poll_event(s: &status::Snapshot) -> Value {
     json!({"t": "poll", "mode": s.mode, "pid": s.pid, "services": services, "tunnel": tunnel})
 }
 
+/// The engine's sentences a runner sends with a code (`note`, `probe_error`, `memory_leak` of a service row, the
+/// `message` of a `note` or `alert` event), written in the display language before they reach the page, which shows
+/// them as they are. The English and the codes stay on the wire for machines; a text without a code (an older
+/// runner) is left as it came.
+fn localize(ev: &mut Value) {
+    localize_in(ev, atlas_i18n::lang());
+}
+
+fn localize_in(ev: &mut Value, tag: &str) {
+    use atlas_tui::runtime::note::Note;
+    fn row(r: &mut Value, tag: &str) {
+        for field in ["note", "probe_error", "memory_leak"] {
+            if let Some(n) = Note::from_flat(r, field).filter(|n| !n.code.is_empty()) {
+                r[field] = n.render_in(tag).into();
+            }
+        }
+    }
+    match ev["t"].as_str() {
+        // `get_mut`, not `ev["events"]`: indexing a missing key would add it (as null) to the payload.
+        Some("snapshot" | "rows") => {
+            for key in ["services", "events"] {
+                let Some(list) = ev.get_mut(key).and_then(Value::as_array_mut) else {
+                    continue;
+                };
+                for item in list {
+                    if key == "services" {
+                        row(item, tag);
+                    } else {
+                        localize_in(item, tag);
+                    }
+                }
+            }
+        }
+        Some("state") => row(ev, tag),
+        Some("note" | "alert") => {
+            let n = Note::from_wire(ev);
+            if !n.code.is_empty() {
+                ev["message"] = n.render_in(tag).into();
+            }
+        }
+        _ => {}
+    }
+}
+/// The body of a native notification for a runner `alert` event: the engine's sentence written from its `code` and
+/// `args` in the display language; an event from a runner that sends no code shows its English `message`.
+fn alert_body(ev: &Value) -> String {
+    let note = atlas_tui::runtime::note::Note::from_wire(ev);
+    if note.message.is_empty() && note.code.is_empty() {
+        return "alert".to_string();
+    }
+    note.render()
+}
+
 /// Native notification for failures/alerts, only while the window is not focused.
 /// A crash-looping service sends `failed` every few seconds: each (project,
 /// message) notifies at most once per [`NOTIFY_EVERY`].
 fn notify_if_needed(app: &AppHandle, root: &Path, ev: &Value) {
     let body = match ev["t"].as_str() {
         Some("state") if ev["state"] == "failed" => {
-            format!("{} failed", ev["name"].as_str().unwrap_or("service"))
+            atlas_i18n::t!(
+                "native_notify_service_failed",
+                name = ev["name"].as_str().unwrap_or("service")
+            )
         }
-        Some("alert") => ev["message"].as_str().unwrap_or("alert").to_string(),
+        Some("alert") => alert_body(ev),
         _ => return,
     };
     {
@@ -273,7 +331,7 @@ fn notify_if_needed(app: &AppHandle, root: &Path, ev: &Value) {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Atlas".into());
-    let _ = app.notification().builder().title(title).body(body).show();
+    let _ = crate::native_ui::notify(app, title, body);
 }
 
 #[cfg(test)]
@@ -448,5 +506,81 @@ mod tests {
         ] {
             assert!(old[k].is_null(), "{k}");
         }
+    }
+
+    /// The service cards read `note`, `probe_error` and `memory_leak` as they are: the runner's events reach the page
+    /// with those written in the app's language. The rows are the REAL wire output (`service-states.json`,
+    /// `service-memory.json`); a row or event from a runner that sends no code keeps its English.
+    #[test]
+    fn runner_rows_and_notes_reach_the_page_in_the_display_language() {
+        let states: Value = serde_json::from_str(include_str!(
+            "../../../apps/desktop/src/lib/__fixtures__/service-states.json"
+        ))
+        .unwrap();
+        let memory: Value = serde_json::from_str(include_str!(
+            "../../../apps/desktop/src/lib/__fixtures__/service-memory.json"
+        ))
+        .unwrap();
+        let by = |ev: &Value, n: &str| {
+            ev["services"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["name"] == n)
+                .unwrap()
+                .clone()
+        };
+
+        let mut rows = json!({"t": "rows", "services": states});
+        localize_in(&mut rows, "pt-BR");
+        let api = by(&rows, "api");
+        assert_eq!(api["note"], "a sonda ready falhou: GET /ready → 500");
+        assert_eq!(api["probe_error"], "a sonda ready falhou: GET /ready → 500");
+        assert!(
+            by(&rows, "web")["note"]
+                .as_str()
+                .unwrap()
+                .starts_with("não saudável há")
+        );
+
+        // A snapshot's rows and the events it replays; `state` is one row on its own.
+        let mut snap = json!({"t": "snapshot", "services": memory, "events": [
+            {"t": "note", "name": "api", "message": "ready probe failed: GET /ready → 500",
+             "code": "probe.ready_failed", "args": {"error": "GET /ready → 500"}},
+        ]});
+        localize_in(&mut snap, "pt-BR");
+        let api = by(&snap, "api");
+        // pt-BR numbers: a decimal comma.
+        assert_eq!(
+            api["probe_error"],
+            "usando 1,3 GB, acima de memory_warn 1,0 GB"
+        );
+        assert_eq!(
+            api["memory_leak"],
+            "suspeita de vazamento: +660 MB em 11 recarregamentos"
+        );
+        assert_eq!(
+            api["note"],
+            "usando 1,3 GB, acima de memory_warn 1,0 GB · suspeita de vazamento: +660 MB em 11 recarregamentos"
+        );
+        assert_eq!(
+            snap["events"][0]["message"],
+            "a sonda ready falhou: GET /ready → 500"
+        );
+        let mut state = by(&json!({"services": states}), "api");
+        state["t"] = "state".into();
+        localize_in(&mut state, "pt-BR");
+        assert_eq!(state["note"], "a sonda ready falhou: GET /ready → 500");
+
+        // English stays byte for byte; an older runner (no code) keeps its text in any language.
+        let mut en = json!({"t": "rows", "services": states});
+        localize_in(&mut en, "en");
+        assert_eq!(en, json!({"t": "rows", "services": states}));
+        let mut old = json!({"t": "alert", "service": "api", "message": "something odd"});
+        localize_in(&mut old, "pt-BR");
+        assert_eq!(old["message"], "something odd");
+        let mut old_row = json!({"t": "state", "name": "api", "note": "plain text"});
+        localize_in(&mut old_row, "pt-BR");
+        assert_eq!(old_row["note"], "plain text");
     }
 }

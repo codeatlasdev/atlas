@@ -1,0 +1,90 @@
+{
+	"crew_onboarding_connect_error_host_key_changed_body": "Failure body for a changed host key; {host} is the address and the command to copy is shown below it. A security warning: keep it plain and complete.",
+	"crew_onboarding_connect_error_host_key_changed_title": "Failure title when the server's host key differs from the remembered one.",
+	"crew_onboarding_connect_error_key_refused_body": {
+		"description": "Failure body when the key is not authorized on the server yet. ssh-agent is the name of a program, i18n-allow glossary:agent"
+	},
+	"crew_onboarding_connect_error_key_refused_title": "Failure title when the server refuses the key; {key} is the key file path.",
+	"crew_onboarding_connect_error_key_refused_title_default": "Same failure when no key path is known.",
+	"crew_onboarding_connect_error_key_still_refused_body": "Failure body after a key was added and still refused. PubkeyAuthentication and ~/.ssh are sshd names and stay as written.",
+	"crew_onboarding_connect_error_key_still_refused_title": "Failure title when the server refuses a key that Atlas just added; {key} is the key file path.",
+	"crew_onboarding_connect_error_key_still_refused_title_default": "Same failure when no key path is known.",
+	"crew_onboarding_connect_error_key_unusable_body": "Failure body on macOS and Linux when the key file has loose permissions or is not a private key.",
+	"crew_onboarding_connect_error_key_unusable_title": "Failure title when ssh refuses to read the key; {key} is the key file path.",
+	"crew_onboarding_connect_error_key_unusable_title_default": "Same failure when no key path is known.",
+	"crew_onboarding_connect_error_key_unusable_windows_body": {
+		"description": "Failure body on Windows when the key file has loose permissions or is not a private key.",
+		"platform": "windows"
+	},
+	"crew_onboarding_connect_error_name_not_found_body": "Failure body when the name does not resolve.",
+	"crew_onboarding_connect_error_name_not_found_title": "Failure title when the name does not resolve; {host} is the address.",
+	"crew_onboarding_connect_error_no_key_body": "Failure body when the key file is missing.",
+	"crew_onboarding_connect_error_no_key_title": "Failure title when the key file path points to nothing.",
+	"crew_onboarding_connect_error_other_body": "Failure body when the CLI gave no hint of its own.",
+	"crew_onboarding_connect_error_other_title": "Failure title for any error Atlas has no specific advice for.",
+	"crew_onboarding_connect_error_password_not_allowed_body": "Failure body when the server takes only keys.",
+	"crew_onboarding_connect_error_password_not_allowed_title": "Failure title when sshd allows only keys.",
+	"crew_onboarding_connect_error_password_refused_body": "Failure body for a wrong password; {user} is the account and {host} the server address.",
+	"crew_onboarding_connect_error_password_refused_body_default": "Failure body for a wrong password when no account name was typed; {host} is the server address.",
+	"crew_onboarding_connect_error_password_refused_title": "Failure title when the account password is wrong.",
+	"crew_onboarding_connect_error_ssh_missing_body": "Failure body on macOS and Linux when the ssh program is missing. The command in code stays as written.",
+	"crew_onboarding_connect_error_ssh_missing_title": "Failure title on macOS and Linux when the ssh program is missing.",
+	"crew_onboarding_connect_error_ssh_missing_windows_body": {
+		"description": "Failure body on Windows when the ssh program is missing; the command to copy is shown below it.",
+		"platform": "windows"
+	},
+	"crew_onboarding_connect_error_ssh_missing_windows_title": {
+		"description": "Failure title on Windows when the ssh program is missing.",
+		"platform": "windows"
+	},
+	"crew_onboarding_connect_error_sudo_password_body": "Failure body when sudo asks for a password; the field is below it.",
+	"crew_onboarding_connect_error_sudo_password_title": "Failure title when sudo asks for a password.",
+	"crew_onboarding_connect_error_sudo_rejected_body": "Failure body when the sudo password is wrong.",
+	"crew_onboarding_connect_error_sudo_rejected_title": "Failure title when the sudo password is wrong.",
+	"crew_onboarding_connect_error_timeout_body": "Failure body for a connection timeout.",
+	"crew_onboarding_connect_error_timeout_title": "Failure title when the connection times out; {host} is the address.",
+	"crew_onboarding_connect_error_unreachable_body": "Failure body for an unreachable server; the port field is above it on the form.",
+	"crew_onboarding_connect_error_unreachable_title": "Failure title when the connection is refused or the network is unreachable; {host} is the address.",
+	"crew_onboarding_connect_scene_machine_connecting": "Accessible name of the connect-step art; {machine} is the user's own computer in the words of their OS.",
+	"crew_onboarding_connect_scene_your_server": "Caption under the server in the connect-step art.",
+	"crew_onboarding_connect_step_action_pick_key": "Button under a connect failure: opens the file picker to choose another private key.",
+	"crew_onboarding_connect_step_action_retry": {
+		"description": "Button under a connect failure: runs the install again.",
+		"distinct": "says what to do after a failure; the common Retry is a verb for lists"
+	},
+	"crew_onboarding_connect_step_action_use_key": "Button under a connect failure: switches the form to the SSH key.",
+	"crew_onboarding_connect_step_action_use_password": "Button under a connect failure: switches the form to the account password.",
+	"crew_onboarding_connect_step_browsers_option": "Label of the checkbox that also installs the screenshot browsers on the server.",
+	"crew_onboarding_connect_step_choose_a_file": "Link of the connect form when no key is found: opens the file picker.",
+	"crew_onboarding_connect_step_choose_another": "Link next to the key in use: opens the file picker to choose another private key.",
+	"crew_onboarding_connect_step_copy_command": "Accessible name of the copy button of the command shown in a failure.",
+	"crew_onboarding_connect_step_copy_install_command": "Accessible name of the copy button of the install command shown under Prefer the terminal.",
+	"crew_onboarding_connect_step_create_one": "Link that creates an SSH key; one refers to the key named in the line before it.",
+	"crew_onboarding_connect_step_creating": "Link label while Atlas creates an SSH key.",
+	"crew_onboarding_connect_step_details": "Summary of the disclosure that holds the raw last line of a failure.",
+	"crew_onboarding_connect_step_how_to_fix": "Link of a failure: opens the troubleshooting section of the docs.",
+	"crew_onboarding_connect_step_installed_connecting": "Line shown when the install finished and Atlas connects to the server.",
+	"crew_onboarding_connect_step_key_file_missing": {
+		"description": "Line shown when the picked key file does not exist.",
+		"distinct": "a line beside the form's key, not the failure title"
+	},
+	"crew_onboarding_connect_step_key_in_use": "Hint under the key shown when ssh finds it by itself.",
+	"crew_onboarding_connect_step_key_kept": "Hint under the key shown after the user picked another key: it is remembered for this server.",
+	"crew_onboarding_connect_step_looking_for_your_ssh_key": "Line with a spinner while Atlas looks for the SSH key the form will use.",
+	"crew_onboarding_connect_step_method_key": "Segment of the Sign in with control: sign in with an SSH key.",
+	"crew_onboarding_connect_step_method_password": "Segment of the Sign in with control: sign in with the account password.",
+	"crew_onboarding_connect_step_no_key": "Line shown when ssh finds no private key on this computer.",
+	"crew_onboarding_connect_step_password_creates_key": "Hint when no key exists: signing in with the password makes Atlas create one.",
+	"crew_onboarding_connect_step_password_of": {
+		"description": "Label and placeholder of the password field; {user} is the account name typed in the address.",
+		"maxLength": 40
+	},
+	"crew_onboarding_connect_step_password_used_once": "Hint under the password field: the password adds the key once and is never saved.",
+	"crew_onboarding_connect_step_port": "Label of the SSH port field.",
+	"crew_onboarding_connect_step_prefer_the_terminal": "Small link that opens the same install as a command to run in a terminal.",
+	"crew_onboarding_connect_step_sign_in_with": "Label and accessible name of the control that picks the key or the password.",
+	"crew_onboarding_connect_step_ssh_address": "Label of the SSH address field (user@host).",
+	"crew_onboarding_connect_step_sudo_password": "Label and placeholder of the sudo password field of a failure.",
+	"crew_onboarding_connect_step_terminal_hint": "Hint under the install command shown by Prefer the terminal.",
+	"crew_onboarding_connect_step_use_the_default": "Link that drops the picked key and goes back to the key ssh finds by itself."
+}

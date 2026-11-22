@@ -9,6 +9,8 @@
 //!
 //! This module is the pure part: the decision, and where a window goes on the virtual display.
 
+use atlas_core::agent_display::AGENT_VENDOR;
+
 /// Environment variable that switches the mode on.
 pub const ENV: &str = "ATLAS_AGENT";
 
@@ -50,6 +52,13 @@ impl Mode {
 
     /// The menu-bar tray icon is the user's; an agent instance has none (it would appear in HIS menu bar).
     pub fn tray_allowed(self) -> bool {
+        self == Mode::User
+    }
+
+    /// Native UI outside the app's window (message boxes, pickers, notifications, popped menus, launched apps): the OS
+    /// places it on the user's active display, not on the agent's virtual one, so an agent instance never raises it
+    /// (`native_ui.rs` is the one gate that asks).
+    pub fn native_ui_allowed(self) -> bool {
         self == Mode::User
     }
 
@@ -150,9 +159,6 @@ pub fn fit_size(size: (f64, f64), display: Rect) -> (f64, f64) {
 
 /// Clear space kept between an agent window and every edge of its display (and so every other display).
 pub const SAFE_MARGIN: f64 = 4.0;
-
-/// Vendor id every Atlas agent display is created with: how a sibling agent display is told from the user's panel.
-pub const AGENT_VENDOR: u32 = 0x4147;
 
 /// One active display as the OS reports it right now.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -870,6 +876,8 @@ mod tests {
     fn an_agent_instance_has_no_dock_icon_no_tray_and_cannot_be_frontmost() {
         assert_eq!(Mode::Agent.policy(), Policy::Prohibited);
         assert!(!Mode::Agent.tray_allowed());
+        assert!(!Mode::Agent.native_ui_allowed());
+        assert!(Mode::User.native_ui_allowed());
         assert_eq!(Mode::User.policy(), Policy::Regular);
         assert!(Mode::User.tray_allowed());
     }

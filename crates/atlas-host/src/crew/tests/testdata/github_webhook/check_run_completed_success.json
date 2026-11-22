@@ -1,0 +1,35 @@
+{
+  "action": "completed",
+  "check_run": {
+    "id": 1101,
+    "name": "lint",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/o/r/actions/runs/78/job/1101",
+    "check_suite": {
+      "id": 6,
+      "head_branch": "fix/crash"
+    }
+  },
+  "repository": {
+    "id": 1296269,
+    "full_name": "o/r",
+    "name": "r",
+    "private": true,
+    "owner": {
+      "login": "o",
+      "id": 583231,
+      "type": "Organization"
+    }
+  },
+  "sender": {
+    "login": "dev",
+    "id": 5001,
+    "type": "User",
+    "site_admin": false
+  },
+  "installation": {
+    "id": 7,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNw=="
+  }
+}

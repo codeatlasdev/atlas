@@ -35,14 +35,20 @@
 		"appimage": "~/Apps/Atlas_1.5.0-alpha.25_amd64.AppImage",
 		"exe": "/tmp/.mount_AtlasAbc/usr/bin/atlas-desktop",
 		"exeOwner": null,
-		"localBin": ["atlas"]
+		"localBin": [
+			"atlas"
+		]
 	},
 	"platform": {
 		"compositor": "Hyprland",
 		"desktop": "Hyprland",
 		"distro": "Arch Linux [arch]",
-		"gpus": ["AMD (amdgpu)"],
-		"graphicsEnv": ["WEBKIT_DISABLE_DMABUF_RENDERER=1"],
+		"gpus": [
+			"AMD (amdgpu)"
+		],
+		"graphicsEnv": [
+			"WEBKIT_DISABLE_DMABUF_RENDERER=1"
+		],
 		"gtk": "3.24.52",
 		"kernel": "7.2.15-1-omarchy",
 		"mesa": "26.2.5-1",
@@ -55,7 +61,9 @@
 		"app": "1.5.0-alpha.25",
 		"cli": "1.5.0-alpha.25",
 		"hostd": "1.5.0-alpha.24",
-		"hostdCaps": ["pty_attach_raw"],
+		"hostdCaps": [
+			"pty_attach_raw"
+		],
 		"hostdPid": 8664
 	}
 }

@@ -119,12 +119,19 @@ for a in "$@"; do
   prev="$a"
 done
 case "$url" in
-  */releases/latest) printf '%s' 'https://github.com/codeatlasdev/atlas/releases/tag/v{LATEST}'; exit 0;;
-  */releases.atom*) cat <<'EOF'
+  */releases/latest)
+    if [ -f '{root}/latest' ]; then cat '{root}/latest'; exit 0; fi
+    printf '%s' 'https://github.com/codeatlasdev/atlas/releases/tag/v{LATEST}'; exit 0;;
+  */releases.atom*)
+    if [ -f '{root}/feed.xml' ]; then cat '{root}/feed.xml'; exit 0; fi
+    cat <<'EOF'
 <feed><entry><link rel="alternate" href="https://github.com/codeatlasdev/atlas/releases/tag/v{LATEST}"/></entry></feed>
 EOF
     exit 0;;
   */manifest.json) printf '200'; exit 0;;
+  */data/yanked.json)
+    if [ -f '{root}/yanked.json' ]; then cat '{root}/yanked.json'; exit 0; fi
+    echo 'curl: (22) The requested URL returned error: 404' >&2; exit 22;;
 esac
 name="${{url##*/}}"
 if [ -f '{assets}'/"$name" ] && [ -n "$out" ] && [ "$out" != /dev/null ]; then
@@ -134,8 +141,50 @@ case " $* " in *" -I "*) printf '1024'; exit 0;; esac
 echo "curl stub: no fixture for $url" >&2
 exit 22
 "#,
-            assets = assets.display()
+            assets = assets.display(),
+            root = self.root.path().display()
         )
+    }
+
+    /// The release feed the stub serves: these tags, newest first (default: only `LATEST`); the
+    /// `releases/latest` redirect points at the first.
+    fn feed(&self, tags: &[&str]) {
+        std::fs::write(
+            self.root.path().join("latest"),
+            format!(
+                "https://github.com/codeatlasdev/atlas/releases/tag/{}",
+                tags[0]
+            ),
+        )
+        .unwrap();
+        let entries: String = tags
+            .iter()
+            .map(|t| {
+                format!(
+                    r#"<entry><link rel="alternate" href="https://github.com/codeatlasdev/atlas/releases/tag/{t}"/></entry>"#
+                )
+            })
+            .collect();
+        std::fs::write(
+            self.root.path().join("feed.xml"),
+            format!("<feed>{entries}</feed>"),
+        )
+        .unwrap();
+    }
+
+    /// `data/yanked.json` as main serves it, written in the file's own schema.
+    fn yank(&self, entries: &[(&str, &str, Option<&str>)]) {
+        let list: Vec<serde_json::Value> = entries
+            .iter()
+            .map(|(v, why, rep)| {
+                serde_json::json!({"version": v, "reason": why, "replacement": rep})
+            })
+            .collect();
+        std::fs::write(
+            self.root.path().join("yanked.json"),
+            serde_json::json!({ "yanked": list }).to_string(),
+        )
+        .unwrap();
     }
 
     /// Put a release asset and its `.sha256` where the curl stub serves them. `sum` overrides
@@ -242,6 +291,9 @@ exit 22
         let mut cmd = Command::new(BIN);
         cmd.args(args)
             .env_clear()
+            // The text of these tests is English whatever language the machine is set to (the OS language counts
+            // even with the environment cleared).
+            .env("ATLAS_LANG", "en")
             .env("HOME", self.home())
             .env("PATH", path)
             .env("ATLAS_UPDATE_EXE", self.exe())
@@ -742,4 +794,71 @@ fn a_check_records_what_it_found_in_the_cache_hostd_reads() {
             "{args:?}: {cache}"
         );
     }
+}
+
+// ── #313: the yank list ───────────────────────────────────────────────────────
+
+fn check_json(sb: &Sandbox) -> serde_json::Value {
+    let o = sb.run(&["update", "--check", "--json"], &[]);
+    assert!(o.status.success(), "{}", text(&o));
+    serde_json::from_slice(&o.stdout).unwrap_or_else(|e| panic!("{e}: {}", text(&o)))
+}
+
+/// A yanked newest release is never what `atlas update` offers: the previous published one is.
+#[test]
+fn a_yanked_release_is_not_offered_by_the_update_check() {
+    let sb = Sandbox::new("none");
+    sb.feed(&["v99.1.0", "v99.0.0"]);
+    sb.yank(&[("99.1.0", "corrupts the workspace", Some("99.2.0"))]);
+    let j = check_json(&sb);
+    assert_eq!(j["offered"], "99.0.0", "{j}");
+    assert_eq!(
+        j["yanked"],
+        serde_json::Value::Null,
+        "this install is fine: {j}"
+    );
+}
+
+/// A list that cannot be read changes nothing: the newest release is still offered.
+#[test]
+fn an_unreadable_yank_list_still_offers_the_newest_release() {
+    let sb = Sandbox::new("none");
+    sb.feed(&["v99.1.0", "v99.0.0"]);
+    std::fs::write(sb.root.path().join("yanked.json"), "<html>502</html>").unwrap();
+    assert_eq!(check_json(&sb)["offered"], "99.1.0");
+}
+
+/// The running version is the yanked one: the report says why and what replaces it.
+#[test]
+fn a_yanked_running_version_is_told_why_in_the_report_and_in_the_text() {
+    let sb = Sandbox::new("none");
+    let me = env!("CARGO_PKG_VERSION");
+    sb.yank(&[(me, "corrupts the workspace", Some("99.0.0"))]);
+    let j = check_json(&sb);
+    assert_eq!(j["offered"], "99.0.0", "{j}");
+    assert_eq!(
+        j["yanked"],
+        serde_json::json!({"version": me, "reason": "corrupts the workspace", "replacement": "99.0.0"})
+    );
+    let out = text(&sb.run(&["update", "--check"], &[]));
+    assert!(out.contains("withdrawn"), "{out}");
+    assert!(out.contains("corrupts the workspace"), "{out}");
+    assert!(out.contains("99.0.0"), "{out}");
+}
+
+/// Yanked, and the channel's newest safe release is *older* than what runs: that is a way out, not a
+/// "you are ahead, nothing to do". An ordinary ahead-of-channel build stays untouched.
+#[test]
+fn a_yanked_running_version_is_offered_the_older_safe_release_without_the_downgrade_flag() {
+    let sb = Sandbox::new("none");
+    sb.feed(&["v1.0.0"]);
+    let ahead = text(&sb.run(&["update", "--check"], &[]));
+    assert!(ahead.contains("Nothing is installed"), "{ahead}");
+    assert!(!ahead.contains("withdrawn"), "{ahead}");
+
+    sb.yank(&[(env!("CARGO_PKG_VERSION"), "corrupts the workspace", None)]);
+    let out = text(&sb.run(&["update", "--check"], &[]));
+    assert!(out.contains("withdrawn"), "{out}");
+    assert!(out.contains("1.0.0"), "{out}");
+    assert!(!out.contains("Nothing is installed"), "{out}");
 }

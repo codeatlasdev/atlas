@@ -1,0 +1,319 @@
+{
+	"onboarding_checklist_all_set": "You're all set",
+	"onboarding_checklist_dismiss_checklist": "Dismiss checklist",
+	"onboarding_checklist_getting_started": "Getting started",
+	"onboarding_checklist_item_agent": "Run an agent",
+	"onboarding_checklist_item_file": "Search a file",
+	"onboarding_checklist_item_palette": "Try the command palette",
+	"onboarding_checklist_item_project": "Add a project",
+	"onboarding_checklist_item_stack": "Start the stack",
+	"onboarding_checklist_item_terminal": "Open a terminal",
+	"onboarding_commands_help": "Help: keyboard shortcuts",
+	"onboarding_commands_show_checklist": "Show getting started checklist",
+	"onboarding_deck_agents_body": "Run Claude Code, Codex or omp in parallel, each in its own terminal, each on its own branch.",
+	"onboarding_deck_agents_title": "Agents that work side by side.",
+	"onboarding_deck_get_started": "Get started",
+	"onboarding_deck_intro_body": "One place for everything you run: your stack, your terminals and your coding agents.",
+	"onboarding_deck_stack_body": "Atlas detects your stack, starts every service in order and shows you when each one is up. An atlas.yaml is optional: save one only when you want to tune it.",
+	"onboarding_deck_stack_title": "Open a folder and Atlas runs it.",
+	"onboarding_deck_step_of": "Step {step} of {total}",
+	"onboarding_deck_steps": "Steps",
+	"onboarding_deck_worktrees_body": "Branch, try, review the diff and merge back, without stashing or juggling folders.",
+	"onboarding_deck_worktrees_title": "A worktree for every idea.",
+	"onboarding_flow_project_folder": "Project folder",
+	"onboarding_flow_services": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No services",
+				"countExact=*, countPlural=one": "{count} service",
+				"countExact=*, countPlural=*": "{count} services"
+			}
+		}
+	],
+	"onboarding_flow_stack_compose": "Compose project",
+	"onboarding_flow_stack_go": "Go project",
+	"onboarding_flow_stack_node": "Node project",
+	"onboarding_flow_stack_python": "Python project",
+	"onboarding_flow_stack_rust": "Rust project",
+	"onboarding_help_settings_checklist_label": "Getting started checklist",
+	"onboarding_help_settings_help": "Help",
+	"onboarding_help_settings_open_shortcuts": "Open cheat sheet",
+	"onboarding_help_settings_progress": "{done} of {total} first steps done.",
+	"onboarding_help_settings_progress_hidden": "{done} of {total} first steps done. The card is hidden.",
+	"onboarding_help_settings_shortcuts_description": "Every key in one searchable list.",
+	"onboarding_help_settings_shortcuts_label": "Shortcut cheat sheet",
+	"onboarding_help_settings_show_checklist": "Show the card",
+	"onboarding_help_settings_start_over": "Start over",
+	"onboarding_help_settings_tour_description": "A quick walk through spaces, the header, the side panel and search.",
+	"onboarding_help_settings_tour_label": "Guided tour",
+	"onboarding_hero_skip_for_now": "Skip for now",
+	"onboarding_phases_add_a_folder": "Add a folder…",
+	"onboarding_phases_add_and_start": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Add projects and start",
+				"countExact=*, countPlural=one": "Add this project and start",
+				"countExact=*, countPlural=*": "Add {count} projects and start"
+			}
+		}
+	],
+	"onboarding_phases_add_name": "Add {name}",
+	"onboarding_phases_choose_a_project_folder": "Choose a project folder",
+	"onboarding_phases_configs_need_look": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No configs need a look.",
+				"countExact=*, countPlural=one": "{count} config needs a look.",
+				"countExact=*, countPlural=*": "{count} configs need a look."
+			}
+		}
+	],
+	"onboarding_phases_detects_how_to_run": "Atlas detects how to run each one. Nothing is written to your folders.",
+	"onboarding_phases_find_my_projects": "Find my projects",
+	"onboarding_phases_found_title": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Found {number} projects",
+				"countExact=*, countPlural=one": "Found {number} project",
+				"countExact=*, countPlural=*": "Found {number} projects"
+			}
+		}
+	],
+	"onboarding_phases_jump_anywhere": "Press {key} to jump anywhere.",
+	"onboarding_phases_more_projects": "and {count} more",
+	"onboarding_phases_no_projects_found_yet": "No projects found yet.",
+	"onboarding_phases_point_at_folder": "Point Atlas at any project folder: it detects the stack, no setup file needed.",
+	"onboarding_phases_projects_found": "Projects found",
+	"onboarding_phases_projects_to_add": "Projects to add",
+	"onboarding_phases_scan_again": "Scan again",
+	"onboarding_phases_scanned_folders": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No folders scanned.",
+				"countExact=*, countPlural=one": "Scanned {count} folder.",
+				"countExact=*, countPlural=*": "Scanned {count} folders."
+			}
+		}
+	],
+	"onboarding_phases_scanning_progress": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{count} folders · {seconds} s",
+				"countExact=*, countPlural=one": "{count} folder · {seconds} s",
+				"countExact=*, countPlural=*": "{count} folders · {seconds} s"
+			}
+		}
+	],
+	"onboarding_phases_scanning_title": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{number} projects so far",
+				"countExact=*, countPlural=one": "{number} project so far",
+				"countExact=*, countPlural=*": "{number} projects so far"
+			}
+		}
+	],
+	"onboarding_phases_services": "Services",
+	"onboarding_phases_services_ready": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No services ready to start.",
+				"countExact=*, countPlural=one": "{count} service ready to start.",
+				"countExact=*, countPlural=*": "{count} services ready to start."
+			}
+		}
+	],
+	"onboarding_phases_services_running": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No services running.",
+				"countExact=*, countPlural=one": "{count} service running.",
+				"countExact=*, countPlural=*": "{count} services running."
+			}
+		}
+	],
+	"onboarding_phases_start_tour": "Take a quick look around",
+	"onboarding_phases_starting_progress": "{up} of {total} services up",
+	"onboarding_phases_starting_your_stack": "Starting your stack…",
+	"onboarding_phases_stop": "Stop",
+	"onboarding_phases_welcome_lead": "Atlas finds the projects already on {@common_os_your_computer} and starts them together.",
+	"onboarding_phases_welcome_title_first": "Everything you run,",
+	"onboarding_phases_welcome_title_second": "in one place.",
+	"onboarding_phases_your_stack_is_up": "Your stack is up.",
+	"onboarding_scene_agents_ready_to_review": "ready to review",
+	"onboarding_scene_agents_shop_2_agents": "shop · 2 agents",
+	"onboarding_scene_agents_task_coupon": "add a coupon field",
+	"onboarding_scene_agents_task_rounding": "fix the rounding bug",
+	"onboarding_scene_agents_tests_pass": "tests pass",
+	"onboarding_scene_scan_found": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "None found",
+				"countExact=*, countPlural=one": "{count} found",
+				"countExact=*, countPlural=*": "{count} found"
+			}
+		}
+	],
+	"onboarding_scene_stack_all_up_4_services": "All up · 4 services",
+	"onboarding_scene_stack_job": "job",
+	"onboarding_scene_stack_shop_detected": "shop · detected",
+	"onboarding_scene_worktrees_merged": "merged",
+	"onboarding_scene_worktrees_shop_worktrees": "shop · worktrees",
+	"onboarding_setup_row_failed": "failed {when}",
+	"onboarding_setup_row_failed_toast": "{command} failed: {reason}",
+	"onboarding_setup_row_full_output": "Full output",
+	"onboarding_setup_row_hide_output": "Hide output",
+	"onboarding_setup_row_installed": "Dependencies installed",
+	"onboarding_setup_row_less": "Less",
+	"onboarding_setup_row_not_run_yet": "not run yet",
+	"onboarding_setup_row_nothing_to_run": "Nothing to run",
+	"onboarding_setup_row_origin_config": "From pre_command.",
+	"onboarding_setup_row_origin_detected": "Detected from your project; no pre_command in atlas.yaml.",
+	"onboarding_setup_row_ran_ok": "ran {when} · ok",
+	"onboarding_setup_row_run_again": "Run again",
+	"onboarding_setup_row_run_now": "Run now",
+	"onboarding_setup_row_running": "running…",
+	"onboarding_setup_row_runs_always": "Runs before every start.",
+	"onboarding_setup_row_runs_on_change": "Runs when the lockfile changes (or node_modules is missing).",
+	"onboarding_setup_row_schedule_label": "When does setup run? {schedule}",
+	"onboarding_setup_row_setup": "Setup",
+	"onboarding_setup_row_unknown_error": "unknown error",
+	"onboarding_setup_row_view_output": "View output",
+	"onboarding_shortcuts_change_hint": "Change any of these in Settings → Keyboard shortcuts.",
+	"onboarding_shortcuts_group_go_anywhere": "Go anywhere",
+	"onboarding_shortcuts_group_more": "More",
+	"onboarding_shortcuts_group_panels": "Panels",
+	"onboarding_shortcuts_group_project": "Project",
+	"onboarding_shortcuts_group_tabs": "Tabs and panes",
+	"onboarding_shortcuts_keyboard_shortcuts": "Keyboard shortcuts",
+	"onboarding_shortcuts_no_match": "No shortcut matches \"{query}\".",
+	"onboarding_shortcuts_recent_worktree": "Recent worktree 1-6",
+	"onboarding_shortcuts_search_shortcuts": "Search shortcuts",
+	"onboarding_shortcuts_tab_range": "Tab 1-8 ({key} last)",
+	"onboarding_state_settings_unreadable": "Could not read your settings: {error}",
+	"onboarding_tour_breadcrumb_body": "Project, worktree and branch at a glance. Click a part to jump somewhere else.",
+	"onboarding_tour_breadcrumb_title": "Know where you are",
+	"onboarding_tour_next": "Next",
+	"onboarding_tour_palette_body": "Jump to a worktree, terminal, file or command by typing a few letters.",
+	"onboarding_tour_palette_title": "Go anywhere with one key",
+	"onboarding_tour_panel_kpis_body": "Health, services and resources for this project. Start the stack from the header when you are ready.",
+	"onboarding_tour_panel_kpis_title": "The stack, at a glance",
+	"onboarding_tour_press_palette": "Press {key} any time.",
+	"onboarding_tour_right_toggle_body": "The right sidebar holds agent history and ports. Hide it for a calmer view; it comes back with one key.",
+	"onboarding_tour_right_toggle_title": "Details when you want them",
+	"onboarding_tour_service_card_body": "State, CPU and memory update as things run. Click a card to open its logs or restart it.",
+	"onboarding_tour_service_card_title": "Every service, live",
+	"onboarding_tour_sidebar_body": "Every project is a space with its own color. Pick one to switch, and its worktrees sit right under it.",
+	"onboarding_tour_sidebar_title": "Your projects live here",
+	"onboarding_tour_skip": "Skip",
+	"onboarding_tour_skip_tour": "Skip tour",
+	"onboarding_tour_spaces_body": "Each space remembers its tabs, panes and stack, so switching never loses your place.",
+	"onboarding_tour_spaces_title": "Switch spaces",
+	"onboarding_tour_step_of": "{step} of {total}",
+	"onboarding_welcome_add_folder_title": "Add a project folder",
+	"onboarding_welcome_find_file_hint": "Choose one in the files panel, or search for it with {key}.",
+	"onboarding_welcome_new_terminal": "New terminal",
+	"onboarding_welcome_new_terminal_hint": "A shell in this worktree",
+	"onboarding_welcome_nothing_open_here": "Nothing open here",
+	"onboarding_welcome_open_file": "Open a file",
+	"onboarding_welcome_open_file_hint": "Fuzzy-find in this worktree",
+	"onboarding_welcome_palette_hint": "{key} for every command",
+	"onboarding_welcome_pick_a_file": "Pick a file",
+	"onboarding_welcome_pick_up_where_you_left": "Pick up where you left off, or start something new.",
+	"onboarding_welcome_shortcuts": "Shortcuts",
+	"onboarding_welcome_start_agent": "Start an agent",
+	"onboarding_welcome_start_agent_hint": "Run {name} here",
+	"onboarding_welcome_start_agent_hint_default": "Run your default agent here",
+	"onboarding_welcome_take_the_tour": "Take the tour",
+	"onboarding_welcome_to_atlas": "Welcome to Atlas"
+}

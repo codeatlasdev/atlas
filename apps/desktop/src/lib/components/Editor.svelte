@@ -16,6 +16,7 @@
 	} from "@lucide/svelte";
 	import { host } from "#lib/host.ts";
 	import { errText } from "#lib/api.ts";
+	import { hostErrorToast } from "#lib/gitToast.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import DiffView from "#lib/components/DiffView.svelte";
 	import Tip from "#lib/components/Tip.svelte";
@@ -24,12 +25,14 @@
 	import "#lib/outline.ts";
 	import { registerEditor, unregisterEditor } from "#lib/symbols.ts";
 	import { LspDoc } from "#lib/lsp/client.svelte.ts";
+	import { ChangeBuffer } from "#lib/lsp/changes.ts";
 	import { lspGated } from "#lib/lsp/uiState.svelte.ts";
 	import { applyDiagnostics, countDiagnostics } from "#lib/lsp/diagnostics.ts";
 	import { formatBeforeSave, lspCompletion, lspExtension } from "#lib/lsp/extension.ts";
 	import LspStatus from "#lib/lsp/LspStatus.svelte";
 	import { openLocation, readOnlyPaths, showLocations } from "#lib/lsp/workspace.ts";
-	import { editorKey, fileOfTab, readOnlyExtension } from "#lib/lsp/navigation.ts";
+	import { editorKey, fileOfTab } from "#lib/lsp/navigation.ts";
+	import { readOnlyExtension } from "#lib/lsp/navigationCm.ts";
 	import { navigator as nav } from "#lib/lsp/history.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { EditorSession } from "#lib/editor/EditorSession.svelte.ts";
@@ -39,11 +42,14 @@
 	import { convertIndentation } from "#lib/editor/commands.ts";
 	import StatusBar from "#lib/editor/StatusBar.svelte";
 	import Breadcrumbs from "#lib/editor/Breadcrumbs.svelte";
+	import { largeNotice } from "#lib/editor/largeFile.ts";
+	import { m } from "#lib/i18n/m.ts";
 	import { gotoLine } from "@codemirror/search";
 	import { MAX_BYTES, MIME, extOf, viewerKind } from "#lib/viewers/kind.ts";
 	import { readBlob } from "#lib/viewers/load.ts";
 	import { loadLanguage, lspLanguageId } from "#lib/viewers/lang.ts";
 	import { fileType } from "#lib/viewers/fileType.ts";
+	import { fileTypeLabel } from "#lib/viewers/fileTypeLabel.ts";
 	import { rememberRich, wantsRich } from "#lib/viewers/richPref.ts";
 	import RichView from "#lib/viewers/rich/RichView.svelte";
 	import ImageViewer from "#lib/viewers/ImageViewer.svelte";
@@ -128,6 +134,7 @@
 			abs,
 			id,
 			() => v.state.doc.toString(),
+			new ChangeBuffer(),
 			root,
 			() => lspGated(id),
 		);
@@ -146,7 +153,8 @@
 						openAt: (p, pos, end) => {
 							const v2 = view;
 							if (v2) nav.leave(abs, v2);
-							if (!openLocation(p, pos, worktreeId, end)) toast.info(`Could not open ${p}`);
+							if (!openLocation(p, pos, worktreeId, end))
+								toast.info(m.workbench_editor_could_not_open({ path: p }));
 						},
 						showLocations,
 						inlayHints: () => prefs.value.inlay_hints.enabled,
@@ -227,8 +235,8 @@
 		session.applyPrefs();
 	});
 
-	const reveal = () => host.exec(root, ["open", "-R", abs]).catch((e) => toast.error(errText(e)));
-	const openExternal = () => host.exec(root, ["open", abs]).catch((e) => toast.error(errText(e)));
+	const reveal = () => host.exec(root, ["open", "-R", abs]).catch(hostErrorToast);
+	const openExternal = () => host.exec(root, ["open", abs]).catch(hostErrorToast);
 
 	function setRich(on: boolean) {
 		rich = on;
@@ -292,7 +300,10 @@
 		<span class="grow"></span>
 		{#if phase === "text"}
 			{#if isSvg}
-				<Tip label={rendered ? "Edit source" : "Show image"} side="bottom">
+				<Tip
+					label={rendered ? m.workbench_markdown_bar_edit_source() : m.workbench_editor_show_image()}
+					side="bottom"
+				>
 					{#snippet child(props)}
 						<button {...props} class:on={!rendered} onclick={() => (rendered = !rendered)}>
 							{#if rendered}<Code size={13} />{:else}<ImageIcon size={13} />{/if}
@@ -301,7 +312,7 @@
 				</Tip>
 			{/if}
 			{#if session.dirty}
-				<Tip label="Revert file" side="bottom">
+				<Tip label={m.workbench_editor_cmd_revert_file()} side="bottom">
 					{#snippet child(props)}
 						<button {...props} onclick={() => void session.revert()}><Undo2 size={13} /></button>
 					{/snippet}
@@ -310,15 +321,19 @@
 			{#if showCm || changes}
 				<button
 					class:on={wrap}
-					title="Word wrap ({kbd('alt-z')})"
+					title={m.workbench_editor_word_wrap_key({ key: kbd("alt-z") })}
 					onclick={() => session.setWrap(!session.wrap)}><WrapText size={13} /></button
 				>
-				<button class:on={changes} title="Changes vs HEAD" onclick={() => (changes = !changes)}>
+				<button
+					class:on={changes}
+					title={m.workbench_editor_changes_vs_head()}
+					onclick={() => (changes = !changes)}
+				>
 					<DiffIcon size={13} />
 				</button>
 			{/if}
 			{#if isHtml(path)}
-				<Tip label={`Open preview (${kbd("shift-cmd-v")})`} side="bottom">
+				<Tip label={m.workbench_editor_open_preview_key({ key: kbd("shift-cmd-v") })} side="bottom">
 					{#snippet child(props)}
 						<button {...props} onclick={() => void previewHtml(worktreeId, path)}><Globe size={13} /></button>
 					{/snippet}
@@ -327,8 +342,10 @@
 			{#if hasRich}
 				<Tip
 					label={rich
-						? `Show source (${kbd("shift-cmd-m")})`
-						: `${isMd ? "Rich" : ft.label} view (${kbd("shift-cmd-m")})`}
+						? m.workbench_editor_show_source_key({ key: kbd("shift-cmd-m") })
+						: isMd
+							? m.workbench_editor_rich_view_key({ key: kbd("shift-cmd-m") })
+							: m.workbench_editor_typed_view_key({ type: fileTypeLabel(ft), key: kbd("shift-cmd-m") })}
 					side="bottom"
 				>
 					{#snippet child(props)}
@@ -345,7 +362,7 @@
 					<button {...props} onclick={reveal}><FolderSearch size={13} /></button>
 				{/snippet}
 			</Tip>
-			<Tip label="Open externally" side="bottom">
+			<Tip label={m.viewers_files_viewer_actions_open_externally()} side="bottom">
 				{#snippet child(props)}
 					<button {...props} onclick={openExternal}><ExternalLink size={13} /></button>
 				{/snippet}
@@ -359,27 +376,31 @@
 			<button class="path mono" title={revealLabel()} onclick={reveal}>{path}</button>
 		</div>
 	{/if}
-	{#if session.plan?.large.notice && showCm}
-		<p class="notice" role="note">{session.plan.large.notice}</p>
+	{#if session.plan && largeNotice(session.plan.large.tier) && showCm}
+		<p class="notice" role="note">{largeNotice(session.plan.large.tier)}</p>
 	{/if}
 	{#if session.watchError}
-		<p class="notice" role="status">{session.watchError}</p>
+		<p class="notice" role="status">{m.workbench_editor_watch_failed({ error: session.watchError })}</p>
 	{/if}
 	{#if session.conflict}
 		<div class="banner" role="alert">
-			<span>This file changed on disk and you have unsaved edits.</span>
-			<button onclick={() => void session.resolve("reload")}>Load from disk</button>
-			<button onclick={() => void session.resolve("keep")}>Keep my version</button>
+			<span>{m.workbench_loose_editor_this_file_changed_on_disk()}</span>
+			<button onclick={() => void session.resolve("reload")}
+				>{m.workbench_loose_editor_load_from_disk()}</button
+			>
+			<button onclick={() => void session.resolve("keep")}
+				>{m.workbench_loose_editor_keep_my_version()}</button
+			>
 		</div>
 	{:else if session.deleted}
 		<div class="banner" role="alert">
-			<span>This file was deleted on disk. Saving writes it again.</span>
-			<button onclick={() => void save()}>Save</button>
+			<span>{m.workbench_loose_editor_this_file_was_deleted_on()}</span>
+			<button onclick={() => void save()}>{m.common_action_save()}</button>
 		</div>
 	{/if}
 	{#if phase === "loading"}
 		<div class="msg" aria-busy="true">
-			Loading…
+			{m.common_state_loading()}
 			{#if progress > 0 && progress < 1}<span class="mono">{Math.round(progress * 100)}%</span>{/if}
 		</div>
 	{:else if phase === "large" || phase === "binary"}

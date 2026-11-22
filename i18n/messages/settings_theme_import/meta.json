@@ -1,0 +1,136 @@
+{
+	"settings_theme_import_dialog_appearance": {
+		"description": "Label of the field that picks dark or light for an imported theme."
+	},
+	"settings_theme_import_dialog_apply_font": {
+		"description": "Checkbox of the import theme dialog: apply the font and cursor of the imported config too."
+	},
+	"settings_theme_import_dialog_archive_dropped": {
+		"description": "Error of the import dialog when a zip or vsix is dropped on it. The reference is the button that opens an archive."
+	},
+	"settings_theme_import_dialog_choose_file": {
+		"description": "Button of the import theme dialog: opens a file picker."
+	},
+	"settings_theme_import_dialog_copy_only": {
+		"description": "Line of the import dialog for a format that is copied as is. format is shown in bold."
+	},
+	"settings_theme_import_dialog_description": {
+		"description": "Description under the title of the import theme dialog."
+	},
+	"settings_theme_import_dialog_detected": {
+		"description": "Line of the import dialog that names the detected theme format (shown in bold)."
+	},
+	"settings_theme_import_dialog_drop_hint": {
+		"description": "Hint next to the choose file button of the import theme dialog."
+	},
+	"settings_theme_import_dialog_file_added": {
+		"description": "Toast after an Atlas or Zed theme file was copied into the themes folder."
+	},
+	"settings_theme_import_dialog_filter_any": {
+		"description": "Name of the all files filter of the file picker."
+	},
+	"settings_theme_import_dialog_filter_theme": {
+		"description": "Name of the theme file type filter of the file picker."
+	},
+	"settings_theme_import_dialog_import": {
+		"description": "Main button of the import theme dialog."
+	},
+	"settings_theme_import_dialog_import_a_theme": {
+		"description": "Title of the import theme dialog and of its system file picker."
+	},
+	"settings_theme_import_dialog_import_warnings": {
+		"description": "Accessible name of the list of warnings of one import."
+	},
+	"settings_theme_import_dialog_imported": {
+		"description": "Toast after a theme was imported without being selected."
+	},
+	"settings_theme_import_dialog_theme_text": {
+		"description": "Label of the text area where a theme is pasted."
+	},
+	"settings_theme_import_dialog_use_as_dark": {
+		"description": "Checkbox of the import theme dialog: select the theme as the dark theme."
+	},
+	"settings_theme_import_dialog_use_as_light": {
+		"description": "Checkbox of the import theme dialog: select the theme as the light theme."
+	},
+	"settings_theme_import_format_atlas": {
+		"description": "Name of the Atlas theme file format."
+	},
+	"settings_theme_import_format_base16": {
+		"description": "Name of the Base16 scheme theme format."
+	},
+	"settings_theme_import_format_iterm": {
+		"description": "Name of the iTerm colors (.itermcolors) theme format."
+	},
+	"settings_theme_import_format_vscode": {
+		"description": "Name of the VS Code theme format."
+	},
+	"settings_theme_import_format_zed": {
+		"description": "Name of the Zed theme file format."
+	},
+	"settings_theme_import_package_archive": {
+		"description": "Button of the import theme dialog: choose a zip or vsix archive of themes."
+	},
+	"settings_theme_import_package_choose_archive_title": {
+		"description": "Title of the system file picker for a zip or vsix archive of themes."
+	},
+	"settings_theme_import_package_choose_folder_title": {
+		"description": "Title of the system folder picker of the import dialog."
+	},
+	"settings_theme_import_package_failed_count": {
+		"description": "Error of the import dialog when some themes of a package failed."
+	},
+	"settings_theme_import_package_failures_label": {
+		"description": "Accessible name of the list of themes of a package that failed to import."
+	},
+	"settings_theme_import_package_files": {
+		"description": "Chip on a theme of a package that is built from several files."
+	},
+	"settings_theme_import_package_filter_archive": {
+		"description": "Name of the zip and vsix file type filter of the file picker."
+	},
+	"settings_theme_import_package_folder": {
+		"description": "Button of the import theme dialog: choose a folder of themes."
+	},
+	"settings_theme_import_package_hint": {
+		"description": "Hint under the archive and folder buttons. path is the themes folder (shown as code)."
+	},
+	"settings_theme_import_package_import_n": {
+		"description": "Main button after a package was scanned: import the ticked themes."
+	},
+	"settings_theme_import_package_import_name": {
+		"description": "Accessible name of the checkbox that picks one theme of a package."
+	},
+	"settings_theme_import_package_imported_one": {
+		"description": "Status after exactly one theme of a package was imported. name is shown in bold."
+	},
+	"settings_theme_import_package_none_found": {
+		"description": "Error of the import dialog when a package holds no theme."
+	},
+	"settings_theme_import_package_notes_label": {
+		"description": "Accessible name of the list of warnings and skipped files of a package."
+	},
+	"settings_theme_import_package_preview_name": {
+		"description": "Accessible name of the row that shows the preview of one theme of a package."
+	},
+	"settings_theme_import_package_select_all": {
+		"description": "Button above the list of themes found in a package."
+	},
+	"settings_theme_import_package_select_none": {
+		"description": "Button above the list of themes found in a package."
+	},
+	"settings_theme_import_package_selected": {
+		"description": "Counter above the list of themes found in a package."
+	},
+	"settings_theme_import_package_skipped": {
+		"description": "Line of the notes of a package: a file that was not read. file is a path inside the package."
+	},
+	"settings_theme_import_package_skipped_count": "Part of the notes toggle under the package theme list: how many files were skipped.",
+	"settings_theme_import_package_themes_found": {
+		"description": "Accessible name of the list of themes found in a package."
+	},
+	"settings_theme_import_package_toast_imported": {
+		"description": "Toast after themes of a package were imported. The path is the themes folder."
+	},
+	"settings_theme_import_package_warnings_count": "Part of the notes toggle under the package theme list: how many warnings the scan raised."
+}

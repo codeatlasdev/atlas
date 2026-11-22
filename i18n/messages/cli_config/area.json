@@ -1,0 +1,4 @@
+{
+	"generated": "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n",
+	"surface": "rust"
+}

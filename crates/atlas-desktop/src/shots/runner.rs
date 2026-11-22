@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use atlas_i18n::t;
 use objc2::msg_send;
 use objc2::runtime::AnyObject;
 use tauri::{AppHandle, Emitter, Manager};
@@ -37,6 +38,7 @@ pub fn run(app: &AppHandle, fx: Effect) {
         other => super::record_mac::run(app, other),
     };
     if let Err(e) = result {
+        // i18n-ignore: log
         eprintln!("shots: {e}");
         notify_error(app, &e);
         super::feed(app, Event::Failed);
@@ -55,13 +57,7 @@ pub enum Then {
 fn notify_error(app: &AppHandle, message: &str) {
     let _ = app.emit("shots://error", message);
     // A failed capture with the permission missing is the common case: a system notification says how to fix it.
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app
-        .notification()
-        .builder()
-        .title("Capture failed")
-        .body(message)
-        .show();
+    let _ = crate::native_ui::notify(app, t!("native_notify_capture_failed"), message);
 }
 
 // ───────────────────────────── overlay ─────────────────────────────
@@ -71,8 +67,6 @@ pub(super) fn cursor() -> Cursor {
     let (x, y) = mac::cursor_point();
     Cursor { x, y }
 }
-
-const NO_PERMISSION: &str = "Atlas needs the Screen Recording permission to capture the screen. Grant it in System Settings > Privacy & Security > Screen Recording, then restart Atlas.";
 
 /// The displays now, from CoreGraphics (microseconds; ScreenCaptureKit's listing takes a hundred milliseconds or
 /// seconds on a loaded Mac and is not needed to put a window on screen): id, frame in global points (top-left
@@ -106,7 +100,7 @@ fn show_overlay(app: &AppHandle, pick: Pick) -> Result<(), String> {
     if !sck::permission_granted() {
         // Ask once (the system prompt), and say what to do: macOS only applies the grant after a restart.
         sck::request_permission();
-        return Err(NO_PERMISSION.into());
+        return Err(t!("native_notify_no_permission"));
     }
     let shots = app.state::<Shots>();
     let session = shots
@@ -285,6 +279,13 @@ fn freeze_session(
 /// under the pointer the key one (Esc, Space) without activating the app. The wait for the main thread is bounded:
 /// the freeze must not queue behind a busy event loop for long.
 fn order_in(app: &AppHandle, order: Vec<(tauri::Window, Rect)>, key: Option<String>) {
+    // Defence in depth: an agent instance never builds the overlay (`show_overlay`, `surface::build`), and these
+    // windows are placed on the real displays, so if one is ever asked for here it is held back and recorded.
+    if crate::native_ui::gate(crate::native_ui::Kind::Window, "capture overlay", "")
+        == crate::native_ui::Verdict::Suppressed
+    {
+        return;
+    }
     let h = crate::display_mac::primary_height();
     let a = app.clone();
     let (tx, rx) = std::sync::mpsc::channel();
@@ -400,7 +401,7 @@ struct Taken {
 fn still(app: &AppHandle, s: Still, then: Then) -> Result<(), String> {
     if !sck::permission_granted() {
         sck::request_permission();
-        return Err(NO_PERMISSION.into());
+        return Err(t!("native_notify_no_permission"));
     }
     let t0 = std::time::Instant::now();
     let shots = app.state::<Shots>();
@@ -644,18 +645,9 @@ pub fn finish_image(
 
 /// `dir/<name>` for a new capture of `kind`, unused.
 pub fn save_path(dir: &Path, kind: Kind) -> PathBuf {
-    use chrono::{Datelike, Timelike};
-    let now = chrono::Local::now();
     let name = naming::file_name(
         kind,
-        (
-            now.year(),
-            now.month(),
-            now.day(),
-            now.hour(),
-            now.minute(),
-            now.second(),
-        ),
+        atlas_core::time::local_parts(std::time::SystemTime::now()),
     );
     naming::unique(dir, &name, |p| p.exists())
 }

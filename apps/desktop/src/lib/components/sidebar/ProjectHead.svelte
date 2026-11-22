@@ -14,6 +14,7 @@
 	import RowMenu from "./RowMenu.svelte";
 	import { sidebar } from "./state.svelte.ts";
 	import type { ProjectView } from "#lib/api.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { r, active, onAgent }: { r: ProjectView; active: boolean; onAgent?: (worktreeId: string) => void } =
 		$props();
@@ -38,13 +39,13 @@
 	class="project"
 	class:current={active}
 	class:missing={!!r.missing}
-	title={r.missing ? `Not found: ${r.root}` : undefined}
+	title={r.missing ? m.sidebar_not_found_at({ root: r.root }) : undefined}
 	class:selected={active && solo && ws.view === "worktree" && store.selected === r.id}
 	class:unread={w?.unread}
 	style:--c={shell.accent(r.id)}
 	role="button"
 	tabindex="0"
-	aria-label="{r.name}{active ? '' : ' — open project'}"
+	aria-label={active ? r.name : m.sidebar_project_head_open({ name: r.name })}
 	oncontextmenu={(e) => {
 		e.preventDefault();
 		if (!fromMenu(e)) menuTrigger?.click();
@@ -57,7 +58,9 @@
 	{#if !active && kids.length}
 		<button
 			class="twist"
-			aria-label="{open ? 'Hide' : 'Show'} worktrees of {r.name}"
+			aria-label={open
+				? m.sidebar_project_head_hide_worktrees({ name: r.name })
+				: m.sidebar_project_head_show_worktrees({ name: r.name })}
 			aria-expanded={open}
 			onclick={(e) => {
 				e.stopPropagation();
@@ -74,22 +77,24 @@
 		<i
 			class="dot {r.missing ? 'off' : health(r, live)}"
 			class:pulse={r.running}
-			title={r.running ? "Running" : "Stopped"}
+			title={r.running ? m.sidebar_project_head_running() : m.sidebar_project_head_stopped()}
 		></i>
 	</span>
 	<span class="pname">{r.name}</span>
-	{#if r.missing}<span class="gone">Not found</span>{/if}
+	{#if r.missing}<span class="gone">{m.sidebar_not_found()}</span>{/if}
 	{#if r.host}<span class="chip">{r.host.replace(/^ssh:/, "")}</span>{/if}
 	{#if r.pinned}<Pin size={10} class="pin" />{/if}
 	<span class="meta">
 		{#if r.running}<span class="count">{up}/{live?.services.length || r.services_total}</span>{/if}
-		{#if !active && kids.length}<span class="count">{kids.length + 1} wt</span>{/if}
+		{#if !active && kids.length}<span class="count"
+				>{m.sidebar_project_head_worktrees({ count: kids.length + 1 })}</span
+			>{/if}
 	</span>
-	{#if !r.missing}
+	{#if !r.missing && r.kind !== "folder"}
 		<button
 			class="hover-btn"
-			aria-label="New worktree"
-			title="New worktree"
+			aria-label={m.sidebar_project_head_new_worktree()}
+			title={m.sidebar_project_head_new_worktree()}
 			onclick={(e) => {
 				e.stopPropagation();
 				worktrees.newDialog = { open: true, repoId: r.id };
@@ -98,7 +103,7 @@
 			<Plus size={13} />
 		</button>
 	{/if}
-	<RowMore label="Project menu" class="hover-btn" bind:el={menuTrigger}>
+	<RowMore label={m.shell_project_header_project_menu()} class="hover-btn" bind:el={menuTrigger}>
 		{#snippet icon()}<Ellipsis size={13} />{/snippet}
 		<RowMenu p={r} {w} {onAgent} />
 	</RowMore>

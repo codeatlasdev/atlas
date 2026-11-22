@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
-import { beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, jest, spyOn, test } from "bun:test";
+import { PAGER_WATCHDOG_MS } from "./pager.ts";
 import { placeTabs, tabPager } from "./tabPager.ts";
 
 const settle = async () => {
@@ -146,4 +147,47 @@ test("the mark never appears for a rest-only generation (a no-op cannot park a t
 	f(1, 0, "rest");
 	await settle();
 	expect(marked()).toEqual([]);
+});
+
+afterEach(() => tabPager.reset()); // no timer left to the next test
+
+// Regression (#498): a tab group whose last engine frame never arrived kept its panes offset and marked
+// `data-swiping` (a terminal in them stayed parked) for good.
+test("a group with no frame for the watchdog period lets go of its panes", () => {
+	jest.useFakeTimers();
+	const warn = spyOn(console, "warn").mockImplementation(() => {});
+	try {
+		f(1, 0.4);
+		expect(el.t2.style.transform).not.toBe("");
+		jest.advanceTimersByTime(PAGER_WATCHDOG_MS - 1);
+		expect(el.t2.style.transform).not.toBe("");
+		jest.advanceTimersByTime(2);
+		expect(el.t2.style.transform).toBe("");
+		expect(el.t3.style.transform).toBe("");
+		expect(el.t3.style.visibility).toBe("");
+		expect(strip.style.transform).toBe("");
+		expect(activated).toEqual([]);
+		expect(warn).toHaveBeenCalledTimes(1);
+	} finally {
+		jest.useRealTimers();
+		warn.mockRestore();
+	}
+});
+
+test("a group that keeps reporting is not cut short, and its rest frame disarms the watchdog", () => {
+	jest.useFakeTimers();
+	const warn = spyOn(console, "warn").mockImplementation(() => {});
+	try {
+		f(1, 0.1);
+		jest.advanceTimersByTime(PAGER_WATCHDOG_MS - 100);
+		f(1, 0.2);
+		jest.advanceTimersByTime(PAGER_WATCHDOG_MS - 100);
+		expect(el.t2.style.transform).not.toBe("");
+		f(1, 0, "rest");
+		jest.advanceTimersByTime(PAGER_WATCHDOG_MS * 3);
+		expect(warn).not.toHaveBeenCalled();
+	} finally {
+		jest.useRealTimers();
+		warn.mockRestore();
+	}
 });

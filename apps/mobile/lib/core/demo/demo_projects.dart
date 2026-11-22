@@ -82,6 +82,8 @@ class DemoProjects {
     },
   ];
 
+  // hostd's `project_list` fields (kind, repo, branch, worktree, pinned) as a real registry has them: projects,
+  // a worktree of orbit-shop (shown under it on the home) and a folder that is not a project.
   final _others = const [
     {
       'id': 'demo-docs',
@@ -98,6 +100,11 @@ class DemoProjects {
         },
       ],
       'agents': <Object>[],
+      'kind': 'project',
+      'repo': '/Users/demo/Projetos/docs',
+      'branch': 'main',
+      'worktree': false,
+      'pinned': false,
     },
     {
       'id': 'demo-landing',
@@ -106,8 +113,42 @@ class DemoProjects {
       'running': false,
       'services': <Object>[],
       'agents': <Object>[],
+      'kind': 'project',
+      'repo': '/Users/demo/Projetos/landing',
+      'branch': 'main',
+      'worktree': false,
+      'pinned': false,
+    },
+    {
+      'id': 'demo-wt-fix',
+      'root': '/Users/demo/.atlas/worktrees/orbit-shop/fix-checkout',
+      'name': 'fix-checkout',
+      'running': false,
+      'services': <Object>[],
+      'agents': <Object>[],
+      'kind': 'project',
+      'repo': '/Users/demo/Projetos/orbit-shop',
+      'branch': 'fix-checkout',
+      'worktree': true,
+      'pinned': false,
+    },
+    {
+      'id': 'demo-downloads',
+      'root': '/Users/demo/Downloads',
+      'name': 'Downloads',
+      'running': false,
+      'services': <Object>[],
+      'agents': <Object>[],
+      'kind': 'folder',
+      'repo': null,
+      'branch': null,
+      'worktree': false,
+      'pinned': false,
     },
   ];
+
+  /// orbit-shop's stack: stopped and started again from the phone (`project_service` `down` / `up`).
+  bool _running = true;
 
   bool hasWorktree(String id) => _worktrees.any((w) => w['id'] == id);
 
@@ -141,6 +182,20 @@ class DemoProjects {
   }
 
   Map<String, Object?> _service(String? name, String op) {
+    if (name == null && (op == 'down' || op == 'up')) {
+      _running = op == 'up';
+      for (final s in _services) {
+        s.state = _running ? 'starting' : 'stopped';
+      }
+      if (_running) {
+        bus.later(const Duration(seconds: 2), () {
+          for (final s in _services) {
+            s.state = s.name == 'payments' ? 'failed' : 'running';
+          }
+        });
+      }
+      return {};
+    }
     final s = _services.where((x) => x.name == name).firstOrNull;
     if (s == null) return {'text': 'unknown service'};
     s.state = op == 'stop' ? 'stopped' : 'starting';
@@ -185,9 +240,14 @@ class DemoProjects {
     'id': 'demo-shop',
     'root': '/Users/demo/Projetos/orbit-shop',
     'name': 'orbit-shop',
-    'running': true,
+    'running': _running,
     'services': [for (final s in _services) _liveService(s)],
     'agents': _agentsJson(),
+    'kind': 'project',
+    'repo': '/Users/demo/Projetos/orbit-shop',
+    'branch': 'main',
+    'worktree': false,
+    'pinned': true,
   };
 
   Map<String, Object?> _detail() => {
@@ -196,8 +256,8 @@ class DemoProjects {
     'root': '/Users/demo/Projetos/orbit-shop',
     'errors_5m': 2,
     'status': {
-      'running': true,
-      'pid': 48211,
+      'running': _running,
+      'pid': _running ? 48211 : null,
       'setup': {'state': 'ok', 'command': 'bun install'},
       'services': [for (final s in _services) _liveService(s)],
     },
@@ -351,6 +411,6 @@ class DemoProjects {
       default:
         return null;
     }
-    return (data: data, error: error);
+    return DemoReply(data: data, error: error);
   }
 }

@@ -1,0 +1,216 @@
+{
+	"codes": [
+		"fs.not_found",
+		"fs.io",
+		"exec.spawn_failed",
+		"hostd.invalid_argument",
+		"crew.approval.bypass_disabled",
+		"crew.approval.unsupported_engine",
+		"crew.approval.forbidden",
+		"crew.github_app.exists",
+		"crew.github_app.code_expired",
+		"crew.github_app.conversion_failed",
+		"crew.github_app.none",
+		"crew.github_app.forbidden",
+		"crew.voice.off",
+		"crew.voice.not_installed",
+		"crew.voice.engine_failed",
+		"crew.voice.too_long",
+		"crew.voice.bad_audio",
+		"crew.voice.forbidden"
+	],
+	"errors": [
+		{
+			"args": {
+				"path": "/work/old-name.txt"
+			},
+			"code": "fs.not_found",
+			"message": "not_found"
+		},
+		{
+			"args": {
+				"kind": "permission_denied",
+				"path": "/work/locked"
+			},
+			"code": "fs.io",
+			"message": "Permission denied (os error 13)"
+		},
+		{
+			"args": {
+				"kind": "not_a_directory",
+				"path": "/work/README.md"
+			},
+			"code": "fs.io",
+			"message": "Not a directory (os error 20)"
+		},
+		{
+			"args": {
+				"kind": "is_a_directory",
+				"path": "/work/src"
+			},
+			"code": "fs.io",
+			"message": "Is a directory (os error 21)"
+		},
+		{
+			"args": {
+				"kind": "already_exists",
+				"path": "/work/src"
+			},
+			"code": "fs.io",
+			"message": "File exists (os error 17)"
+		},
+		{
+			"args": {
+				"detail": "Read-only file system (os error 30)",
+				"kind": "other",
+				"path": "/work/readonly"
+			},
+			"code": "fs.io",
+			"message": "Read-only file system (os error 30)"
+		},
+		{
+			"args": {
+				"program": "git",
+				"reason": "not_found"
+			},
+			"code": "exec.spawn_failed",
+			"message": "git: No such file or directory (os error 2)"
+		},
+		{
+			"args": {
+				"program": "/opt/tools/lint",
+				"reason": "permission_denied"
+			},
+			"code": "exec.spawn_failed",
+			"message": "/opt/tools/lint: Permission denied (os error 13)"
+		},
+		{
+			"args": {
+				"detail": "Exec format error (os error 8)",
+				"program": "sh",
+				"reason": "other"
+			},
+			"code": "exec.spawn_failed",
+			"message": "sh: Exec format error (os error 8)"
+		},
+		{
+			"args": {
+				"path": "/work/gone"
+			},
+			"code": "fs.not_found",
+			"message": "git: No such file or directory (os error 2)"
+		},
+		{
+			"args": {
+				"field": "data",
+				"reason": "bad_base64"
+			},
+			"code": "hostd.invalid_argument",
+			"message": "Invalid symbol 42, offset 0."
+		},
+		{
+			"args": {
+				"field": "path",
+				"reason": "no_parent"
+			},
+			"code": "hostd.invalid_argument",
+			"message": "no parent dir"
+		},
+		{
+			"args": {
+				"field": "argv",
+				"reason": "empty"
+			},
+			"code": "hostd.invalid_argument",
+			"message": "empty argv"
+		},
+		{
+			"args": {
+				"field": "org",
+				"reason": "invalid"
+			},
+			"code": "hostd.invalid_argument",
+			"message": "org: not a GitHub login"
+		},
+		{
+			"args": {},
+			"code": "crew.approval.bypass_disabled",
+			"message": "bypass is not allowed on this crew"
+		},
+		{
+			"args": {
+				"engine": "codex",
+				"mode": "ask"
+			},
+			"code": "crew.approval.unsupported_engine",
+			"message": "codex has no approval channel: it always runs unattended"
+		},
+		{
+			"args": {},
+			"code": "crew.approval.forbidden",
+			"message": "only the owner can change a permission mode"
+		},
+		{
+			"args": {},
+			"code": "crew.github_app.exists",
+			"message": "a GitHub App is already set up on this server: remove it first"
+		},
+		{
+			"args": {},
+			"code": "crew.github_app.code_expired",
+			"message": "the code is used or older than an hour: start the setup again"
+		},
+		{
+			"args": {
+				"status": 503
+			},
+			"code": "crew.github_app.conversion_failed",
+			"message": "GitHub refused the conversion: down"
+		},
+		{
+			"args": {},
+			"code": "crew.github_app.none",
+			"message": "no GitHub App is set up on this server"
+		},
+		{
+			"args": {},
+			"code": "crew.github_app.forbidden",
+			"message": "only the owner sets up the GitHub App"
+		},
+		{
+			"args": {},
+			"code": "crew.voice.off",
+			"message": "voice is turned off on this crew"
+		},
+		{
+			"args": {},
+			"code": "crew.voice.not_installed",
+			"message": "no voice engine is installed on this crew server (atlas crew voice install)"
+		},
+		{
+			"args": {
+				"detail": "whisper-cli exited with status 1",
+				"engine": "whisper.cpp (small)"
+			},
+			"code": "crew.voice.engine_failed",
+			"message": "whisper.cpp (small) failed: whisper-cli exited with status 1"
+		},
+		{
+			"args": {
+				"max_seconds": 300
+			},
+			"code": "crew.voice.too_long",
+			"message": "dictation is capped at 300 seconds"
+		},
+		{
+			"args": {},
+			"code": "crew.voice.bad_audio",
+			"message": "the audio is not 16 kHz mono 16-bit PCM WAV"
+		},
+		{
+			"args": {},
+			"code": "crew.voice.forbidden",
+			"message": "only the owner can change the voice settings"
+		}
+	]
+}

@@ -1,6 +1,7 @@
 <!-- The "Saving…" / "Saved" / error text next to an autosaved field's label. -->
 <script lang="ts">
 	import type { AutosaveField } from "#lib/crew/settings/autosaveField.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { field }: { field: AutosaveField } = $props();
 </script>
@@ -10,7 +11,7 @@
 	class:saving={field.status === "saving"}
 	class:saved={field.status === "saved"}
 	class:error={field.status === "error"}
-	>{#if field.status === "saving"}Saving…{:else if field.status === "saved"}Saved{:else if field.status === "error"}{field.error}{/if}</span
+	>{#if field.status === "saving"}{m.common_state_saving()}{:else if field.status === "saved"}{m.crew_settings_save_status_saved()}{:else if field.status === "error"}{field.error}{/if}</span
 >
 
 <style>

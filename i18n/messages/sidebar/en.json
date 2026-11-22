@@ -1,0 +1,386 @@
+{
+	"sidebar_added_detected": [
+		{
+			"declarations": [
+				"input count",
+				"input stack",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Detected {stack}: no services to run yet",
+				"countExact=*, countPlural=one": "Detected {stack}: {count} service",
+				"countExact=*, countPlural=*": "Detected {stack}: {count} services"
+			}
+		}
+	],
+	"sidebar_added_nothing": "Added: nothing to run was detected yet",
+	"sidebar_clear_filter": "Clear filter",
+	"sidebar_command_remove_missing": "Remove missing projects",
+	"sidebar_command_remove_project": "Remove project from Atlas…",
+	"sidebar_delete_dialog_body": "Removes the checkout and its terminals. Unmerged branches are kept unless forced.",
+	"sidebar_delete_dialog_force": "Force (discard changes, delete unmerged branch)",
+	"sidebar_delete_dialog_title": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Delete worktree?",
+				"countPlural=*": "Delete {count} worktrees?"
+			}
+		}
+	],
+	"sidebar_discover_dialog_add_root": "Add folder to scan…",
+	"sidebar_discover_dialog_add_selected": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Add selected",
+				"countExact=*, countPlural=one": "Add selected ({count})",
+				"countExact=*, countPlural=*": "Add selected ({count})"
+			}
+		}
+	],
+	"sidebar_discover_dialog_cancelled": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"input seconds",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Canceled after {seconds} s, no folders scanned",
+				"countExact=*, countPlural=one": "Canceled after {amount} folder in {seconds} s",
+				"countExact=*, countPlural=*": "Canceled after {amount} folders in {seconds} s"
+			}
+		}
+	],
+	"sidebar_discover_dialog_candidates_note": "Git repositories with a project file. Atlas detects how to run them; atlas.yaml is optional.",
+	"sidebar_discover_dialog_candidates_switch": "Also folders without atlas.yaml",
+	"sidebar_discover_dialog_could_use_atlas": "Could use Atlas",
+	"sidebar_discover_dialog_create_atlas_yaml": "Create atlas.yaml",
+	"sidebar_discover_dialog_elsewhere": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Elsewhere (found by Spotlight)",
+				"os=*": "Elsewhere"
+			}
+		}
+	],
+	"sidebar_discover_dialog_filter_placeholder": "Filter by name, path, branch or remote",
+	"sidebar_discover_dialog_filter_results": "Filter results",
+	"sidebar_discover_dialog_find_projects": "Find projects",
+	"sidebar_discover_dialog_init_title": "Write an atlas.yaml in this folder",
+	"sidebar_discover_dialog_lead": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Looks for project folders in your usual folders and with Spotlight. An atlas.yaml is optional: Atlas detects the stack.",
+				"os=*": "Looks for project folders in your usual folders. An atlas.yaml is optional: Atlas detects the stack."
+			}
+		}
+	],
+	"sidebar_discover_dialog_moved_copy": "Probably the moved copy of {#b}{name}{/b}",
+	"sidebar_discover_dialog_no_config": "No folder with an atlas.yaml yet. Add one from the list below.",
+	"sidebar_discover_dialog_none": "No projects found in the scanned folders.",
+	"sidebar_discover_dialog_pick_root": "Folder to scan for projects",
+	"sidebar_discover_dialog_scanned": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"input seconds",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No folders scanned in {seconds} s",
+				"countExact=*, countPlural=one": "Scanned {amount} folder in {seconds} s",
+				"countExact=*, countPlural=*": "Scanned {amount} folders in {seconds} s"
+			}
+		}
+	],
+	"sidebar_discover_dialog_scanning": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"input found",
+				"input seconds",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Scanning: no folders yet · {seconds} s · {found} found",
+				"countExact=*, countPlural=one": "Scanning: {amount} folder · {seconds} s · {found} found",
+				"countExact=*, countPlural=*": "Scanning: {amount} folders · {seconds} s · {found} found"
+			}
+		}
+	],
+	"sidebar_discover_dialog_tag_in_atlas": "In Atlas",
+	"sidebar_discover_dialog_tag_package": "package",
+	"sidebar_discover_dialog_unreadable": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "all folders readable",
+				"countExact=*, countPlural=one": "{amount} folder not readable",
+				"countExact=*, countPlural=*": "{amount} folders not readable"
+			}
+		}
+	],
+	"sidebar_filter_worktrees": "Filter worktrees",
+	"sidebar_footer_settings": "Settings",
+	"sidebar_hide_sidebar": "Hide sidebar",
+	"sidebar_loose_files_close_file": "Close {name}",
+	"sidebar_loose_files_files": "Files",
+	"sidebar_loose_files_show_all": "Show all ({count})",
+	"sidebar_loose_files_show_fewer": "Show fewer",
+	"sidebar_missing_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No projects missing",
+				"countExact=*, countPlural=one": "{count} not found",
+				"countExact=*, countPlural=*": "{count} not found"
+			}
+		}
+	],
+	"sidebar_no_match": "No worktree matches \"{filter}\".",
+	"sidebar_no_projects": "No projects yet. Add any project folder: Atlas detects how to run it.",
+	"sidebar_not_found": "Not found",
+	"sidebar_not_found_at": "Not found: {root}",
+	"sidebar_other_projects": "Other projects",
+	"sidebar_project_head_hide_worktrees": "Hide worktrees of {name}",
+	"sidebar_project_head_new_worktree": "New worktree",
+	"sidebar_project_head_open": "Open project {name}",
+	"sidebar_project_head_running": "Running",
+	"sidebar_project_head_show_worktrees": "Show worktrees of {name}",
+	"sidebar_project_head_stopped": "Stopped",
+	"sidebar_project_head_worktrees": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No worktrees",
+				"countExact=*, countPlural=one": "{count} worktree",
+				"countExact=*, countPlural=*": "{count} worktrees"
+			}
+		}
+	],
+	"sidebar_projects_add_title": "Add project",
+	"sidebar_projects_all_found": "All projects are where Atlas expects them",
+	"sidebar_projects_already_added": "{name} is already in Atlas",
+	"sidebar_projects_found_again": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No projects found again",
+				"countExact=*, countPlural=one": "{count} project found again",
+				"countExact=*, countPlural=*": "{count} projects found again"
+			}
+		}
+	],
+	"sidebar_projects_inside_body": "{picked} is inside the project at {root}, so that project is added.",
+	"sidebar_projects_inside_title": "Add {name}?",
+	"sidebar_projects_locate_title": "Locate the project folder",
+	"sidebar_projects_not_found": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No projects missing",
+				"countExact=*, countPlural=one": "{count} project not found",
+				"countExact=*, countPlural=*": "{count} projects not found"
+			}
+		}
+	],
+	"sidebar_projects_relinked": "{name} now points to {dir}",
+	"sidebar_projects_remove_missing_note": "Only the Atlas entries are removed; nothing on disk is touched.",
+	"sidebar_projects_remove_missing_title": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No missing projects to remove",
+				"countExact=*, countPlural=one": "Remove {count} missing project?",
+				"countExact=*, countPlural=*": "Remove {count} missing projects?"
+			}
+		}
+	],
+	"sidebar_projects_remove_title": "Remove {name} from Atlas?",
+	"sidebar_projects_removed_missing": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No missing projects removed",
+				"countExact=*, countPlural=one": "Removed {count} missing project",
+				"countExact=*, countPlural=*": "Removed {count} missing projects"
+			}
+		}
+	],
+	"sidebar_refresh": "Refresh",
+	"sidebar_refresh_projects": "Refresh projects",
+	"sidebar_remove_all": "Remove all",
+	"sidebar_remove_linked": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "It has no linked worktrees.",
+				"countExact=*, countPlural=one": "Its {count} linked worktree is removed from Atlas too.",
+				"countExact=*, countPlural=*": "Its {count} linked worktrees are removed from Atlas too."
+			}
+		}
+	],
+	"sidebar_remove_note": "Only the Atlas entry is removed: no file or folder on disk is touched.",
+	"sidebar_remove_stops": "Its running stack is stopped first.",
+	"sidebar_right_copied": "Copied",
+	"sidebar_right_copy_command": "Copy command",
+	"sidebar_right_empty_body": "Sessions of agents you run in this worktree show up here, with what each one last did, so you can resume them later.",
+	"sidebar_right_empty_body_hint": "Sessions of agents you run in this worktree show up here, with what each one last did, so you can resume them later. Choose Project or All to see sessions from other worktrees.",
+	"sidebar_right_empty_title": "No agent sessions yet",
+	"sidebar_right_history": "History",
+	"sidebar_right_no_earlier_here": "No earlier sessions here yet.",
+	"sidebar_right_no_earlier_worktree": "No earlier sessions in this worktree yet.",
+	"sidebar_right_no_match": "No sessions match \"{query}\".",
+	"sidebar_right_no_ports_body": "A dev server or a service started from this worktree shows up here with its port and a button to open it. Run one in a terminal (for example bun run dev) or start a service from the project panel.",
+	"sidebar_right_no_ports_title": "No ports listening",
+	"sidebar_right_open_external": "Open in the system browser",
+	"sidebar_right_open_port_external": "Open :{port} in the system browser",
+	"sidebar_right_pin": "Pin right sidebar",
+	"sidebar_right_ports": "Ports",
+	"sidebar_right_resume": "Resume",
+	"sidebar_right_resume_in_native_chat": "Resume in native chat",
+	"sidebar_right_running_here": "Running here",
+	"sidebar_right_scope_all": "All",
+	"sidebar_right_scope_project": "Project",
+	"sidebar_right_scope_workspace": "Workspace",
+	"sidebar_right_search_sessions": "Search sessions",
+	"sidebar_right_show_sessions_of": "Show sessions of",
+	"sidebar_right_state_done": "Done",
+	"sidebar_row_menu_archive": "Archive",
+	"sidebar_row_menu_create_crewmate": "Create crewmate for this project",
+	"sidebar_row_menu_delete": "Delete…",
+	"sidebar_row_menu_mark_read": "Mark as read",
+	"sidebar_row_menu_mark_unread": "Mark as unread",
+	"sidebar_row_menu_new_terminal": "New terminal",
+	"sidebar_row_menu_open_in_editor": "Open in editor",
+	"sidebar_row_menu_rename_title": "Rename worktree",
+	"sidebar_row_menu_unarchive": "Unarchive",
+	"sidebar_show_archived": "Show archived",
+	"sidebar_step_add": "Creating the checkout",
+	"sidebar_step_fetch": "Fetching",
+	"sidebar_step_seed": "Copying dependencies",
+	"sidebar_step_shared": "Linking shared files",
+	"sidebar_worktree_row_main": "main",
+	"sidebar_worktree_row_pr": "PR #{number}",
+	"sidebar_worktree_row_pr_closed": "closed",
+	"sidebar_worktree_row_pr_merged": "merged",
+	"sidebar_worktree_row_pr_open": "open",
+	"sidebar_worktree_row_pr_state": "PR #{number} · {state}",
+	"sidebar_worktree_row_worktree_menu": "Worktree menu"
+}

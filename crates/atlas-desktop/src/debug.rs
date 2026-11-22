@@ -50,10 +50,14 @@ const INIT_JS: &str = r#"
 })();
 "#;
 
+/// The page's console and the host's own notes (`note`), one numbered stream for `atlas desktop debug logs`. Process
+/// statics: the host has to write here from places that hold no `AppHandle` (a GTK callback, a launcher).
+static LOGS: Mutex<VecDeque<Value>> = Mutex::new(VecDeque::new());
+/// Numbers log lines and the page evaluations waiting for a reply.
+static SEQ: AtomicU64 = AtomicU64::new(0);
+
 #[derive(Default)]
 pub struct DebugState {
-    logs: Mutex<VecDeque<Value>>,
-    seq: AtomicU64,
     pending: Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>,
 }
 
@@ -82,6 +86,7 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = serve(app).await {
+                    // i18n-ignore: log
                     eprintln!("atlas-debug: {e}");
                 }
             });
@@ -91,14 +96,21 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
 }
 
 #[tauri::command]
-pub fn debug_log(state: State<'_, DebugState>, level: String, msg: String) {
-    let seq = state.seq.fetch_add(1, Ordering::Relaxed);
+pub fn debug_log(level: String, msg: String) {
+    // i18n-ignore: log
     eprintln!("[webview {level}] {msg}");
-    let mut logs = state.logs.lock();
+    note(&level, &msg);
+}
+
+/// Add a line to what `atlas desktop debug logs` shows. The host's own findings use it too (a native dialog an agent
+/// instance did not show: `native_ui`), at level "error".
+pub fn note(level: &str, msg: &str) {
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let mut logs = LOGS.lock();
     if logs.len() == MAX_LOGS {
         logs.pop_front();
     }
-    let ts = chrono::Local::now().format("%H:%M:%S%.3f").to_string();
+    let ts = atlas_core::time::local_hms_millis(std::time::SystemTime::now());
     logs.push_back(json!({ "seq": seq, "ts": ts, "level": level, "msg": msg }));
 }
 
@@ -158,7 +170,7 @@ async fn page_eval<R: Runtime>(
 ) -> Result<Value, String> {
     let state = app.state::<DebugState>();
     let view = app.get_webview("main").ok_or("main webview not found")?;
-    let id = state.seq.fetch_add(1, Ordering::Relaxed);
+    let id = SEQ.fetch_add(1, Ordering::Relaxed);
     let (tx, rx) = oneshot::channel();
     state.pending.lock().insert(id, tx);
     let script = format!(
@@ -249,7 +261,6 @@ async fn handle<R: Runtime>(app: &AppHandle<R>, raw: &Value) -> Result<Value, St
             .ok_or("capture needs the Wry runtime")?;
         return crate::capture::handle(real, c, &args).await;
     }
-    let state = app.state::<DebugState>();
     match parse(raw)? {
         Req::Info => {
             let win = app.get_window("main").ok_or("main window not found")?;
@@ -270,8 +281,7 @@ async fn handle<R: Runtime>(app: &AppHandle<R>, raw: &Value) -> Result<Value, St
                 .ok_or("kill-web-process needs the Wry runtime")?;
             crate::webview_guard::kill_web_process(real).map(|()| Value::Null)
         }
-        Req::Logs { since } => Ok(state
-            .logs
+        Req::Logs { since } => Ok(LOGS
             .lock()
             .iter()
             .filter(|l| l["seq"].as_u64() >= Some(since))
@@ -434,7 +444,7 @@ async fn gesture_record<R: Runtime>(
     let events = rx.recv().map_err(|e| e.to_string())??;
     let trace = json!({
         "name": out.file_stem().and_then(|s| s.to_str()).unwrap_or("recorded"),
-        "source": format!("recorded:{} {}s on this Mac's trackpad", chrono::Local::now().format("%Y-%m-%d %H:%M"), secs),
+        "source": format!("recorded:{} {}s on this Mac's trackpad", atlas_core::time::local_date_hm(std::time::SystemTime::now()), secs),
         "expect": { "zone": "space", "steps": 0, "untouched": false },
         "events": events,
     });

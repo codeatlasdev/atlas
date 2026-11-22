@@ -7,6 +7,8 @@
 	import VirtualList from "#lib/components/VirtualList.svelte";
 	import type { Run, RunLine } from "./actionRuns.ts";
 	import { segments, type Seg } from "./actionSegments.ts";
+	import { formatNumber } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Output of one run: tail window, follow-while-live scrolling and clickable URLs/paths. */
 	let {
@@ -52,7 +54,7 @@
 			}
 			const rel = resolvePath(link.target, root, null);
 			if (rel && wtId) openFile(wtId, rel, link.line, link.col);
-			else toast.error(`${link.target} is outside the project`);
+			else toast.error(m.panel_action_output_log_outside_project({ target: link.target }));
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : String(err));
 		}
@@ -70,11 +72,18 @@
 	{#snippet header()}
 		{#if run.truncated > 0}
 			<div class="note">
-				{run.truncated.toLocaleString()} earlier lines were not kept (attached mid-run); full output is in .logs/.
+				{m.panel_action_output_log_earlier_lines_dropped({
+					count: run.truncated,
+					shown: formatNumber(run.truncated),
+				})}
 			</div>
 		{/if}
 		{#if lines.items.length === 0}
-			<div class="note">{run.status === "running" ? "Waiting for output…" : "No output."}</div>
+			<div class="note">
+				{run.status === "running"
+					? m.panel_action_output_log_waiting_for_output()
+					: m.panel_action_output_log_no_output()}
+			</div>
 		{/if}
 	{/snippet}
 	{#snippet item(l)}
@@ -83,7 +92,9 @@
 						href={s.link.target}
 						class="lnk"
 						style={s.css}
-						title={s.link.kind === "file" ? "Open file" : "Open link (⇧ for the browser)"}
+						title={s.link.kind === "file"
+							? m.panel_action_output_log_open_file()
+							: m.panel_action_output_log_open_link({ key: m.common_keys_shift() })}
 						onclick={(e) => openLink(e, s)}>{s.text}</a
 					>{:else}<span style={s.css}>{s.text}</span>{/if}{/each}
 		</div>

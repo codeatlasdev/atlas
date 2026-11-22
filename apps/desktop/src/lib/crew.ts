@@ -7,14 +7,17 @@
 import type { Attachment } from "#lib/crew/attachments.ts";
 
 /**
- * The SSH address a crew server was installed with: an address like an ssh_config `Host`, never a credential. The
- * crew service user cannot `sudo`, so `atlas crew browsers install|status` need this one.
+ * The SSH address a crew server was installed with: an address like an ssh_config `Host` (plus the path of the
+ * private key file the user picked for it, when they did), never a credential. The crew service user cannot `sudo`,
+ * so `atlas crew browsers install|status` need this one.
  */
 export interface AdminAddress {
 	/** `user@host`. */
 	target: string;
 	/** Absent for the default port 22. */
 	port?: number;
+	/** The private key file picked with "Choose another key" (`ssh -i`); absent when ssh finds the key by itself. */
+	identity?: string;
 }
 
 /** An entry from `~/.atlas/desktop/crew-servers.json`. */
@@ -30,7 +33,12 @@ export interface CrewServer {
 }
 
 export type CrewmateState = "idle" | "working" | "needs_you";
-export type ApprovalMode = "ask" | "auto";
+/** What a crewmate's agent may do without asking (hostd `mode`): nothing, file edits in its tree, or every call but the rails. */
+export type PermissionMode = "ask" | "edits" | "bypass";
+/** How long an "Allow" lasts: this call (default), or the same kind of call for the rest of that task. */
+export type ApprovalScope = "once" | "task";
+/** What forced a question even in Bypass: a protected path, or a task started from GitHub or a webhook. */
+export type ApprovalRail = "protected_path" | "no_auto";
 export type TaskState = "queued" | "running" | "done" | "failed" | "cancelled" | "waiting_action";
 export type TaskSource = "mobile" | "desktop" | "telegram" | "routine" | "trigger";
 
@@ -79,6 +87,8 @@ export interface Trigger {
 	last_fired?: number;
 	/** Unix seconds of next scheduled/interval fire; computed by hostd, never sent on input. */
 	next_fire?: number;
+	/** Why the cron parser refuses this schedule (saved under an older parser); kept as saved, never fires. */
+	invalid?: string;
 	/** IANA timezone for evaluating cron (e.g. "America/Sao_Paulo"). None = UTC. */
 	tz?: string;
 }
@@ -134,6 +144,8 @@ export interface PendingApproval {
 	tool_name: string;
 	tool_input: unknown;
 	pane_key: string;
+	/** Set when a rail forced the question (no mode would have allowed it). */
+	rail?: ApprovalRail;
 }
 
 export interface CrewmateStep {
@@ -154,12 +166,17 @@ export interface Crewmate {
 	name: string;
 	role: string;
 	agent: string;
-	approval: ApprovalMode;
+	/** Legacy two-value form, kept by hostd: `auto` exactly when `mode` is `bypass`. Read `mode`. */
+	approval: "ask" | "auto";
+	/** The permission mode. Absent on a crew server whose hostd predates permission modes (read it with `modeOf`). */
+	mode?: PermissionMode;
 	state: CrewmateState;
 	queued: number;
 	last?: CrewmateLast;
 	running_task?: { id: string; pane?: string };
 	pending_approval?: PendingApproval;
+	/** The task parked on a card (any kind), when there is one; hostd 1.5.0-alpha.26 and later send it. */
+	waiting_task?: { id: string; action: TaskAction; result?: string };
 	/** Unvalidated wire value; render through `normalizeLook`. */
 	look?: unknown;
 	/** Engine config (set by the onboarding conversation). */
@@ -170,8 +187,8 @@ export interface Crewmate {
 	triggers?: Trigger[];
 	/**
 	 * Whether this crewmate's engine supports approval prompts.
-	 * Present only when `engine` is set. False for opencode; true for claude/codex/omp.
-	 * When false: approval must be "auto"; UI shows a hint and disables the selector.
+	 * Present only when `engine` is set. False for codex and opencode, whose `mode` is always `bypass`.
+	 * When false: the UI shows the mode fixed, with the reason, and no way to change it.
 	 */
 	approval_supported?: boolean;
 	/**
@@ -181,6 +198,8 @@ export interface Crewmate {
 	setup_step?: string;
 	/** Per-crewmate short replies toggle. Absent = use crew default (on). */
 	short_replies?: boolean;
+	/** The agent ends each reply with a `spoken:` line for listening (the chat's "Read replies aloud" turned it on). */
+	spoken_replies?: boolean;
 }
 
 /** Where a task from GitHub came from and where its reply goes (hostd's `GithubOrigin`). */
@@ -225,6 +244,8 @@ export interface CrewmateTask {
 	};
 	/** Crew action blocking task progress; present when state is "waiting_action". */
 	action?: TaskAction;
+	/** What to read aloud for this finished task (hostd's, at most 300 characters); empty or absent: nothing to say. */
+	spoken?: string;
 	/** Original full reply before summarization; present only when summarized is true. */
 	reply_full?: string;
 	/** True when result is a summary and reply_full holds the original. */

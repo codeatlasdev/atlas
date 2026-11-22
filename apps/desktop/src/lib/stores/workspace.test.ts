@@ -1,8 +1,14 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { afterAll, expect, mock, test } from "bun:test";
 
-mock.module("@tauri-apps/api/core", () => ({ invoke: async () => null }));
-mock.module("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
+// `workspace_load` answers `{ doc, recovered }` (crates/atlas-desktop/src/workspace.rs `WorkspaceLoad`), never null.
+mock.module("@tauri-apps/api/core", () => ({
+	invoke: async (cmd) => (cmd === "workspace_load" ? { doc: null, recovered: null } : null),
+}));
+const listeners = {};
+mock.module("@tauri-apps/api/event", () => ({
+	listen: async (ev, h) => ((listeners[ev] = h), () => delete listeners[ev]),
+}));
 await (await import("../../../test/uiKit.ts")).installUiKit();
 // Process-wide, and every store module that loads after it stays linked to it: carry the names the other stores import
 // (`api`, `git`) so a later file (DiffView.test.ts) that pulls them in links instead of failing on a missing export.
@@ -41,6 +47,8 @@ afterAll(() => {
 
 const { ws } = await import("./workspace.svelte.ts");
 const { errors } = await import("#lib/errors/errors.svelte.ts");
+
+errors.hostGraceMs = 0;
 
 const W = "w1";
 ws.doc.worktrees.push({ id: W, repoId: "r", path: "/tmp/w", name: "w", isMain: true });
@@ -223,6 +231,8 @@ test("a failing host does not make known terminals 'gone'", async () => {
 	ptyList = async () => [{ pty: "p1", title: "zsh", exited: null }];
 	await ws.syncPtys();
 	expect(ws.hostDown).toBe(false);
+	// #500: the host answering again also takes the outage toast down; it said "not reachable".
+	expect(errors.toasts).toHaveLength(0);
 });
 
 test("a terminal the host really dropped is still 'gone' once the host answers", async () => {
@@ -246,4 +256,24 @@ test("restart on a down host does not try to create a terminal on it", async () 
 	await ws.restart(t.id);
 	expect(t.pty).toBe("p1");
 	expect(errors.toasts).toHaveLength(1);
+});
+
+/**
+ * #500: after an update's live upgrade the app reconnected to the new host but the "Terminal host not reachable"
+ * toast stayed. `host://reconnected` itself takes it down; it does not wait for the terminals to be re-read (that
+ * call is held open here, as it is while a freshly started host settles).
+ */
+test("host://reconnected dismisses the outage toast at once", async () => {
+	errors.toasts = [];
+	ptyList = async () => {
+		throw "Terminal host not reachable. Terminals cannot start or reconnect until it is back.";
+	};
+	await ws.init();
+	expect(errors.toasts).toHaveLength(1);
+	expect(ws.hostDown).toBe(true);
+
+	ptyList = () => new Promise(() => {});
+	listeners["host://reconnected"]({ payload: { host: "local" } });
+	expect(errors.toasts).toHaveLength(0);
+	ws.dispose();
 });

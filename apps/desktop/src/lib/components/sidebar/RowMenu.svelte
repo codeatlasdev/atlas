@@ -12,6 +12,7 @@
 	import type { ProjectView } from "#lib/api.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import type { CrewmateProject } from "#lib/crew.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { p, w, onAgent }: { p: ProjectView; w: Worktree | undefined; onAgent?: (worktreeId: string) => void } =
 		$props();
@@ -24,7 +25,12 @@
 
 	async function rename(id: string) {
 		const w = ws.worktree(id);
-		const v = w && (await promptDialog("Rename worktree", { value: w.name, confirmLabel: "Rename" }));
+		const v =
+			w &&
+			(await promptDialog(m.sidebar_row_menu_rename_title(), {
+				value: w.name,
+				confirmLabel: m.common_action_rename(),
+			}));
 		if (w && v) w.name = v;
 	}
 
@@ -44,39 +50,47 @@
 </script>
 
 {#if p.missing}
-	<DropdownMenuItem onclick={() => locateProject(p.id)}>Locate…</DropdownMenuItem>
+	<DropdownMenuItem onclick={() => locateProject(p.id)}
+		>{m.shell_home_missing_project_locate()}</DropdownMenuItem
+	>
 {:else}
-	<DropdownMenuItem onclick={() => openTerminal(p.id)}>New terminal</DropdownMenuItem>
-	<DropdownMenuItem onclick={() => onAgent?.(p.id)}>New agent</DropdownMenuItem>
+	<DropdownMenuItem onclick={() => openTerminal(p.id)}>{m.sidebar_row_menu_new_terminal()}</DropdownMenuItem>
+	<DropdownMenuItem onclick={() => onAgent?.(p.id)}>{m.tray_page_new_agent()}</DropdownMenuItem>
 	<DropdownMenuItem onclick={toggleStack}>
-		{p.running ? "Stop stack" : "Start stack"}
+		{p.running ? m.shell_commands_stop_stack() : m.shell_commands_start_stack()}
 	</DropdownMenuItem>
 	<DropdownMenuItem onclick={() => store.run("ed", () => api.openEditor(p.id))}
-		>Open in editor</DropdownMenuItem
+		>{m.sidebar_row_menu_open_in_editor()}</DropdownMenuItem
 	>
 	<DropdownMenuItem onclick={() => store.run("reveal", () => api.reveal(p.id))}
 		>{revealLabel()}</DropdownMenuItem
 	>
-	<DropdownMenuItem onclick={createCrewmateForProject}>Create crewmate for this project</DropdownMenuItem>
+	<DropdownMenuItem onclick={createCrewmateForProject}
+		>{m.sidebar_row_menu_create_crewmate()}</DropdownMenuItem
+	>
 {/if}
 <DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
-	{p.pinned ? "Unpin" : "Pin to top"}
+	{p.pinned ? m.shell_project_header_unpin() : m.shell_project_header_pin_to_top()}
 </DropdownMenuItem>
 {#if !p.parent}
-	<DropdownMenuItem onclick={() => (identities.editing = p.id)}>Change icon and color…</DropdownMenuItem>
+	<DropdownMenuItem onclick={() => (identities.editing = p.id)}
+		>{m.shell_commands_project_menu_change_icon()}</DropdownMenuItem
+	>
 	<DropdownMenuItem variant="destructive" onclick={() => removeProject(p.id)}
-		>Remove from Atlas…</DropdownMenuItem
+		>{m.shell_project_header_remove_from_atlas()}</DropdownMenuItem
 	>
 {/if}
 {#if w}
 	<DropdownMenuItem onclick={() => (w.unread = !w.unread)}>
-		{w.unread ? "Mark as read" : "Mark as unread"}
+		{w.unread ? m.sidebar_row_menu_mark_read() : m.sidebar_row_menu_mark_unread()}
 	</DropdownMenuItem>
 {/if}
 {#if p.parent && w}
-	<DropdownMenuItem onclick={() => rename(p.id)}>Rename</DropdownMenuItem>
+	<DropdownMenuItem onclick={() => rename(p.id)}>{m.common_action_rename()}</DropdownMenuItem>
 	<DropdownMenuItem onclick={() => (w.archived = !w.archived)}>
-		{w.archived ? "Unarchive" : "Archive"}
+		{w.archived ? m.sidebar_row_menu_unarchive() : m.sidebar_row_menu_archive()}
 	</DropdownMenuItem>
-	<DropdownMenuItem variant="destructive" onclick={() => sidebar.askDelete([p.id])}>Delete…</DropdownMenuItem>
+	<DropdownMenuItem variant="destructive" onclick={() => sidebar.askDelete([p.id])}
+		>{m.sidebar_row_menu_delete()}</DropdownMenuItem
+	>
 {/if}

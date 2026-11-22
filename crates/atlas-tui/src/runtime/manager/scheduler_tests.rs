@@ -42,27 +42,46 @@ fn manager(
     )
 }
 
-/// Drive the same loop headless does: apply watcher/log events and tick
-/// `check_health` until `done` or the deadline.
+/// Apply the pending watcher/log events, like the headless loop does between ticks.
+fn apply_events(m: &mut ServiceManager, rx: &mut mpsc::UnboundedReceiver<ManagerEvent>) {
+    while let Ok(ev) = rx.try_recv() {
+        match ev {
+            ManagerEvent::StateChanged { name, state } => m.update_state(&name, state),
+            ManagerEvent::LogReady { name } => m.mark_log_ready(&name),
+            _ => {}
+        }
+    }
+}
+
+/// Drive the same loop headless does: apply watcher/log events and tick `check_health` until `done`.
+/// It waits for a real event (a child exiting, a line printed), so the only ceiling is the hang detector.
 async fn drive(
     m: &mut ServiceManager,
     rx: &mut mpsc::UnboundedReceiver<ManagerEvent>,
-    secs: u64,
     mut done: impl FnMut(&ServiceManager) -> bool,
 ) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(secs);
+    let deadline = tokio::time::Instant::now() + atlas_core::scaling::HANG;
     while tokio::time::Instant::now() < deadline {
-        while let Ok(ev) = rx.try_recv() {
-            match ev {
-                ManagerEvent::StateChanged { name, state } => m.update_state(&name, state),
-                ManagerEvent::LogReady { name } => m.mark_log_ready(&name),
-                _ => {}
-            }
-        }
+        apply_events(m, rx);
         m.check_health().await;
         if done(m) {
             return;
         }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// The same loop for a fixed `secs`: a quiet window in which something must NOT happen. A slow machine only
+/// makes the window quieter, so it cannot fail the check that follows.
+async fn drive_for(
+    m: &mut ServiceManager,
+    rx: &mut mpsc::UnboundedReceiver<ManagerEvent>,
+    secs: u64,
+) {
+    let end = tokio::time::Instant::now() + Duration::from_secs(secs);
+    while tokio::time::Instant::now() < end {
+        apply_events(m, rx);
+        m.check_health().await;
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
@@ -94,7 +113,7 @@ async fn dependent_waits_for_oneshot_to_complete_then_spawns() {
         Some("waiting for migrate (completed_successfully)")
     );
 
-    drive(&mut m, &mut rx, 8, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("api") == Some(ServiceState::Running)
     })
     .await;
@@ -128,7 +147,7 @@ async fn failed_dependency_fails_dependents_transitively_with_reason() {
         ],
     );
     m.start_app_services(&names(&["bad", "mid", "leaf"])).await;
-    drive(&mut m, &mut rx, 8, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("leaf") == Some(ServiceState::Failed)
     })
     .await;
@@ -184,7 +203,7 @@ async fn log_ready_never_starts_a_dependent_on_liveness_alone() {
     let (mut m, mut rx) = log_ready_pair(&dir, "sleep 30");
     m.start_app_services(&names(&["api", "web"])).await;
     // The same loop headless runs (events + health ticks), for a full second: api is alive and silent.
-    drive(&mut m, &mut rx, 1, |_| false).await;
+    drive_for(&mut m, &mut rx, 1).await;
     assert_eq!(m.get_state("web"), Some(ServiceState::Stopped));
     m.stop_all().await;
 }
@@ -194,7 +213,7 @@ async fn log_ready_gates_on_matching_line_and_marks_dependency_running() {
     let dir = tempfile::tempdir().unwrap();
     let (mut m, mut rx) = log_ready_pair(&dir, "echo listening on 80; sleep 30");
     m.start_app_services(&names(&["api", "web"])).await;
-    drive(&mut m, &mut rx, 8, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("web") == Some(ServiceState::Running)
     })
     .await;
@@ -219,7 +238,7 @@ async fn on_failure_restarts_then_gives_up_and_never_double_spawns() {
         )],
     );
     m.start_app_services(&names(&["crashy"])).await;
-    drive(&mut m, &mut rx, 15, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.fail_reason("crashy")
             .is_some_and(|r| r.contains("gave up"))
     })
@@ -230,7 +249,7 @@ async fn on_failure_restarts_then_gives_up_and_never_double_spawns() {
         Some("gave up after 2 restarts")
     );
     // Keep ticking: a gave-up service must stay down.
-    drive(&mut m, &mut rx, 2, |_| false).await;
+    drive_for(&mut m, &mut rx, 2).await;
     let spawns = std::fs::read_to_string(&log).unwrap().lines().count();
     assert_eq!(spawns, 3, "1 initial + exactly 2 restarts");
     m.stop_all().await;
@@ -250,7 +269,7 @@ async fn on_failure_leaves_clean_exit_alone() {
         )],
     );
     m.start_app_services(&names(&["task"])).await;
-    drive(&mut m, &mut rx, 5, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("task") == Some(ServiceState::Stopped)
     })
     .await;
@@ -265,7 +284,7 @@ async fn restart_no_keeps_legacy_failed_on_exit() {
     let dir = tempfile::tempdir().unwrap();
     let (mut m, mut rx) = manager(&dir, vec![("svc", svc("exit 1"))]);
     m.start_app_services(&names(&["svc"])).await;
-    drive(&mut m, &mut rx, 5, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("svc") == Some(ServiceState::Failed)
     })
     .await;
@@ -289,20 +308,20 @@ async fn stop_and_quit_cancel_scheduled_restart() {
         )],
     );
     m.start_app_services(&names(&["crashy"])).await;
-    drive(&mut m, &mut rx, 5, |m| m.scheduling_pending()).await;
+    drive(&mut m, &mut rx, |m| m.scheduling_pending()).await;
     assert!(m.scheduling_pending(), "restart should be scheduled");
 
     m.stop_service("crashy").await;
     assert!(!m.scheduling_pending(), "user stop cancels the restart");
     let before = std::fs::read_to_string(&log).unwrap().lines().count();
-    drive(&mut m, &mut rx, 3, |_| false).await;
+    drive_for(&mut m, &mut rx, 3).await;
     let after = std::fs::read_to_string(&log).unwrap().lines().count();
     assert_eq!(before, after, "no respawn after a user stop");
     assert_eq!(m.get_state("crashy"), Some(ServiceState::Stopped));
 
     // And quit: restart again, then stop_all mid-backoff.
     m.restart_service("crashy").await;
-    drive(&mut m, &mut rx, 5, |m| m.scheduling_pending()).await;
+    drive(&mut m, &mut rx, |m| m.scheduling_pending()).await;
     m.stop_all().await;
     assert!(!m.scheduling_pending(), "stop_all cancels pending restarts");
 }
@@ -334,7 +353,7 @@ async fn ready_log_service_stays_starting_while_the_line_never_comes() {
     let (mut m, mut rx) = ready_log_service(&dir, "echo compiling; sleep 30");
     m.start_app_services(&names(&["slow"])).await;
     // Several health ticks across > MIN_UPTIME while the log never matches.
-    drive(&mut m, &mut rx, 2, |_| false).await;
+    drive_for(&mut m, &mut rx, 2).await;
     assert_eq!(
         m.get_state("slow"),
         Some(ServiceState::Starting),
@@ -356,7 +375,7 @@ async fn ready_log_service_turns_running_on_the_matching_line() {
     let dir = tempfile::tempdir().unwrap();
     let (mut m, mut rx) = ready_log_service(&dir, "echo compiling; echo Server ready; sleep 30");
     m.start_app_services(&names(&["slow"])).await;
-    drive(&mut m, &mut rx, 8, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("slow") == Some(ServiceState::Running)
     })
     .await;
@@ -396,7 +415,7 @@ async fn portless_crash_loop_never_runs_and_does_not_unblock_healthy_dep() {
     m.min_uptime = Duration::from_secs(3600);
     m.start_app_services(&names(&["worker", "dependent"])).await;
     let mut ever_running = false;
-    drive(&mut m, &mut rx, 15, |m| {
+    drive(&mut m, &mut rx, |m| {
         ever_running |= m.get_state("worker") == Some(ServiceState::Running);
         m.fail_reason("worker")
             .is_some_and(|r| r.contains("gave up"))
@@ -407,7 +426,7 @@ async fn portless_crash_loop_never_runs_and_does_not_unblock_healthy_dep() {
     assert_eq!(m.exit_code("worker"), Some(2));
     assert_eq!(m.restart_count("worker"), 2);
     // Dependent was never spawned on a false "healthy": it fails with the dep.
-    drive(&mut m, &mut rx, 3, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("dependent") == Some(ServiceState::Failed)
     })
     .await;
@@ -469,7 +488,7 @@ async fn portless_service_runs_after_min_uptime() {
     );
     // ...and green once it ends (a short window keeps the test fast).
     m.min_uptime = Duration::from_millis(200);
-    drive(&mut m, &mut rx, 6, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("idle") == Some(ServiceState::Running)
     })
     .await;
@@ -490,29 +509,27 @@ async fn start_timeout_warns_and_alerts_critical_once() {
             ServiceDef {
                 port: Some(1),
                 critical: Some(true),
-                start_timeout: Some(1),
+                start_timeout: Some(3600),
                 ..svc("sleep 30")
             },
         )],
     );
     m.start_app_services(&names(&["badport"])).await;
-    // The wait starts now, whatever start_app_services cost on a loaded machine: otherwise the
-    // first tick can already be past the 1 s timeout and never show the "waiting" note.
-    m.services.get_mut("badport").unwrap().sched.starting_since = Some(std::time::Instant::now());
-    let mut saw_waiting = m
+    // Virtual time: the timeout is an hour at first and the wait is moved by hand, so how long the spawn or a tick
+    // took on this machine decides nothing (a 1 s timeout raced a loaded runner: the first tick could
+    // already be past it and never show the "waiting" note).
+    let started = std::time::Instant::now();
+    m.services.get_mut("badport").unwrap().sched.starting_since = Some(started);
+    m.check_health().await;
+    let saw_waiting = m
         .service_note("badport")
         .is_some_and(|n| n.starts_with("waiting for :1 ("));
-    let (mut notes, mut alerts) = (0, 0);
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    while tokio::time::Instant::now() < deadline && (notes == 0 || alerts == 0) {
-        m.check_health().await;
-        saw_waiting |= m
-            .service_note("badport")
-            .is_some_and(|n| n.starts_with("waiting for :1 ("));
+    let drain = |rx: &mut mpsc::UnboundedReceiver<ManagerEvent>| {
+        let (mut notes, mut alerts) = (0, 0);
         while let Ok(ev) = rx.try_recv() {
             match ev {
-                ManagerEvent::ServiceNote { message, .. }
-                    if message.starts_with("still starting after") =>
+                ManagerEvent::ServiceNote { note, .. }
+                    if note.message.starts_with("still starting after") =>
                 {
                     notes += 1;
                 }
@@ -522,8 +539,15 @@ async fn start_timeout_warns_and_alerts_critical_once() {
                 _ => {}
             }
         }
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
+        (notes, alerts)
+    };
+    assert_eq!(drain(&mut rx), (0, 0), "nothing fires inside the window");
+    // The window ends: a 1 s timeout, 2 s into the wait.
+    let sched = &mut m.services.get_mut("badport").unwrap().sched;
+    sched.start_timeout = 1;
+    sched.starting_since = Some(started - Duration::from_secs(2));
+    m.check_health().await;
+    let (notes, alerts) = drain(&mut rx);
     assert!(saw_waiting, "sidebar note must show the wait");
     assert_eq!((notes, alerts), (1, 1));
     assert_eq!(m.get_state("badport"), Some(ServiceState::Starting));
@@ -643,7 +667,7 @@ async fn deselected_services_are_off_marked_and_startable_by_hand() {
     };
     assert_eq!(app_names, names(&["db", "api", "web"]), "dependency order");
     m.start_app_services(&app_names).await;
-    drive(&mut m, &mut rx, 8, |m| {
+    drive(&mut m, &mut rx, |m| {
         ["db", "api", "web"]
             .iter()
             .all(|n| m.get_state(n) == Some(ServiceState::Running))
@@ -690,7 +714,7 @@ async fn no_deps_leaves_dependency_off_and_does_not_gate() {
     assert_eq!(m.get_state("db"), Some(ServiceState::Disabled));
     m.start_app_services(&names(&["api"])).await;
     assert_eq!(m.get_state("api"), Some(ServiceState::Starting));
-    drive(&mut m, &mut rx, 8, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("api") == Some(ServiceState::Running)
     })
     .await;
@@ -705,7 +729,7 @@ async fn status_file_carries_exit_code_restarts_and_uptime() {
     let dir = tempfile::tempdir().unwrap();
     let (mut m, mut rx) = manager(&dir, vec![("boom", svc("exit 7")), ("ok", svc("sleep 30"))]);
     m.start_app_services(&names(&["boom", "ok"])).await;
-    drive(&mut m, &mut rx, 8, |m| {
+    drive(&mut m, &mut rx, |m| {
         m.get_state("boom") == Some(ServiceState::Failed)
             && m.get_state("ok") == Some(ServiceState::Running)
     })

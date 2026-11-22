@@ -1,6 +1,6 @@
 <script lang="ts">
 	/** Left sidebar: filter, fixed views, the active project and the collapsible list of the others. */
-	import { IconButton, Kbd, Skeleton, Spinner } from "@codeatlasdev/ui";
+	import { IconButton, Kbd, Skeleton, Spinner, toast } from "@codeatlasdev/ui";
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import {
 		Bot,
@@ -15,7 +15,7 @@
 	import IdentityDialog from "#lib/components/IdentityDialog.svelte";
 	import SearchField from "#lib/components/SearchField.svelte";
 	import Tip from "#lib/components/Tip.svelte";
-	import { register, shortcutFor } from "#lib/keymap.svelte.ts";
+	import { named, register, shortcutFor } from "#lib/keymap.svelte.ts";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { spaceSwipe } from "#lib/shell/gestures.ts";
 	import { swipe } from "#lib/shell/swipe.ts";
@@ -26,11 +26,17 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import DeleteDialog from "./sidebar/DeleteDialog.svelte";
-	import DiscoverDialog from "./sidebar/DiscoverDialog.svelte";
+	import LazyOpen from "./LazyOpen.svelte";
+	import { discovery } from "#lib/stores/discovery.svelte.ts";
 	import ProjectHead from "./sidebar/ProjectHead.svelte";
 	import SidebarFooter from "./sidebar/SidebarFooter.svelte";
 	import WorktreeRow from "./sidebar/WorktreeRow.svelte";
 	import { droppedOn } from "./sidebar/addProject.ts";
+	import LooseFiles from "./sidebar/LooseFiles.svelte";
+	import { dropAction } from "#lib/openPath.ts";
+	import { openPath } from "#lib/ctl.ts";
+	import { host } from "#lib/host.ts";
+	import { errText } from "#lib/api.ts";
 	import {
 		addFolder,
 		addProject,
@@ -39,7 +45,9 @@
 		removeProject,
 		showDiscover,
 	} from "./sidebar/projects.ts";
+	import { stepLabel } from "./sidebar/model.ts";
 	import { sidebar } from "./sidebar/state.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { onJump, onAgent }: { onJump?: () => void; onAgent?: (worktreeId: string) => void } = $props();
 
@@ -52,6 +60,7 @@
 	let activeKids = $derived(activeRepo ? sidebar.visibleKids(activeRepo.id) : []);
 	/** "Other projects" is collapsed by default; a filter opens it so matches are never hidden. */
 	let allOpen = $state(false);
+
 	let listOpen = $derived(allOpen || filtering);
 	let workingCount = $derived(
 		ws.doc.tabs.filter((t) => t.agent && agents.status[t.id]?.state === "working").length,
@@ -85,7 +94,18 @@
 	let asideEl: HTMLElement | undefined = $state();
 	let dropping = $state(false);
 
-	/** A folder dragged from Finder onto the sidebar is added like a picked one (Tauri delivers native drops, not DOM ones). */
+	/**
+	 * What a drop does (`dropAction`): a folder on the sidebar is added like a picked one, a file opens wherever it lands
+	 * (Tauri delivers native drops, not DOM ones).
+	 */
+	async function dropped(path: string, onSidebar: boolean) {
+		const stat = await host.fsStat(path).catch(() => null);
+		if (!stat) return;
+		const action = dropAction(stat.kind === "dir" ? "dir" : "file", onSidebar);
+		if (action === "add-folder") await addFolder(path);
+		else if (action === "open-file") await openPath(path).catch((e) => toast.error(errText(e)));
+	}
+
 	onMount(() => {
 		const off = getCurrentWebview().onDragDropEvent((e) => {
 			const d = e.payload;
@@ -94,33 +114,43 @@
 			const rect = asideEl?.getBoundingClientRect();
 			const inside = !!rect && droppedOn(rect, d.position, window.devicePixelRatio);
 			dropping = inside && d.type !== "drop";
-			if (d.type === "drop" && inside) for (const path of new Set(d.paths)) void addFolder(path);
+			if (d.type === "drop") for (const path of new Set(d.paths)) void dropped(path, inside);
 		});
 		return () => void off.then((u) => u());
 	});
 
 	onMount(() =>
-		register([
-			{ id: "atlas::AddProject", label: "Add project…", run: () => void addProject() },
-			{
-				id: "atlas::RemoveProject",
-				label: "Remove project from Atlas…",
-				run: () => activeRepo && void removeProject(activeRepo.id),
-				when: () => !!activeRepo,
-			},
-			{
-				id: "atlas::DiscoverProjects",
-				label: "Find projects on this machine",
-				run: () => void showDiscover(),
-			},
-			{ id: "atlas::RefreshProjects", label: "Refresh projects", run: () => void refresh() },
-			{
-				id: "atlas::RemoveMissingProjects",
-				label: "Remove missing projects",
-				run: () => void removeAllMissing(),
-				when: () => store.missing.length > 0,
-			},
-		]),
+		register(
+			named([
+				{
+					id: "atlas::AddProject",
+					label: () => m.shell_home_no_project_add_project(),
+					run: () => void addProject(),
+				},
+				{
+					id: "atlas::RemoveProject",
+					label: () => m.sidebar_command_remove_project(),
+					run: () => activeRepo && void removeProject(activeRepo.id),
+					when: () => !!activeRepo,
+				},
+				{
+					id: "atlas::DiscoverProjects",
+					label: () => m.shell_home_no_project_discover(),
+					run: () => void showDiscover(),
+				},
+				{
+					id: "atlas::RefreshProjects",
+					label: () => m.sidebar_refresh_projects(),
+					run: () => void refresh(),
+				},
+				{
+					id: "atlas::RemoveMissingProjects",
+					label: () => m.sidebar_command_remove_missing(),
+					run: () => void removeAllMissing(),
+					when: () => store.missing.length > 0,
+				},
+			]),
+		),
 	);
 </script>
 
@@ -128,28 +158,28 @@
 
 <aside class="sidebar" class:dropping data-tour="sidebar" bind:this={asideEl} use:swipe={spaceSwipe()}>
 	<div class="drag" data-tauri-drag-region>
-		<Tip label="Hide sidebar" command="shell::ToggleSidebar" side="bottom">
+		<Tip label={m.sidebar_hide_sidebar()} command="shell::ToggleSidebar" side="bottom">
 			{#snippet child(props)}
 				<IconButton
 					{...props}
 					class="hide-btn"
 					variant="text"
 					size="sm"
-					aria-label="Hide sidebar"
+					aria-label={m.sidebar_hide_sidebar()}
 					onclick={toggleSidebar}
 				>
 					<PanelLeftClose size={15} />
 				</IconButton>
 			{/snippet}
 		</Tip>
-		<Tip label="Refresh projects" command="atlas::RefreshProjects" side="bottom">
+		<Tip label={m.sidebar_refresh_projects()} command="atlas::RefreshProjects" side="bottom">
 			{#snippet child(props)}
 				<IconButton
 					{...props}
 					class="refresh-btn"
 					variant="text"
 					size="sm"
-					aria-label="Refresh projects"
+					aria-label={m.sidebar_refresh_projects()}
 					disabled={refreshing}
 					onclick={refresh}
 				>
@@ -162,18 +192,18 @@
 		<SearchField
 			compact
 			clearable
-			label="Clear filter"
-			placeholder="Filter worktrees"
+			label={m.sidebar_clear_filter()}
+			placeholder={m.sidebar_filter_worktrees()}
 			bind:value={sidebar.filter}
 			onkeydown={(e) => e.key === "Escape" && ((sidebar.filter = ""), e.currentTarget.blur())}
 		/>
-		<Tip label="Jump to worktree or terminal" command="atlas::Jump" side="bottom">
+		<Tip label={m.shell_commands_jump()} command="atlas::Jump" side="bottom">
 			{#snippet child(props)}
 				<button
 					{...props}
 					class="jump"
 					data-tour="palette"
-					aria-label="Jump to worktree or terminal"
+					aria-label={m.shell_commands_jump()}
 					onclick={() => onJump?.()}
 				>
 					<Kbd>{shortcutFor("atlas::Jump") ?? kbd("cmd-k")}</Kbd>
@@ -184,19 +214,20 @@
 	{#if store.missing.length}
 		<div class="missing-bar" role="status">
 			<TriangleAlert size={13} />
-			<span>{store.missing.length} not found</span>
-			<button onclick={refresh}>Refresh</button>
-			<button onclick={removeAllMissing}>Remove all</button>
+			<span>{m.sidebar_missing_count({ count: store.missing.length })}</span>
+			<button onclick={refresh}>{m.sidebar_refresh()}</button>
+			<button onclick={removeAllMissing}>{m.sidebar_remove_all()}</button>
 		</div>
 	{/if}
 	<nav class="list">
 		<button class="item fixed" class:active={ws.view === "agents"} onclick={() => (ws.view = "agents")}>
-			<Bot size={13} /><span class="name">Agents</span>
+			<Bot size={13} /><span class="name">{m.shell_commands_agents()}</span>
 			{#if workingCount}<span class="count">{workingCount}</span>{/if}
 		</button>
 		<button class="item fixed" class:active={ws.view === "dashboard"} onclick={() => (ws.view = "dashboard")}>
-			<LayoutDashboard size={13} /><span class="name">Dashboard</span>
+			<LayoutDashboard size={13} /><span class="name">{m.shell_commands_dashboard()}</span>
 		</button>
+		<LooseFiles />
 		{#if activeRepo}
 			<ProjectHead r={activeRepo} active {onAgent} />
 			{#if activeKids.length}
@@ -207,7 +238,7 @@
 		{#if others.length}
 			<button class="section" aria-expanded={listOpen} onclick={() => (allOpen = !allOpen)}>
 				<ChevronRight size={11} class="chev {listOpen ? 'open' : ''}" />
-				<span>{activeRepo ? "Other projects" : "Projects"}</span>
+				<span>{activeRepo ? m.sidebar_other_projects() : m.shell_chrome_space_dots_projects()}</span>
 				<span class="count">{others.length}</span>
 			</button>
 			{#if listOpen}
@@ -229,13 +260,14 @@
 					/>{/each}
 			</div>
 		{:else if repos.length === 0}
-			<p class="hint">No projects yet. Add any project folder: Atlas detects how to run it.</p>
+			<p class="hint">{m.sidebar_no_projects()}</p>
 		{:else if filtering && !visible}
-			<p class="hint">No worktree matches “{sidebar.filter.trim()}”.</p>
+			<p class="hint">{m.sidebar_no_match({ filter: sidebar.filter.trim() })}</p>
 		{/if}
 	</nav>
 	{#if hasArchived}
-		<label class="archived"><input type="checkbox" bind:checked={sidebar.showArchived} /> Show archived</label
+		<label class="archived"
+			><input type="checkbox" bind:checked={sidebar.showArchived} /> {m.sidebar_show_archived()}</label
 		>
 	{/if}
 	<SidebarFooter onDiscover={showDiscover} />
@@ -245,14 +277,14 @@
 	{#each Object.values(worktrees.creations).filter((c) => c.repoId === repoId) as c (c.id)}
 		<div class="item creating nested">
 			<span class="glyph"><Spinner size={11} /></span>
-			<span class="name">{c.name}<small class="branch">{c.step}…</small></span>
+			<span class="name">{c.name}<small class="branch">{stepLabel(c.step)}</small></span>
 		</div>
 	{/each}
 {/snippet}
 
 <DeleteDialog />
 <IdentityDialog />
-<DiscoverDialog />
+<LazyOpen when={discovery.open} load={() => import("./sidebar/DiscoverDialog.svelte")} />
 
 <style>
 	.sidebar {
@@ -297,8 +329,9 @@
 	}
 	.missing-bar {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 8px;
+		gap: 4px 8px;
 		margin: 0 8px 4px;
 		padding: 5px 8px;
 		border-radius: 8px;
@@ -306,14 +339,16 @@
 		color: var(--ca-semantic-warning);
 		background: color-mix(in oklab, var(--dot-warn) 12%, transparent);
 	}
+	/* The count keeps its line; a longer language moves the two buttons below it instead of breaking their words. */
 	.missing-bar span {
-		flex: 1;
+		flex: 1 1 auto;
 	}
 	.missing-bar button {
 		border: 0;
 		padding: 0;
 		background: none;
 		font: inherit;
+		white-space: nowrap;
 		color: var(--ca-text-secondary);
 	}
 	.missing-bar button:hover {

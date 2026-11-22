@@ -4,12 +4,13 @@
  * Guards step order, option mapping, summary text, and resume logic.
  */
 import { describe, expect, it } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../test/locale.ts";
 import {
 	CREW_NAMES,
 	STEPS,
-	approvalDescription,
-	approvalKeyToMode,
 	getQuestion,
+	normalizeStep,
 	optionAnswer,
 	nextStep,
 	RESTART_STEP,
@@ -22,8 +23,8 @@ import {
 // ─── step ordering ────────────────────────────────────────────────────────────
 
 describe("step ordering", () => {
-	it("STEPS has the five expected steps in order", () => {
-		expect(STEPS).toEqual(["name", "role", "project", "approval", "summary"]);
+	it("STEPS has the four expected steps in order", () => {
+		expect(STEPS).toEqual(["name", "role", "project", "summary"]);
 	});
 
 	it("nextStep advances through all steps then returns done", () => {
@@ -130,28 +131,19 @@ describe("options that ask you to type", () => {
 	});
 });
 
-// ─── approval step ────────────────────────────────────────────────────────────
+// ─── no approval step ─────────────────────────────────────────────────────────
 
-describe("approval step", () => {
-	it("has three options A/B/C", () => {
-		const keys = getQuestion("approval").options?.map((o) => o.key);
-		expect(keys).toEqual(["A", "B", "C"]);
+// #642: the mode a crewmate starts in is the crew's default, set in Settings and switched from the message box; the
+// setup conversation no longer asks "how careful should I be" (it forced Ask or Bypass, ignoring the crew default).
+describe("no approval step", () => {
+	it("a crewmate saved at the old approval step resumes at the summary", () => {
+		expect(normalizeStep("approval")).toBe("summary");
 	});
 
-	it("does not allow free text", () => {
-		expect(getQuestion("approval").allowText).toBe(false);
-	});
-
-	it("approvalKeyToMode: C maps to auto, A and B map to ask", () => {
-		expect(approvalKeyToMode("A")).toBe("ask");
-		expect(approvalKeyToMode("B")).toBe("ask");
-		expect(approvalKeyToMode("C")).toBe("auto");
-	});
-
-	it("approvalDescription returns a non-empty string for each option", () => {
-		expect(approvalDescription("A")).toBeTruthy();
-		expect(approvalDescription("B")).toBeTruthy();
-		expect(approvalDescription("C")).toBeTruthy();
+	it("the other persisted steps read as themselves; an unknown or missing one is no step", () => {
+		for (const s of STEPS) expect(normalizeStep(s)).toBe(s);
+		expect(normalizeStep("bogus")).toBeUndefined();
+		expect(normalizeStep(undefined)).toBeUndefined();
 	});
 });
 
@@ -175,10 +167,10 @@ describe("summary step", () => {
 	const plain = (parts) => parts.map((p) => p.text).join("");
 	const bold = (parts) => parts.filter((p) => p.bold).map((p) => p.text);
 
-	it("names the crewmate, keeps the role's own case and says how careful it is, without markdown", () => {
-		const parts = summaryText({ name: "Jorge", roleText: "Review every PR", approvalKey: "A" });
-		expect(plain(parts)).toBe("I'm Jorge. I'll review every PR, and I'll ask before anything risky.");
-		expect(bold(parts)).toEqual(["Jorge"]);
+	it("names the crewmate, keeps the role's own case and says the mode it starts in, without markdown", () => {
+		const parts = summaryText({ name: "Jorge", roleText: "Review every PR", mode: "ask" });
+		expect(plain(parts)).toBe("I'm Jorge. I'll review every PR, and I'll start in Ask mode.");
+		expect(bold(parts)).toEqual(["Jorge", "Ask"]);
 		expect(plain(parts)).not.toContain("*");
 	});
 
@@ -187,19 +179,21 @@ describe("summary step", () => {
 			name: "Jorge",
 			roleText: "Review every PR",
 			project: "https://github.com/codeatlasdev/promptin.git",
-			approvalKey: "C",
+			mode: "edits",
 		});
-		expect(plain(parts)).toContain("review every PR on codeatlasdev/promptin, and I'll");
-		expect(bold(parts)).toEqual(["Jorge", "codeatlasdev/promptin"]);
+		expect(plain(parts)).toContain(
+			"review every PR on codeatlasdev/promptin, and I'll start in Accept edits mode",
+		);
+		expect(bold(parts)).toEqual(["Jorge", "codeatlasdev/promptin", "Accept edits"]);
 	});
 
 	it("keeps a project name or path as given, and omits the clause without one", () => {
 		expect(
-			bold(summaryText({ name: "Z", roleText: "Fix failing CI", project: "atlas", approvalKey: "C" })),
-		).toEqual(["Z", "atlas"]);
-		expect(
-			plain(summaryText({ name: "N", roleText: "Write the changelog", approvalKey: "B" })),
-		).not.toContain(" on ");
+			bold(summaryText({ name: "Z", roleText: "Fix failing CI", project: "atlas", mode: "bypass" })),
+		).toEqual(["Z", "atlas", "Bypass"]);
+		expect(plain(summaryText({ name: "N", roleText: "Write the changelog", mode: "ask" }))).not.toContain(
+			" on ",
+		);
 	});
 });
 
@@ -224,14 +218,14 @@ describe("resume from persisted step", () => {
 		}
 	});
 
-	it("resuming mid-flow: nextStep from role reaches summary in 3 advances", () => {
+	it("resuming mid-flow: nextStep from role reaches summary in 2 advances", () => {
 		let step: SetupStep | "done" = "role";
 		let advances = 0;
 		while (step !== "done" && step !== "summary") {
 			step = nextStep(step as SetupStep);
 			advances++;
 		}
-		expect(advances).toBe(3); // role→project→approval→summary
+		expect(advances).toBe(2); // role→project→summary
 		expect(step).toBe("summary");
 	});
 });
@@ -249,5 +243,41 @@ describe("typingDelay", () => {
 
 	it("is deterministic given the same seed", () => {
 		expect(typingDelay(0.5)).toBe(typingDelay(0.5));
+	});
+});
+
+// The summary is one catalog sentence per case: word order belongs to the language, and the bold runs are still the
+// name and the project wherever the sentence puts them.
+describe("summary in another language", () => {
+	it("follows the catalog sentence and still bolds the name and the project", async () => {
+		await inLocale("pt-BR", () => {
+			const role = roleKeyToText("A");
+			const parts = summaryText({ name: "Jorge", roleText: role, project: "atlas", mode: "ask" });
+			expect(parts.filter((p) => p.bold).map((p) => p.text)).toEqual(["Jorge", "atlas", "Perguntar"]);
+			const plain = parts.map((p) => p.text).join("");
+			expect(plain).not.toContain("\u2063");
+			expect(plain).toBe(
+				m.crew_workspace_setup_summary_project({
+					name: "Jorge",
+					role: role.charAt(0).toLowerCase() + role.slice(1),
+					project: "atlas",
+					mode: "Perguntar",
+				}),
+			);
+		});
+	});
+
+	it("builds the questions and options in the language of the moment", async () => {
+		const english = getQuestion("role").options.map((o) => o.title);
+		const other = await inLocale("pt-BR", () => getQuestion("role").options.map((o) => o.title));
+		expect(other).not.toEqual(english);
+		expect(other).toEqual(
+			await inLocale("pt-BR", () => [
+				m.crew_workspace_setup_role_review_title(),
+				m.crew_workspace_setup_role_ci_title(),
+				m.crew_workspace_setup_role_changelog_title(),
+				m.crew_workspace_setup_something_else(),
+			]),
+		);
 	});
 });

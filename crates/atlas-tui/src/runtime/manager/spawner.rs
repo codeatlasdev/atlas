@@ -2,11 +2,14 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json::json;
+
 use super::ServiceManager;
 use super::types::{
     ManagerEvent, WATCH_HEALTHY_INTERVAL, WATCH_PROBE_TIMEOUT, WATCH_STARTUP_INTERVAL,
 };
 use crate::runtime::logs::{LogStream, spawn_line_pump};
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 impl ServiceManager {
@@ -62,7 +65,7 @@ impl ServiceManager {
             return;
         };
         if command.trim().is_empty() {
-            self.fail_to_start(name, "could not start: the service command is empty");
+            self.fail_to_start(name, &Note::new("spawn.empty_command", json!({})));
             return;
         }
 
@@ -314,14 +317,20 @@ impl ServiceManager {
             }
             Err(e) => {
                 let wd = dir.as_deref().map_or(".".to_string(), str::to_string);
-                self.fail_to_start(name, &format!("could not start `{command}` in {wd}: {e}"));
+                self.fail_to_start(
+                    name,
+                    &Note::new(
+                        "spawn.failed",
+                        json!({"command": command, "dir": wd, "error": e.to_string()}),
+                    ),
+                );
             }
         }
     }
 
     /// A start that never produced a process: no pipe will ever carry a reason, so say it here: the
     /// card note (`fail_reason`), the service's log on disk and the live View logs buffer.
-    pub(crate) fn fail_to_start(&mut self, name: &str, reason: &str) {
+    pub(crate) fn fail_to_start(&mut self, name: &str, reason: &Note) {
         self.record_failure(&[name.to_string()], reason);
         self.set_state_if_changed(name, ServiceState::Failed);
     }

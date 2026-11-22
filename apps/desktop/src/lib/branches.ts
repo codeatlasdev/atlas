@@ -3,6 +3,8 @@
  * `crates/atlas-desktop/src/git_branch.rs`, whose serialization is the fixture the tests read) and the rows the
  * picker shows. Pure: no Svelte, no IPC.
  */
+import { relativeTime } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import { fuzzy } from "#lib/fuzzy.ts";
 
 export interface BranchInfo {
@@ -68,22 +70,10 @@ export function parseSwitched(v: unknown): Switched {
 	throw new Error(`git_switch: unexpected result ${JSON.stringify(v)}`);
 }
 
-/** `now`, `30m ago`, `5h ago`, `3d ago`, `3mo ago`, `3y ago`; empty for an unreadable date. */
+/** `now`, `30 min ago`, `5 hr ago`, `3 days ago`…; empty for an unreadable date. */
 export function relDate(iso: string, now = Date.now()): string {
 	const t = Date.parse(iso);
-	if (Number.isNaN(t)) return "";
-	const s = Math.max(0, (now - t) / 1000);
-	if (s < 60) return "now";
-	const steps: [number, string][] = [
-		[60, "m"],
-		[3600, "h"],
-		[86_400, "d"],
-		[2_592_000, "mo"],
-		[31_536_000, "y"],
-	];
-	let out = "";
-	for (const [size, unit] of steps) if (s >= size) out = `${Math.floor(s / size)}${unit} ago`;
-	return out;
+	return Number.isNaN(t) ? "" : relativeTime(t, now);
 }
 
 /**
@@ -96,9 +86,13 @@ export function branchRows(b: Branches, query: string, opts: { now?: number } = 
 		.filter((x) => !(q && x.kind === "remote" && x.local))
 		.map((x) => {
 			const parts: string[] = [];
-			if (x.current) parts.push("current");
+			if (x.current) parts.push(m.git_branch_row_current());
 			if (x.worktree)
-				parts.push(`checked out in ${x.worktree.path.split("/").filter(Boolean).pop() ?? x.worktree.path}`);
+				parts.push(
+					m.git_branch_row_checked_out({
+						worktree: x.worktree.path.split("/").filter(Boolean).pop() ?? x.worktree.path,
+					}),
+				);
 			const age = relDate(x.date, opts.now);
 			if (age) parts.push(age);
 			return {
@@ -142,8 +136,8 @@ export function createRow(b: Branches, query: string, from: string | null): Bran
 	return {
 		id: `create:${n}`,
 		name: n,
-		label: `Create branch “${n}”`,
-		description: from ? `from ${from}` : "from the current commit",
+		label: m.git_branch_create_label({ name: n }),
+		description: from ? m.git_branch_create_from({ branch: from }) : m.git_branch_create_from_head(),
 		current: false,
 		kind: "create",
 	};

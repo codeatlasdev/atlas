@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use atlas_core::scaling::HANG;
 use serde_json::{Value, json};
 
 mod common;
@@ -71,6 +72,7 @@ actions:
 
     fn atlas(&self, args: &[&str]) -> std::process::Output {
         Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .args(args)
             .args(["--dir", self.root().to_str().unwrap()])
             .stdin(Stdio::null())
@@ -104,6 +106,7 @@ impl Drop for Project {
     fn drop(&mut self) {
         // Best effort: `down` is graceful; fall back to SIGKILL of the runner.
         let _ = Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .args(["down", "--dir", self.root().to_str().unwrap()])
             .output();
         if let Some(pid) = self.runner_pid()
@@ -117,7 +120,7 @@ impl Drop for Project {
 /// One-shot request/response over the control socket.
 fn call(sock: &Path, cmd: &str, args: Value) -> Value {
     let mut s = UnixStream::connect(sock).expect("connect control socket");
-    s.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+    s.set_read_timeout(Some(HANG)).unwrap();
     writeln!(s, "{}", json!({"cmd": cmd, "args": args})).unwrap();
     let mut line = String::new();
     BufReader::new(s).read_line(&mut line).unwrap();
@@ -133,7 +136,7 @@ struct Subscriber {
 impl Subscriber {
     fn connect(sock: &Path) -> Self {
         let mut s = UnixStream::connect(sock).expect("connect control socket");
-        s.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+        s.set_read_timeout(Some(HANG)).unwrap();
         writeln!(s, r#"{{"cmd":"subscribe","args":{{}}}}"#).unwrap();
         let mut reader = BufReader::new(s);
         let mut line = String::new();
@@ -157,7 +160,7 @@ impl Subscriber {
 
     /// Read events until `pred` matches one (bounded by the socket read timeout).
     fn until(&mut self, what: &str, mut pred: impl FnMut(&Value) -> bool) -> Value {
-        let deadline = Instant::now() + Duration::from_secs(20);
+        let deadline = Instant::now() + HANG;
         loop {
             let ev = self
                 .next()
@@ -213,7 +216,7 @@ fn detach_status_attach_control_detach_down() {
     );
 
     // 2. --status: mode runner, no clients yet; services reach running.
-    wait_for("both services running", Duration::from_secs(30), || {
+    wait_for("both services running", HANG, || {
         let s = p.atlas_ok(&["dev", "--status"]);
         (s.matches("running").count() >= 3).then_some(s) // header line + 2 rows
     });
@@ -221,9 +224,7 @@ fn detach_status_attach_control_detach_down() {
     assert!(status.contains("mode: runner · 0 attached"), "{status}");
 
     // 3. Attach handshake: snapshot carries config summary, rows and the log tail.
-    let api_pid_before = wait_for("api tick process", Duration::from_secs(10), || {
-        p.pids("api").first().copied()
-    });
+    let api_pid_before = wait_for("api tick process", HANG, || p.pids("api").first().copied());
     let mut a = Subscriber::connect(&p.sock());
     assert_eq!(a.snapshot["project"], "runner-test");
     assert_eq!(a.snapshot["mode"], "runner");
@@ -254,7 +255,7 @@ fn detach_status_attach_control_detach_down() {
             ev["t"] == "state" && ev["name"] == "api" && ev["state"] == "running"
         });
     }
-    let api_pid_after = wait_for("restarted api process", Duration::from_secs(10), || {
+    let api_pid_after = wait_for("restarted api process", HANG, || {
         p.pids("api").into_iter().find(|p| *p != api_pid_before)
     });
     assert_ne!(
@@ -279,29 +280,21 @@ fn detach_status_attach_control_detach_down() {
     // 5. A client hanging up changes nothing for the runner or the other client.
     drop(b);
     let web_pid = p.pids("web")[0];
-    wait_for(
-        "attached count to drop to 1",
-        Duration::from_secs(10),
-        || {
-            p.atlas_ok(&["dev", "--status"])
-                .contains("mode: runner · 1 attached")
-                .then_some(())
-        },
-    );
+    wait_for("attached count to drop to 1", HANG, || {
+        p.atlas_ok(&["dev", "--status"])
+            .contains("mode: runner · 1 attached")
+            .then_some(())
+    });
     assert!(
         alive(pid) && alive(web_pid),
         "services survive a client leaving"
     );
     drop(a);
-    wait_for(
-        "attached count to drop to 0",
-        Duration::from_secs(10),
-        || {
-            p.atlas_ok(&["dev", "--status"])
-                .contains("mode: runner · 0 attached")
-                .then_some(())
-        },
-    );
+    wait_for("attached count to drop to 0", HANG, || {
+        p.atlas_ok(&["dev", "--status"])
+            .contains("mode: runner · 0 attached")
+            .then_some(())
+    });
     assert!(alive(web_pid), "services survive every client leaving");
 
     // A fresh client can reattach to the same, still-running state.
@@ -323,10 +316,8 @@ fn detach_status_attach_control_detach_down() {
     // `down` returns once the runner let go of its lock (what the next `atlas dev` needs); the
     // process may still be finishing or an unreaped zombie for a moment, so asserting it dead at
     // that instant failed under load (PR #106 gate, "runner exited").
-    wait_for("runner to exit", Duration::from_secs(10), || {
-        (!alive(pid)).then_some(())
-    });
-    wait_for("services to be gone", Duration::from_secs(10), || {
+    wait_for("runner to exit", HANG, || (!alive(pid)).then_some(()));
+    wait_for("services to be gone", HANG, || {
         (p.pids("api").is_empty() && p.pids("web").is_empty()).then_some(())
     });
     assert!(!p.sock().exists(), "socket removed on exit");
@@ -348,6 +339,7 @@ fn detach_reports_a_bad_config_on_the_terminal_without_spawning() {
     )
     .unwrap();
     let out = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--detach", "--dir", dir.path().to_str().unwrap()])
         .output()
         .unwrap();
@@ -363,7 +355,7 @@ fn detach_reports_a_bad_config_on_the_terminal_without_spawning() {
 fn detach_with_a_selection_starts_only_that_subset() {
     let p = Project::new();
     p.atlas_ok(&["dev", "--detach", "web"]);
-    wait_for("web running", Duration::from_secs(30), || {
+    wait_for("web running", HANG, || {
         let s = p.atlas_ok(&["dev", "--status"]);
         s.lines()
             .any(|l| l.starts_with("web") && l.contains("running"))
@@ -440,16 +432,15 @@ fn foreground_headless_is_attachable_and_down_stops_it() {
     // so MCP and `atlas dev` attach keep working against it.
     let p = Project::new();
     let mut child = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--headless", "--dir", p.root().to_str().unwrap()])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    wait_for("control socket", Duration::from_secs(20), || {
-        p.sock().exists().then_some(())
-    });
-    let info = wait_for("info", Duration::from_secs(10), || {
+    wait_for("control socket", HANG, || p.sock().exists().then_some(()));
+    let info = wait_for("info", HANG, || {
         let r = std::panic::catch_unwind(|| call(&p.sock(), "info", json!({})));
         r.ok().filter(|v| v["ok"] == true)
     });

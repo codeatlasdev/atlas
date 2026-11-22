@@ -1,0 +1,218 @@
+{
+	"crew_workspace_art_how_allowed_from_your_phone": "Permitido pelo celular",
+	"crew_workspace_art_how_asleep": "em repouso",
+	"crew_workspace_art_how_done": "concluído",
+	"crew_workspace_art_how_name_needs_you": "{name} precisa de você",
+	"crew_workspace_art_how_needs_you": "precisa de você",
+	"crew_workspace_art_how_order": "Revise todos os PRs do atlas hoje à noite",
+	"crew_workspace_art_how_pr_115_opened": "PR #115 aberto",
+	"crew_workspace_art_how_say_ask": "Oi, um deles precisa de push na main. Pode ser?",
+	"crew_workspace_art_how_say_morning": "Bom dia! Revisei 3 PRs e fiz push de 1 correção.",
+	"crew_workspace_art_how_say_start": "Pode deixar! Vou revisar todos hoje à noite.",
+	"crew_workspace_art_how_say_thanks": "Valeu! Faço o push agora.",
+	"crew_workspace_art_how_step_comments": "Deixou 2 comentários de revisão",
+	"crew_workspace_art_how_step_push": "Fez push da correção na main",
+	"crew_workspace_art_how_step_read": "Leu o PR #115 · 4 arquivos",
+	"crew_workspace_art_how_step_tests": "Rodou os testes · 212 passaram",
+	"crew_workspace_art_how_your_server": "seu servidor",
+	"crew_workspace_attachment_incomplete": "Não foi possível carregar {name}: o crew server parou de enviá-lo. Tente novamente.",
+	"crew_workspace_board_add_trigger": "Adicionar gatilho",
+	"crew_workspace_board_clear_filters": "Limpar filtros",
+	"crew_workspace_board_column_done": "Concluídas",
+	"crew_workspace_board_column_task_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma tarefa",
+				"countExact=*, countPlural=one": "{count} tarefa",
+				"countExact=*, countPlural=*": "{count} tarefas"
+			}
+		}
+	],
+	"crew_workspace_board_column_tasks": "Tarefas: {label}",
+	"crew_workspace_board_connect_github": "Conectar o GitHub",
+	"crew_workspace_board_crew_board": "Board do Crew",
+	"crew_workspace_board_needs_input": "Precisa de resposta",
+	"crew_workspace_board_no_tasks_match_these_filters": "Nenhuma tarefa corresponde a esses filtros.",
+	"crew_workspace_board_queued": "Na fila",
+	"crew_workspace_board_queued_reason": "Na fila · {reason}",
+	"crew_workspace_board_queued_server_busy": "Na fila · servidor ocupado",
+	"crew_workspace_board_toolbar_7_days": "7 dias",
+	"crew_workspace_board_toolbar_done_range": "Período das concluídas",
+	"crew_workspace_board_toolbar_filter_by_crewmate": "Filtrar por crewmate",
+	"crew_workspace_board_toolbar_search_tasks": "Pesquisar tarefas",
+	"crew_workspace_board_toolbar_show_done": "Mostrar concluídas",
+	"crew_workspace_board_toolbar_source_all": "Todas",
+	"crew_workspace_board_toolbar_source_chats": "Chats",
+	"crew_workspace_board_toolbar_source_filter": "Filtro de origem",
+	"crew_workspace_board_toolbar_today": "Hoje",
+	"crew_workspace_board_wants_approval": "Aguardando aprovação",
+	"crew_workspace_board_work_refused": "Trabalho recusado",
+	"crew_workspace_browsers_cost": "Exige Node.js {node}+ no servidor e cerca de 500 MB de downloads.",
+	"crew_workspace_close_button_close_integrations": "Fechar integrações",
+	"crew_workspace_crewmate_editor_color": "Cor",
+	"crew_workspace_crewmate_editor_custom_color": "Cor personalizada",
+	"crew_workspace_crewmate_editor_customize_look": "Personalizar visual",
+	"crew_workspace_crewmate_editor_eyes": "Olhos",
+	"crew_workspace_crewmate_editor_face": "Rosto",
+	"crew_workspace_crewmate_editor_hat": "Chapéu",
+	"crew_workspace_crewmate_editor_outfit": "Roupa",
+	"crew_workspace_crewmate_editor_preview_state": "Estado da prévia",
+	"crew_workspace_crewmate_editor_randomize": "Sortear",
+	"crew_workspace_crewmate_editor_role_kits": "Kits de função",
+	"crew_workspace_crewmate_editor_tool": "Ferramenta",
+	"crew_workspace_crewmate_list_row_first_mate": "First mate",
+	"crew_workspace_crewmate_list_row_make_first_mate": "Definir como first mate",
+	"crew_workspace_crewmate_list_row_more_options_for_name": "Mais opções para {name}",
+	"crew_workspace_crewmate_list_row_needs_your_attention": "Precisa da sua atenção",
+	"crew_workspace_crewmate_list_row_profile": "Perfil",
+	"crew_workspace_crewmate_list_row_unread_messages": "Mensagens não lidas",
+	"crew_workspace_crewmate_view_answer_placeholder": "Digite sua resposta ou fale de outro assunto",
+	"crew_workspace_crewmate_view_empty": "Selecione um crewmate na barra lateral.",
+	"crew_workspace_crewmate_view_message_placeholder": "Enviar mensagem para {name}…",
+	"crew_workspace_crewmate_view_task_prompt_label": "Prompt da tarefa",
+	"crew_workspace_demo_page_back_to_the_crew": "Voltar ao crew",
+	"crew_workspace_demo_page_build_a_crewmate": "Montar um crewmate",
+	"crew_workspace_demo_page_state": "Estado",
+	"crew_workspace_empty_choose_a_crewmate_or_recruit": "Escolha um crewmate ou recrute o primeiro.",
+	"crew_workspace_empty_no_crew_selected": "Nenhum crew selecionado.",
+	"crew_workspace_empty_recruit_a_crewmate": "Recrutar um crewmate",
+	"crew_workspace_github_accounts_disconnect": "Desconectar",
+	"crew_workspace_github_accounts_no_crew_servers_added_yet": "Nenhum crew server adicionado ainda. Adicione um crew server na aba Atlas Crew para conectar o GitHub.",
+	"crew_workspace_github_accounts_not_connected": "Não conectado",
+	"crew_workspace_github_accounts_title": "Contas do GitHub nos seus crew servers",
+	"crew_workspace_github_device_flow_enter_code_at": "Digite este código em",
+	"crew_workspace_github_device_flow_waiting_for_authorization": "Aguardando autorização…",
+	"crew_workspace_github_sign_in_failed": "Não foi possível entrar no GitHub. Tente novamente.",
+	"crew_workspace_hero_favorite_label": "{name} (first mate)",
+	"crew_workspace_integration_detail_back_to_integrations": "Voltar para integrações",
+	"crew_workspace_integration_detail_integration_skills": "Skills da integração",
+	"crew_workspace_integration_detail_skills": "Skills",
+	"crew_workspace_integration_detail_view_source": "Ver código-fonte",
+	"crew_workspace_integration_detail_view_source_for_name": "Ver código-fonte de {name}",
+	"crew_workspace_model_picker_choose": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum modelo encontrado",
+				"countExact=*, countPlural=one": "Escolha o único modelo",
+				"countExact=*, countPlural=*": "Escolha um dos {count} modelos"
+			}
+		}
+	],
+	"crew_workspace_model_picker_fill_first": "Preencha primeiro a URL e a chave",
+	"crew_workspace_model_picker_loading_models": "Carregando modelos…",
+	"crew_workspace_model_picker_no_match": "Nada encontrado: pressione {@common_os_enter_key} para usar o que você digitou",
+	"crew_workspace_model_picker_search": "Pesquisar modelos",
+	"crew_workspace_model_picker_type_id": "Digite o ID de um modelo",
+	"crew_workspace_palette_crew_and_commands": "Crew e comandos",
+	"crew_workspace_palette_crew_search": "Pesquisa do Crew",
+	"crew_workspace_palette_keyboard_shortcuts": "Atalhos de teclado",
+	"crew_workspace_palette_no_results_for_query": "Nenhum resultado para \"{query}\"",
+	"crew_workspace_palette_search_crewmates_and_commands": "Pesquisar crewmates e comandos",
+	"crew_workspace_pause_banner_paused": "Crew pausado. As tarefas em execução foram canceladas; as da fila esperam até você retomar.",
+	"crew_workspace_pause_banner_paused_server": "Pausado: {server}. As tarefas em execução foram canceladas; as da fila esperam até você retomar.",
+	"crew_workspace_pause_banner_resume": "Retomar",
+	"crew_workspace_pause_banner_resuming": "Retomando…",
+	"crew_workspace_provider_connected_models": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Conectado: nenhum modelo listado",
+				"countExact=*, countPlural=one": "Conectado: {count} modelo disponível",
+				"countExact=*, countPlural=*": "Conectado: {count} modelos disponíveis"
+			}
+		}
+	],
+	"crew_workspace_sidebar_cant_reach": "Não foi possível conectar a {server}",
+	"crew_workspace_sidebar_cant_reach_error": "Não foi possível conectar a {server}: {error}",
+	"crew_workspace_sidebar_footer_add_a_crew_server": "Adicionar um crew server",
+	"crew_workspace_sidebar_footer_crew_server_settings": "Configurações do crew server",
+	"crew_workspace_sidebar_footer_help": "Ajuda",
+	"crew_workspace_sidebar_footer_manage": "Gerenciar",
+	"crew_workspace_sidebar_footer_open_integrations": "Abrir integrações",
+	"crew_workspace_sidebar_footer_pause_all": "Pausar tudo",
+	"crew_workspace_sidebar_footer_paused": "Pausado",
+	"crew_workspace_sidebar_footer_resume_all": "Retomar tudo",
+	"crew_workspace_sidebar_footer_user": "Usuário",
+	"crew_workspace_sidebar_header_new_crewmate": "Novo crewmate",
+	"crew_workspace_sidebar_header_search": "Pesquisar ({key})",
+	"crew_workspace_ssh_bad_port": "\"{port}\" não é uma porta. Use um número de 1 a 65535.",
+	"crew_workspace_ssh_close_ipv6": "Feche o endereço IPv6 com ]. Use user@[::1] ou user@[::1]:port.",
+	"crew_workspace_ssh_enter_address": "Digite um endereço SSH, por exemplo ubuntu@my-server.com",
+	"crew_workspace_ssh_include_host": "Inclua um hostname ou endereço IP",
+	"crew_workspace_ssh_include_user": "Inclua um usuário, por exemplo ubuntu@my-server.com",
+	"crew_workspace_ssh_ipv6_port": "Depois de um endereço IPv6, adicione a porta como :port, por exemplo user@[::1]:2222.",
+	"crew_workspace_status_idle": "Ocioso",
+	"crew_workspace_status_offline": "Offline",
+	"crew_workspace_status_working": "trabalhando…",
+	"crew_workspace_task_work_earlier": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma anterior",
+				"countExact=*, countPlural=one": "+{count} anterior",
+				"countExact=*, countPlural=*": "+{count} anteriores"
+			}
+		}
+	],
+	"crew_workspace_task_work_steps": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma etapa",
+				"countExact=*, countPlural=one": "{count} etapa",
+				"countExact=*, countPlural=*": "{count} etapas"
+			}
+		}
+	],
+	"crew_workspace_task_work_untitled": "Trabalho",
+	"crew_workspace_usage_meter_resets": "reinicia: {time}",
+	"crew_workspace_usage_sparkline_label": "Uso de tokens nos últimos 14 dias",
+	"crew_workspace_usage_sparkline_tokens": "{tokens} tokens",
+	"crew_workspace_view_bar_board": "Board",
+	"crew_workspace_view_bar_board_view": "Visualização em board",
+	"crew_workspace_view_bar_chat": "Chat",
+	"crew_workspace_view_bar_chat_view": "Visualização em chat",
+	"crew_workspace_view_bar_crew_view_switcher": "Seletor de visualização do Crew"
+}

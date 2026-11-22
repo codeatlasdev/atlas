@@ -1,0 +1,104 @@
+{
+	"cmd_skills_col_bundled": "INCLUÍDA",
+	"cmd_skills_col_description": "DESCRIÇÃO",
+	"cmd_skills_col_installed": "INSTALADA",
+	"cmd_skills_col_name": "NOME",
+	"cmd_skills_col_skill": "SKILL",
+	"cmd_skills_col_version": "VERSÃO",
+	"cmd_skills_install_hint": "Rode {command} para instalar todas",
+	"cmd_skills_installed": "v{version} instalada",
+	"cmd_skills_installed_total": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma skill instalada → {dir}",
+				"countExact=*, countPlural=one": "{count} skill instalada → {dir}",
+				"countExact=*, countPlural=*": "{count} skills instaladas → {dir}"
+			}
+		}
+	],
+	"cmd_skills_list_total": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma skill incluída no atlas v{version}",
+				"countExact=*, countPlural=one": "{count} skill incluída no atlas v{version}",
+				"countExact=*, countPlural=*": "{count} skills incluídas no atlas v{version}"
+			}
+		}
+	],
+	"cmd_skills_nothing_changed": "Nada mudou ({dir}).",
+	"cmd_skills_outdated_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma desatualizada",
+				"countExact=*, countPlural=one": "{count} desatualizada",
+				"countExact=*, countPlural=*": "{count} desatualizadas"
+			}
+		}
+	],
+	"cmd_skills_status_total": [
+		{
+			"declarations": [
+				"input total",
+				"local totalExact = total",
+				"local totalPlural = total: plural"
+			],
+			"selectors": [
+				"totalExact",
+				"totalPlural"
+			],
+			"match": {
+				"totalExact=0, totalPlural=*": "{present}/{total} instaladas  •  pasta: {dir}",
+				"totalExact=*, totalPlural=one": "{present}/{total} instalada  •  pasta: {dir}",
+				"totalExact=*, totalPlural=*": "{present}/{total} instaladas  •  pasta: {dir}"
+			}
+		}
+	],
+	"cmd_skills_up_to_date": "v{version} (em dia)",
+	"cmd_skills_update_hint": "rode {command}",
+	"cmd_skills_updated": "atualizada → v{version}",
+	"cmd_skills_updated_total": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma skill atualizada → {dir}",
+				"countExact=*, countPlural=one": "{count} skill atualizada → {dir}",
+				"countExact=*, countPlural=*": "{count} skills atualizadas → {dir}"
+			}
+		}
+	]
+}

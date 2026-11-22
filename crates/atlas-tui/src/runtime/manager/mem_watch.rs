@@ -3,9 +3,12 @@
 //! wire, MCP, sidebar) through one set of accessors. The rules themselves are pure and live in
 //! `runtime::memory`.
 
+use serde_json::json;
+
 use super::ServiceManager;
 use super::types::MemWatch;
 use crate::runtime::memory::{self, Budget, Leak, Trend};
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 /// A leak is announced again only after this many more cycles of growth (no alert per reload).
@@ -55,21 +58,16 @@ impl MemWatch {
     }
 
     /// `using 2.1 GB, over memory_warn 1.5 GB` while the confirmed state is `warn`.
-    pub(crate) fn warn_reason(&self) -> Option<String> {
+    pub(crate) fn warn_reason(&self) -> Option<Note> {
         let (warn, rss) = (self.limits.warn?, self.series.last()?.rss);
         (self.budget.state() == Budget::Warn).then(|| memory::warn_reason(rss, warn))
     }
 
     /// `using 5.0 GB, over max_memory 4.0 GB` while the confirmed state is `over`.
-    pub(crate) fn over_reason(&self) -> Option<String> {
+    pub(crate) fn over_reason(&self) -> Option<Note> {
         let (max, rss) = (self.limits.max?, self.series.last()?.rss);
-        (self.budget.state() == Budget::Over).then(|| {
-            format!(
-                "using {}, over max_memory {}",
-                memory::fmt_size(rss),
-                memory::fmt_size(max)
-            )
-        })
+        (self.budget.state() == Budget::Over)
+            .then(|| Note::new("memory.over_max", json!({"used": rss, "max": max})))
     }
 }
 
@@ -80,7 +78,7 @@ pub struct MemoryFacts {
     pub rss: Option<u64>,
     pub trend: Option<Trend>,
     pub budget: Budget,
-    pub leak: Option<String>,
+    pub leak: Option<Note>,
 }
 
 impl MemoryFacts {
@@ -104,7 +102,7 @@ impl MemoryFacts {
                 Some("over") => Budget::Over,
                 _ => Budget::Ok,
             },
-            leak: v["memory_leak"].as_str().map(str::to_string),
+            leak: Note::from_flat(v, "memory_leak"),
         }
     }
 
@@ -120,7 +118,7 @@ impl MemoryFacts {
             "memory_trend": trend.map(|t| t.direction.name()),
             "memory_trend_mb_min": trend.map(|t| t.mb_per_min.round()),
             "budget_state": f.map_or("ok", |f| f.budget.name()),
-            "memory_leak": f.and_then(|f| f.leak.as_deref()),
+            "memory_leak": f.and_then(|f| f.leak.as_ref()).map(|n| n.message.as_str()),
         })
     }
 }
@@ -167,19 +165,18 @@ impl ServiceManager {
             rss: s.usage.filter(|_| up).map(|u| u.mem),
             trend: up.then(|| memory::trend(&s.mem.series)).flatten(),
             budget: if up { s.mem.budget() } else { Budget::Ok },
-            leak: s.mem.leak.suspect().map(|l| l.text()),
+            leak: s.mem.leak.suspect().map(|l| l.note()),
         })
     }
 
-    /// The `memory_*` / `budget_state` keys of the status file and the runner wire
-    /// ([`MemoryFacts::to_json`]).
+    /// The `memory_*` / `budget_state` keys of the status file ([`MemoryFacts::to_json`]).
     pub(crate) fn memory_facts_json(&self, name: &str) -> serde_json::Value {
         MemoryFacts::to_json(self.memory_facts(name).as_ref())
     }
 
     /// Whether `name` is the kind of service the budget can degrade: alive and (by the
     /// caller's check) not already worse than `running`.
-    pub(crate) fn memory_degrade_reason(&self, name: &str) -> Option<String> {
+    pub(crate) fn memory_degrade_reason(&self, name: &str) -> Option<Note> {
         self.services.get(name)?.mem.warn_reason()
     }
 
@@ -219,12 +216,12 @@ impl ServiceManager {
     /// Make the budget outcome visible: alerts for `warn` / `over` / leak, and for `warn` the
     /// state flips through the next `apply_probe`; clearing re-evaluates there too.
     pub(crate) fn announce_memory(&self, name: &str, o: &Outcome, alive_state: &ServiceState) {
-        let alert = |message: String| {
+        let alert = |note: Note| {
             let _ = self.event_tx.send(super::ManagerEvent::CriticalAlert {
                 service: name.to_string(),
-                message: message.clone(),
+                note: note.clone(),
             });
-            self.note(name, message);
+            self.note(name, note);
         };
         match o.entered {
             Some(Budget::Warn) => {
@@ -233,12 +230,12 @@ impl ServiceManager {
                 }
             }
             Some(Budget::Ok) if *alive_state == ServiceState::Degraded => {
-                self.note(name, "memory back under budget".into());
+                self.note(name, Note::new("memory.back_under", json!({})));
             }
             _ => {}
         }
         if let Some(leak) = &o.leak {
-            alert(leak.text());
+            alert(leak.note());
         }
     }
 }

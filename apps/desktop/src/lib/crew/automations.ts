@@ -3,6 +3,8 @@
  * No side-effects; safe to import in tests with --conditions browser.
  */
 import type { Trigger } from "#lib/crew.ts";
+import { dateTime, list } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export interface ScheduleSpec {
 	/** Day-of-week indices: 0 = Sun … 6 = Sat (matches cron DOW). */
@@ -11,7 +13,10 @@ export interface ScheduleSpec {
 	minute: number;
 }
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+/** A short weekday name in the UI language ("Mon", "seg"); 2024-01-07 is a Sunday, and `d` counts from it. */
+function dayName(d: number): string {
+	return dateTime(new Date(2024, 0, 7 + d), { weekday: "short" }).replaceAll(".", "");
+}
 
 // ─── cron ↔ builder ──────────────────────────────────────────────────────────
 
@@ -89,16 +94,28 @@ export function intervalToSecs(value: number, unit: IntervalUnit): number {
 // ─── human-readable descriptions ─────────────────────────────────────────────
 
 /** GitHub trigger events (hostd's whitelist) as the end of "When … in owner/repo". */
-const GITHUB_EVENT_PHRASE: Record<string, string> = {
-	pr_opened: "a PR is opened",
-	pr_review_requested: "your review is requested",
-	issue_opened: "an issue is opened",
-	ci_failed: "CI fails",
-	release: "a release is published",
-	mention: "you are mentioned",
-	issue_assigned: "an issue is assigned to you",
-	pr_review_comment: "a PR gets a review comment",
-};
+function githubEventPhrase(event: string): string {
+	switch (event) {
+		case "pr_opened":
+			return m.crew_automation_describe_github_pr_opened();
+		case "pr_review_requested":
+			return m.crew_automation_describe_github_review_requested();
+		case "issue_opened":
+			return m.crew_automation_describe_github_issue_opened();
+		case "ci_failed":
+			return m.crew_automation_describe_github_ci_failed();
+		case "release":
+			return m.crew_automation_describe_github_release();
+		case "mention":
+			return m.crew_automation_describe_github_mention();
+		case "issue_assigned":
+			return m.crew_automation_describe_github_issue_assigned();
+		case "pr_review_comment":
+			return m.crew_automation_describe_github_review_comment();
+		default:
+			return event.replace(/_/g, " ");
+	}
+}
 
 /**
  * Produce a human-readable one-liner for a trigger kind.
@@ -110,43 +127,48 @@ export function describeTrigger(kind: Trigger["kind"], tz?: string): string {
 			const spec = scheduleFromCron(kind.cron);
 			if (spec) {
 				const sorted = [...spec.days].sort((a, b) => a - b);
-				const dayLabel =
+				const days =
 					sorted.length === 7
-						? "Every day"
+						? m.crew_automation_fields_every_day()
 						: sorted.length === 5 && sorted.join() === "1,2,3,4,5"
-							? "Weekdays"
+							? m.crew_automation_fields_weekdays()
 							: sorted.length === 2 && sorted.join() === "0,6"
-								? "Weekends"
-								: sorted.map((d) => DAY_NAMES[d]).join(", ");
-				const timeLabel = `${String(spec.hour).padStart(2, "0")}:${String(spec.minute).padStart(2, "0")}`;
-				const tzNote = tz ? ` (${tz})` : "";
-				return `${dayLabel} at ${timeLabel}${tzNote}`;
+								? m.crew_automation_describe_weekends()
+								: list(sorted.map(dayName), "unit");
+				const time = `${String(spec.hour).padStart(2, "0")}:${String(spec.minute).padStart(2, "0")}`;
+				return tz
+					? m.crew_automation_describe_schedule_tz({ days, time, tz })
+					: m.crew_automation_describe_schedule({ days, time });
 			}
-			return `Custom: ${kind.cron}`;
+			return m.crew_automation_describe_custom_cron({ cron: kind.cron });
 		}
 		case "interval": {
 			const s = kind.every_secs;
-			if (s < 60) return `Every ${s}s`;
-			const m = s / 60;
-			if (s < 3600 && s % 60 === 0) return `Every ${m} minute${m !== 1 ? "s" : ""}`;
-			const h = s / 3600;
-			if (s % 3600 === 0) return `Every ${h} hour${h !== 1 ? "s" : ""}`;
-			return `Every ${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+			if (s < 60) return m.crew_automation_describe_every_seconds({ seconds: s });
+			if (s < 3600 && s % 60 === 0) return m.crew_automation_describe_every_minutes({ count: s / 60 });
+			if (s % 3600 === 0) return m.crew_automation_describe_every_hours({ count: s / 3600 });
+			return m.crew_automation_describe_every_hours_minutes({
+				hours: Math.floor(s / 3600),
+				minutes: Math.floor((s % 3600) / 60),
+			});
 		}
 		case "webhook":
-			return "Webhook";
-		case "github": {
-			const phrases = kind.events.map((e) => GITHUB_EVENT_PHRASE[e] ?? e.replace(/_/g, " "));
-			const list =
-				phrases.length <= 1 ? (phrases[0] ?? "") : `${phrases.slice(0, -1).join(", ")} or ${phrases.at(-1)}`;
-			return `When ${list} in ${kind.repo}`;
-		}
+			return m.crew_automation_describe_webhook();
+		case "github":
+			return m.crew_automation_describe_github({
+				events: list(kind.events.map(githubEventPhrase), "disjunction"),
+				repo: kind.repo,
+			});
 		case "file":
-			return `When ${kind.glob ?? kind.path} changes`;
+			return m.crew_automation_describe_file({ target: kind.glob ?? kind.path });
 		case "crewmate":
-			return `When ${kind.from_crewmate} ${kind.on === "done" ? "finishes" : "fails"}`;
+			return kind.on === "done"
+				? m.crew_automation_describe_crewmate_done({ name: kind.from_crewmate })
+				: m.crew_automation_describe_crewmate_failed({ name: kind.from_crewmate });
 		case "service":
-			return `When ${kind.service} ${kind.on === "failed" ? "fails" : "recovers"}`;
+			return kind.on === "failed"
+				? m.crew_automation_describe_service_failed({ name: kind.service })
+				: m.crew_automation_describe_service_recovered({ name: kind.service });
 		default:
 			return "";
 	}
@@ -163,19 +185,19 @@ export function describeNext(next_fire: number, now: number): string {
 	const tomorrow = new Date(now);
 	tomorrow.setDate(tomorrow.getDate() + 1);
 
-	const timeStr = fire.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+	const time = dateTime(fire, { hour: "2-digit", minute: "2-digit" });
 
 	if (
 		fire.getFullYear() === nowDate.getFullYear() &&
 		fire.getMonth() === nowDate.getMonth() &&
 		fire.getDate() === nowDate.getDate()
 	)
-		return `today at ${timeStr}`;
+		return m.crew_automation_describe_next_today({ time });
 	if (
 		fire.getFullYear() === tomorrow.getFullYear() &&
 		fire.getMonth() === tomorrow.getMonth() &&
 		fire.getDate() === tomorrow.getDate()
 	)
-		return `tomorrow at ${timeStr}`;
-	return `${fire.toLocaleDateString([], { weekday: "short" })} ${timeStr}`;
+		return m.crew_automation_describe_next_tomorrow({ time });
+	return m.crew_automation_describe_next_day({ day: dateTime(fire, { weekday: "short" }), time });
 }

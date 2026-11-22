@@ -9,6 +9,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:atlas_mobile/core/permissions/permission_copy.dart';
 import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 
 /// Asks for [p] in the flow of the feature that needs it.
 ///
@@ -116,7 +117,7 @@ class PermissionExplainer extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     final t = Theme.of(context).textTheme;
-    final copy = permissionCopy(permission);
+    final copy = permissionCopy(permission, context.l10n);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -183,7 +184,7 @@ class PermissionOffCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AtlasColors.of(context);
     final t = Theme.of(context).textTheme;
-    final copy = permissionCopy(permission);
+    final copy = permissionCopy(permission, context.l10n);
     final restricted = state == PermissionState.restricted;
     final unavailable = state == PermissionState.unavailable;
     return Column(

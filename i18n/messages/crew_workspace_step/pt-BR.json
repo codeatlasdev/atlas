@@ -1,0 +1,23 @@
+{
+	"crew_workspace_step_almost_there": "Quase lá",
+	"crew_workspace_step_building": "Fazendo o build",
+	"crew_workspace_step_editing": "Editando",
+	"crew_workspace_step_editing_file": "Editando {file}",
+	"crew_workspace_step_figuring_it_out": "Descobrindo como fazer",
+	"crew_workspace_step_git": "Verificando o git",
+	"crew_workspace_step_github": "Trabalhando no GitHub",
+	"crew_workspace_step_installing_dependencies": "Instalando dependências",
+	"crew_workspace_step_looking_around": "Dando uma olhada",
+	"crew_workspace_step_looking_for_files": "Procurando arquivos",
+	"crew_workspace_step_planning": "Planejando",
+	"crew_workspace_step_reading": "Lendo",
+	"crew_workspace_step_reading_file": "Lendo {file}",
+	"crew_workspace_step_running_command": "Rodando um comando",
+	"crew_workspace_step_running_program": "Rodando {program}",
+	"crew_workspace_step_running_tests": "Rodando os testes",
+	"crew_workspace_step_searching": "Pesquisando",
+	"crew_workspace_step_searching_for": "Pesquisando \"{query}\"",
+	"crew_workspace_step_using_tool": "Usando {tool}",
+	"crew_workspace_step_writing": "Escrevendo",
+	"crew_workspace_step_writing_file": "Escrevendo {file}"
+}

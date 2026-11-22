@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use atlas_core::util::expand_tilde;
+use atlas_i18n::t;
 use atlas_tui::runner::DownOutcome;
 use clap::Args;
 
@@ -23,12 +24,14 @@ impl AtlasCommand for DownArgs {
             .await
             .map_err(|e| anyhow::anyhow!(e))?
         {
-            DownOutcome::NotRunning => println!("atlas is not running"),
-            DownOutcome::Stopped { pid } => println!("atlas stopped (pid {pid})"),
+            DownOutcome::NotRunning => println!("{}", t!("cmd_misc_down_not_running")),
+            DownOutcome::Stopped { pid } => {
+                println!("{}", t!("cmd_misc_down_stopped", pid = pid))
+            }
             DownOutcome::Timeout { pid } => {
                 eprintln!(
-                    "atlas (pid {pid}) is still stopping after {}s; check: atlas dev --status",
-                    WAIT.as_secs()
+                    "{}",
+                    t!("cmd_misc_down_timeout", pid = pid, secs = WAIT.as_secs())
                 );
                 std::process::exit(1);
             }

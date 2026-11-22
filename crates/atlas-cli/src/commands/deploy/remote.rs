@@ -7,6 +7,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use atlas_i18n::t;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
@@ -19,6 +20,8 @@ pub struct Remote {
     pub port: Option<u16>,
     /// A crew server: every script starts with the agents' `PATH` (`atlas_core::ssh::with_path`).
     agent_path: bool,
+    /// A private key picked with `--identity` (`-i`), instead of the ones ssh finds by itself.
+    identity: Option<std::path::PathBuf>,
 }
 
 pub struct Output {
@@ -33,6 +36,7 @@ impl Remote {
             host: host.into(),
             port: None,
             agent_path: false,
+            identity: None,
         }
     }
 
@@ -42,6 +46,7 @@ impl Remote {
             host: host.into(),
             port: SshTarget::new(host, Some(port)).port,
             agent_path: false,
+            identity: None,
         }
     }
 
@@ -51,6 +56,11 @@ impl Remote {
             agent_path: true,
             ..Self::with_port(host, port)
         }
+    }
+
+    /// The same remote reached with `identity` (a private key file) when there is one.
+    pub fn with_identity(self, identity: Option<std::path::PathBuf>) -> Self {
+        Self { identity, ..self }
     }
 
     fn is_local(&self) -> bool {
@@ -63,7 +73,8 @@ impl Remote {
             c.arg("-c").arg(script);
             return c;
         }
-        let target = SshTarget::new(self.host.clone(), self.port);
+        let target =
+            SshTarget::new(self.host.clone(), self.port).with_identity(self.identity.clone());
         let mut c = Command::new("ssh");
         if self.agent_path {
             c.args(target.exec_argv(script));
@@ -85,7 +96,9 @@ impl Remote {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-        let mut child = cmd.spawn().context("spawning ssh")?;
+        let mut child = cmd
+            .spawn()
+            .with_context(|| t!("cmd_deploy_remote_ctx_ssh"))?;
         if let Some(mut pipe) = child.stdin.take() {
             if let Some(data) = stdin {
                 pipe.write_all(data).await?;
@@ -151,7 +164,11 @@ impl Remote {
                 break;
             }
         }
-        anyhow::bail!("upload to {} failed: {}", self.host, last.trim())
+        anyhow::bail!(t!(
+            "cmd_deploy_remote_upload_failed",
+            host = &self.host,
+            error = last.trim()
+        ))
     }
 
     /// Run `script` with its stdout streamed into `dest` (binary-safe, never held in memory). `dest`
@@ -162,7 +179,12 @@ impl Remote {
         opts.write(true).create_new(true);
         let file = atlas_core::sys::owner_only(&mut opts)
             .open(dest)
-            .with_context(|| format!("creating {}", dest.display()))?;
+            .with_context(|| {
+                t!(
+                    "cmd_deploy_remote_ctx_create_file",
+                    path = dest.display().to_string()
+                )
+            })?;
         let mut cmd = self.command(script);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::from(file))
@@ -170,7 +192,7 @@ impl Remote {
             .kill_on_drop(true);
         let out = cmd
             .spawn()
-            .context("spawning ssh")?
+            .with_context(|| t!("cmd_deploy_remote_ctx_ssh"))?
             .wait_with_output()
             .await?;
         let code = out.status.code().unwrap_or(-1);
@@ -208,6 +230,22 @@ mod tests {
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
             .collect()
+    }
+
+    // #517: a key picked with `--identity` is on every ssh call of the remote (crew or deploy), and only then.
+    #[test]
+    fn an_identity_reaches_every_ssh_call_of_the_remote() {
+        for r in [
+            Remote::crew("atlas-crew@srv", 22),
+            Remote::with_port("prod", 22),
+        ] {
+            let with = args_of(&r.with_identity(Some("/k/id_work".into())), "echo hi");
+            let i = with.iter().position(|a| a == "-i").unwrap();
+            assert_eq!(with[i + 1], "/k/id_work");
+            assert!(with.iter().any(|a| a == "IdentitiesOnly=yes"), "{with:?}");
+        }
+        let without = args_of(&Remote::crew("atlas-crew@srv", 22), "echo hi");
+        assert!(!without.contains(&"-i".to_string()), "{without:?}");
     }
 
     // Issue #355: a crew server gets its port before the target and the agents' PATH in the remote command.

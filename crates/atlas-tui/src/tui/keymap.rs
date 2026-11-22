@@ -2,6 +2,7 @@
 //! never be documented in one place and missing from the other. Behavior lives
 //! in `app/input.rs`; a test pins every single-char key here to `BUILTIN_KEYS`.
 
+use atlas_i18n::t;
 use crossterm::event::KeyCode;
 
 use crate::tui::app::Message;
@@ -23,13 +24,15 @@ impl Section {
         Section::Logs,
     ];
 
-    pub fn title(self) -> &'static str {
+    /// The section's title, in capitals: the catalog holds it in sentence case.
+    pub fn title(self) -> String {
         match self {
-            Section::General => "GENERAL",
-            Section::Services => "SERVICES",
-            Section::Navigation => "NAVIGATION",
-            Section::Logs => "LOGS",
+            Section::General => t!("tui_runtime_keys_section_general"),
+            Section::Services => t!("tui_runtime_keys_section_services"),
+            Section::Navigation => t!("tui_runtime_keys_section_navigation"),
+            Section::Logs => t!("tui_runtime_keys_section_logs"),
         }
+        .to_uppercase()
     }
 }
 
@@ -57,25 +60,41 @@ pub struct KeyCtx {
     pub attached: bool,
 }
 
+/// A label that is looked up when it is drawn, in the display language of that moment.
+pub type Label = fn() -> String;
+
 /// One row of the keymap.
 #[derive(Debug, Clone, Copy)]
 pub struct Binding {
-    /// Display text of the key (`PgUp/PgDn`, `Ctrl+L`, `r`).
+    /// The key as written in the table: the text of a plain key (`PgUp/PgDn`, `r`), or a stroke (`ctrl-l`,
+    /// `shift-tab`) that [`Binding::display`] spells out. Never a translated word.
     pub keys: &'static str,
     /// Label shown in help.
-    pub help: &'static str,
+    pub help: Label,
     /// Short label used by the footer; `None` keeps it out of the footer.
-    pub footer: Option<&'static str>,
+    pub footer: Option<Label>,
     pub section: Section,
     pub ctx: Ctx,
     /// Single-character keys this row binds (checked against `BUILTIN_KEYS`).
     pub chars: &'static str,
 }
 
+impl Binding {
+    /// The key as the help and the footer show it: a stroke becomes `Ctrl+L` (terminal style on every OS, the key
+    /// names from the catalog), a plain key is shown as is.
+    pub fn display(&self) -> String {
+        if self.keys.starts_with("ctrl-") || self.keys.starts_with("shift-") {
+            atlas_i18n::shortcut_for(self.keys, "linux", atlas_i18n::lang())
+        } else {
+            self.keys.to_string()
+        }
+    }
+}
+
 const fn b(
     keys: &'static str,
-    help: &'static str,
-    footer: Option<&'static str>,
+    help: Label,
+    footer: Option<Label>,
     section: Section,
     ctx: Ctx,
     chars: &'static str,
@@ -98,36 +117,76 @@ pub const KEYMAP: &[Binding] = &[
     // GENERAL
     b(
         "q",
-        "Quit (stops all services)",
-        Some("Quit"),
+        || t!("tui_runtime_keys_help_quit"),
+        Some(|| t!("tui_runtime_keys_footer_quit")),
         General,
         Any,
         "q",
     ),
     b(
         "D",
-        "Detach: leave, services keep running",
-        Some("Detach"),
+        || t!("tui_runtime_keys_help_detach"),
+        Some(|| t!("tui_runtime_keys_footer_detach")),
         General,
         Attached,
         "D",
     ),
-    b("?", "Help", Some("Help"), General, Any, "?"),
-    b(":", "Command palette", Some("Commands"), General, Any, ":"),
-    b("Ctrl+C", "Quit immediately", None, General, Any, ""),
-    b("Ctrl+Z", "Suspend (fg to resume)", None, General, Any, ""),
-    b("z", "Zoom: hide sidebar", Some("Zoom"), General, Any, "z"),
+    b(
+        "?",
+        || t!("tui_runtime_keys_help_help"),
+        Some(|| t!("tui_runtime_keys_footer_help")),
+        General,
+        Any,
+        "?",
+    ),
+    b(
+        ":",
+        || t!("tui_runtime_keys_help_palette"),
+        Some(|| t!("tui_runtime_keys_footer_palette")),
+        General,
+        Any,
+        ":",
+    ),
+    b(
+        "ctrl-c",
+        || t!("tui_runtime_keys_help_quit_now"),
+        None,
+        General,
+        Any,
+        "",
+    ),
+    b(
+        "ctrl-z",
+        || t!("tui_runtime_keys_help_suspend"),
+        None,
+        General,
+        Any,
+        "",
+    ),
+    b(
+        "z",
+        || t!("tui_runtime_keys_help_zoom"),
+        Some(|| t!("tui_runtime_keys_footer_zoom")),
+        General,
+        Any,
+        "z",
+    ),
     b(
         "M",
-        "Mouse capture on/off (⌥-drag selects)",
+        || {
+            t!(
+                "tui_runtime_keys_help_mouse",
+                key = atlas_i18n::shortcut("alt")
+            )
+        },
         None,
         General,
         Any,
         "M",
     ),
     b(
-        "Ctrl+U/W",
-        "In inputs: clear / delete word",
+        "ctrl-u/w",
+        || t!("tui_runtime_keys_help_input_edit"),
         None,
         General,
         Any,
@@ -136,70 +195,166 @@ pub const KEYMAP: &[Binding] = &[
     // SERVICES
     b(
         "r",
-        "Restart all, asks first",
-        Some("Restart all"),
+        || t!("tui_runtime_keys_help_restart_all"),
+        Some(|| t!("tui_runtime_keys_footer_restart_all")),
         Services,
         All,
         "r",
     ),
     b(
         "r",
-        "Restart this service",
-        Some("Restart"),
+        || t!("tui_runtime_keys_help_restart"),
+        Some(|| t!("tui_runtime_keys_footer_restart")),
         Services,
         Service,
         "r",
     ),
     b(
         "s",
-        "Stop this service",
-        Some("Stop"),
+        || t!("tui_runtime_keys_help_stop"),
+        Some(|| t!("tui_runtime_keys_footer_stop")),
         Services,
         Service,
         "s",
     ),
-    b("S", "Restart this service", None, Services, Service, "S"),
-    b("m", "Service menu", Some("Menu"), Services, Service, "m"),
-    b("t", "Keep tunnel open on exit", None, Services, Tunnel, "t"),
+    b(
+        "S",
+        || t!("tui_runtime_keys_help_restart"),
+        None,
+        Services,
+        Service,
+        "S",
+    ),
+    b(
+        "m",
+        || t!("tui_runtime_keys_help_menu"),
+        Some(|| t!("tui_runtime_keys_footer_menu")),
+        Services,
+        Service,
+        "m",
+    ),
+    b(
+        "t",
+        || t!("tui_runtime_keys_help_tunnel_keep"),
+        None,
+        Services,
+        Tunnel,
+        "t",
+    ),
     b(
         "i",
-        "Attach to session (Ctrl+B detaches)",
-        Some("Attach"),
+        || {
+            t!(
+                "tui_runtime_keys_help_attach",
+                key = format!("{}+B", t!("common_keys_ctrl"))
+            )
+        },
+        Some(|| t!("tui_runtime_keys_footer_attach")),
         Services,
         Session,
         "i",
     ),
     // NAVIGATION
-    b("Tab", "Next tab", Some("Next tab"), Navigation, Any, ""),
-    b("Shift+Tab", "Previous tab", None, Navigation, Any, ""),
-    b("0-9", "Jump to tab", None, Navigation, Any, "0123456789"),
-    b("j/k ↑/↓", "Scroll", Some("Scroll"), Navigation, Any, "jk"),
-    b("PgUp/PgDn", "Scroll a page", None, Navigation, Any, ""),
-    b("g/Home", "Oldest line", None, Navigation, Any, "g"),
-    b("G/End", "Newest line", None, Navigation, Any, "G"),
+    b(
+        "Tab",
+        || t!("tui_runtime_keys_help_next_tab"),
+        Some(|| t!("tui_runtime_keys_footer_next_tab")),
+        Navigation,
+        Any,
+        "",
+    ),
+    b(
+        "shift-tab",
+        || t!("tui_runtime_keys_help_prev_tab"),
+        None,
+        Navigation,
+        Any,
+        "",
+    ),
+    b(
+        "0-9",
+        || t!("tui_runtime_keys_help_jump_tab"),
+        None,
+        Navigation,
+        Any,
+        "0123456789",
+    ),
+    b(
+        "j/k ↑/↓",
+        || t!("tui_runtime_keys_help_scroll"),
+        Some(|| t!("tui_runtime_keys_footer_scroll")),
+        Navigation,
+        Any,
+        "jk",
+    ),
+    b(
+        "PgUp/PgDn",
+        || t!("tui_runtime_keys_help_scroll_page"),
+        None,
+        Navigation,
+        Any,
+        "",
+    ),
+    b(
+        "g/Home",
+        || t!("tui_runtime_keys_help_oldest"),
+        None,
+        Navigation,
+        Any,
+        "g",
+    ),
+    b(
+        "G/End",
+        || t!("tui_runtime_keys_help_newest"),
+        None,
+        Navigation,
+        Any,
+        "G",
+    ),
     // LOGS
-    b("f", "Follow / pause", Some("Follow"), Logs, Any, "f"),
-    b("/", "Search", Some("Search"), Logs, Any, "/"),
-    b("n/N", "Next / previous match", None, Logs, Any, "nN"),
+    b(
+        "f",
+        || t!("tui_runtime_keys_help_follow"),
+        Some(|| t!("tui_runtime_keys_footer_follow")),
+        Logs,
+        Any,
+        "f",
+    ),
+    b(
+        "/",
+        || t!("common_action_search"),
+        Some(|| t!("common_action_search")),
+        Logs,
+        Any,
+        "/",
+    ),
+    b(
+        "n/N",
+        || t!("tui_runtime_keys_help_next_match"),
+        None,
+        Logs,
+        Any,
+        "nN",
+    ),
     b(
         "v",
-        "Level filter: all → warn+ → error",
-        Some("Level"),
+        || t!("tui_runtime_keys_help_level"),
+        Some(|| t!("tui_runtime_keys_footer_level")),
         Logs,
         Any,
         "v",
     ),
     b(
         "V",
-        "Time range: 1m → 5m → 15m → 1h → since restart → since start → custom",
-        Some("Time"),
+        || t!("tui_runtime_keys_help_time"),
+        Some(|| t!("tui_runtime_keys_footer_time")),
         Logs,
         Any,
         "V",
     ),
     b(
         "]e / [e",
-        "Next / previous error line",
+        || t!("tui_runtime_keys_help_next_error"),
         None,
         Logs,
         Any,
@@ -207,7 +362,7 @@ pub const KEYMAP: &[Binding] = &[
     ),
     b(
         "]w / [w",
-        "Next / previous warning or error",
+        || t!("tui_runtime_keys_help_next_warning"),
         None,
         Logs,
         Any,
@@ -215,7 +370,7 @@ pub const KEYMAP: &[Binding] = &[
     ),
     b(
         "}/{",
-        "Next / previous link (URL, path:line)",
+        || t!("tui_runtime_keys_help_next_link"),
         None,
         Logs,
         Any,
@@ -223,23 +378,100 @@ pub const KEYMAP: &[Binding] = &[
     ),
     b(
         "o / y",
-        "Open / copy the selected link",
+        || t!("tui_runtime_keys_help_open_link"),
         None,
         Logs,
         Any,
         "",
     ),
-    b("W", "Wrap long lines (off: ←/→ pan)", None, Logs, Any, "W"),
-    b("←/→", "Pan sideways (wrap off)", None, Logs, Any, ""),
-    b("T", "Timestamps", None, Logs, Any, "T"),
-    b("J", "Pretty-print JSON", None, Logs, Any, "J"),
-    b("-", "Insert a separator line", None, Logs, Any, "-"),
-    b("Tab", "In search: find ⇄ filter", None, Logs, Any, ""),
-    b("Ctrl+R", "In search: regex on/off", None, Logs, Any, ""),
-    b("L", "Copy logs", None, Logs, Any, "L"),
-    b("P", "Copy logs as AI prompt", None, Logs, Any, "P"),
-    b("E", "Copy errors", None, Logs, Any, "E"),
-    b("Ctrl+L", "Clear logs", None, Logs, Any, ""),
+    b(
+        "W",
+        || t!("tui_runtime_keys_help_wrap"),
+        None,
+        Logs,
+        Any,
+        "W",
+    ),
+    b(
+        "←/→",
+        || t!("tui_runtime_keys_help_pan"),
+        None,
+        Logs,
+        Any,
+        "",
+    ),
+    b(
+        "T",
+        || t!("tui_runtime_keys_help_timestamps"),
+        None,
+        Logs,
+        Any,
+        "T",
+    ),
+    b(
+        "J",
+        || t!("tui_runtime_keys_help_json"),
+        None,
+        Logs,
+        Any,
+        "J",
+    ),
+    b(
+        "-",
+        || t!("tui_runtime_keys_help_separator"),
+        None,
+        Logs,
+        Any,
+        "-",
+    ),
+    b(
+        "Tab",
+        || t!("tui_runtime_keys_help_search_mode"),
+        None,
+        Logs,
+        Any,
+        "",
+    ),
+    b(
+        "ctrl-r",
+        || t!("tui_runtime_keys_help_search_regex"),
+        None,
+        Logs,
+        Any,
+        "",
+    ),
+    b(
+        "L",
+        || t!("tui_runtime_keys_help_copy_logs"),
+        None,
+        Logs,
+        Any,
+        "L",
+    ),
+    b(
+        "P",
+        || t!("tui_runtime_keys_help_copy_ai"),
+        None,
+        Logs,
+        Any,
+        "P",
+    ),
+    b(
+        "E",
+        || t!("tui_runtime_keys_help_copy_errors"),
+        None,
+        Logs,
+        Any,
+        "E",
+    ),
+    b(
+        "ctrl-l",
+        || t!("tui_runtime_keys_help_clear_logs"),
+        None,
+        Logs,
+        Any,
+        "",
+    ),
 ];
 
 /// Whether `b` applies in the given tab context.
@@ -313,7 +545,7 @@ mod tests {
                 assert!(
                     BUILTIN_KEYS.contains(&c),
                     "'{c}' ({}) is in the keymap but not BUILTIN_KEYS",
-                    b.help
+                    (b.help)()
                 );
             }
         }
@@ -332,7 +564,11 @@ mod tests {
 
     #[test]
     fn required_keys_are_present() {
-        let all: String = KEYMAP.iter().map(|b| b.keys).collect::<Vec<_>>().join(" ");
+        let all: String = KEYMAP
+            .iter()
+            .map(|b| b.display())
+            .collect::<Vec<_>>()
+            .join(" ");
         for k in [
             "f",
             ":",
@@ -361,10 +597,10 @@ mod tests {
     fn r_label_depends_on_context() {
         let r: Vec<_> = KEYMAP.iter().filter(|b| b.keys == "r").collect();
         assert_eq!(r.len(), 2);
-        assert!(r.iter().any(|b| b.ctx == All && b.help.contains("all")));
+        assert!(r.iter().any(|b| b.ctx == All && (b.help)().contains("all")));
         assert!(
             r.iter()
-                .any(|b| b.ctx == Service && b.help.contains("this service"))
+                .any(|b| b.ctx == Service && (b.help)().contains("this service"))
         );
     }
 }

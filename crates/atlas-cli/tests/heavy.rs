@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use atlas_core::scaling::HANG;
 use serde_json::Value;
 
 mod common;
@@ -18,6 +19,7 @@ const BIN: &str = env!("CARGO_BIN_EXE_atlas");
 
 fn heavy(dir: &Path, slots: usize) -> Command {
     let mut c = Command::new(BIN);
+    c.env("ATLAS_LANG", "en");
     c.env("ATLAS_HEAVY_DIR", dir)
         .env("ATLAS_HEAVY_SLOTS", slots.to_string())
         // Off: these tests are about slots, not about how busy (load or memory) the CI machine is;
@@ -146,7 +148,7 @@ fn five_concurrent_jobs_with_two_slots_never_run_more_than_two_and_all_finish() 
 
     // While they run, the records (not just the jobs' own log) never show more than 2 running.
     let mut max_running = 0;
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now() + HANG;
     let mut kids = kids;
     let mut codes = vec![None; 5];
     while codes.iter().any(Option::is_none) {
@@ -266,12 +268,17 @@ fn the_memory_gate_holds_a_job_then_runs_it_anyway_after_the_wait() {
 #[test]
 fn a_killed_holder_frees_its_slot_at_once_and_leaves_no_stale_record() {
     let f = fixture();
-    let mut holder = run(&f.dir, 1, "holder", "sleep 60")
+    // The orphan is the killed job's child and outlives the test's patience by far: a slot that stayed held
+    // while it lived (its fd inherited by the command) would never go to the waiter. The wait for the waiter is
+    // the real event (it ran and exited), bounded only by the hang ceiling. The pid in the sleep is a marker
+    // that is ours alone, for the cleanup.
+    let orphan = format!("sleep 3600.{}", std::process::id());
+    let mut holder = run(&f.dir, 1, "holder", &orphan)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    wait_for("holder to run", Duration::from_secs(10), || {
+    wait_for("holder to run", HANG, || {
         (labels(&status(&f.dir, 1)["running"]) == ["holder"]).then_some(())
     });
     let waiter = run(&f.dir, 1, "waiter", "echo got-it")
@@ -279,27 +286,29 @@ fn a_killed_holder_frees_its_slot_at_once_and_leaves_no_stale_record() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    wait_for("waiter to queue", Duration::from_secs(10), || {
+    wait_for("waiter to queue", HANG, || {
         (labels(&status(&f.dir, 1)["queued"]) == ["waiter"]).then_some(())
     });
     // SIGKILL: no cleanup code runs in the holder. Only the OS can free its slot.
-    let killed_at = Instant::now();
     // SAFETY: an exact positive pid of a child we spawned.
     assert_eq!(unsafe { libc_kill(holder.id() as i32, 9) }, 0);
     holder.wait().unwrap();
-    let out = waiter.wait_with_output().unwrap();
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(waiter.wait_with_output());
+    });
+    let out = finished.recv_timeout(HANG);
+    // The orphaned `sleep` is the killed job's child, not ours to wait for.
+    let _ = Command::new("pkill").args(["-f", &orphan]).status();
+    let out = out
+        .expect("the waiter never took the slot of the killed holder")
+        .unwrap();
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "got-it");
-    assert!(
-        killed_at.elapsed() < Duration::from_secs(5),
-        "the waiter took the slot right away"
-    );
     let st = status(&f.dir, 1);
     assert!(
         st["running"].as_array().unwrap().is_empty(),
         "no stale holder record: {st}"
     );
-    // The orphaned `sleep 60` is the killed job's child, not ours to wait for.
-    let _ = Command::new("pkill").args(["-f", "sleep 60"]).status();
 }
 
 #[test]
@@ -317,7 +326,7 @@ fn waiters_start_in_the_order_they_arrived() {
     .stderr(Stdio::null())
     .spawn()
     .unwrap();
-    wait_for("blocker to run", Duration::from_secs(10), || {
+    wait_for("blocker to run", HANG, || {
         (labels(&status(&f.dir, 1)["running"]) == ["blocker"]).then_some(())
     });
     let mut kids = vec![blocker];
@@ -330,7 +339,7 @@ fn waiters_start_in_the_order_they_arrived() {
                 .unwrap(),
         );
         // Each is visibly queued before the next arrives: arrival order is then unambiguous.
-        wait_for("waiter to queue", Duration::from_secs(10), || {
+        wait_for("waiter to queue", HANG, || {
             (labels(&status(&f.dir, 1)["queued"]).len() == n + 1).then_some(())
         });
     }
@@ -351,12 +360,18 @@ fn waiters_start_in_the_order_they_arrived() {
 #[test]
 fn ctrl_c_while_queued_leaves_the_queue_and_never_runs_the_command() {
     let f = fixture();
-    let mut holder = run(&f.dir, 1, "holder", "sleep 3")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    wait_for("holder to run", Duration::from_secs(10), || {
+    let release = f.dir.parent().unwrap().join("release-holder");
+    let mut holder = run(
+        &f.dir,
+        1,
+        "holder",
+        &held_script(&f.log, "holder", &release),
+    )
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .unwrap();
+    wait_for("holder to run", HANG, || {
         (labels(&status(&f.dir, 1)["running"]) == ["holder"]).then_some(())
     });
     let marker = f.dir.parent().unwrap().join("ran");
@@ -365,13 +380,14 @@ fn ctrl_c_while_queued_leaves_the_queue_and_never_runs_the_command() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    wait_for("waiter to queue", Duration::from_secs(10), || {
+    wait_for("waiter to queue", HANG, || {
         (labels(&status(&f.dir, 1)["queued"]) == ["waiter"]).then_some(())
     });
     // SAFETY: an exact positive pid of a child we spawned.
     assert_eq!(unsafe { libc_kill(waiter.id() as i32, 2) }, 0);
     assert_eq!(waiter.wait().unwrap().code(), Some(130));
     assert!(status(&f.dir, 1)["queued"].as_array().unwrap().is_empty());
+    std::fs::write(&release, b"").unwrap();
     holder.wait().unwrap();
     assert!(!marker.exists(), "an interrupted job must not run");
 }
@@ -389,7 +405,7 @@ fn sigterm_to_a_running_job_reaches_its_command_and_frees_the_slot() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    wait_for("job to run", Duration::from_secs(10), || {
+    wait_for("job to run", HANG, || {
         (labels(&status(&f.dir, 1)["running"]) == ["t"]).then_some(())
     });
     // The trap is installed before `ready` is printed: wait for that line, not a fixed sleep
@@ -423,12 +439,13 @@ fn status_names_who_holds_the_slot_and_ranks_the_eta_from_history() {
         run(&f.dir, 1, "suite", "exit 1").status().unwrap().code(),
         Some(1)
     );
-    let mut holder = run(&f.dir, 1, "suite", "sleep 3")
+    let release = f.dir.parent().unwrap().join("release-suite");
+    let mut holder = run(&f.dir, 1, "suite", &held_script(&f.log, "suite", &release))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    wait_for("holder to run", Duration::from_secs(10), || {
+    wait_for("holder to run", HANG, || {
         (labels(&status(&f.dir, 1)["running"]) == ["suite"]).then_some(())
     });
     let mut waiter = run(&f.dir, 1, "suite", "true")
@@ -436,7 +453,7 @@ fn status_names_who_holds_the_slot_and_ranks_the_eta_from_history() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    wait_for("waiter to queue", Duration::from_secs(10), || {
+    wait_for("waiter to queue", HANG, || {
         (!status(&f.dir, 1)["queued"].as_array().unwrap().is_empty()).then_some(())
     });
     let st = status(&f.dir, 1);
@@ -445,11 +462,10 @@ fn status_names_who_holds_the_slot_and_ranks_the_eta_from_history() {
     assert_eq!(r["state"], "running");
     assert!(r["cwd"].as_str().unwrap().len() > 1 && r["project"].is_string());
     assert!(r["started_at"].as_u64().unwrap() > 0);
+    // A finished run teaches its whole seconds, so a loaded runner can stretch a `sleep 1` run to 2 s or more:
+    // only the floor is certain. The failing run above would have pulled the average under it.
     let avg = r["avg_s"].as_u64().unwrap();
-    assert!(
-        (1..=2).contains(&avg),
-        "average of the two 1 s runs only: {avg}"
-    );
+    assert!(avg >= 1, "average of the two 1 s runs only: {avg}");
     assert!(st["queued"][0]["eta_s"].as_u64().is_some(), "{st}");
 
     let text = String::from_utf8(
@@ -462,6 +478,7 @@ fn status_names_who_holds_the_slot_and_ranks_the_eta_from_history() {
     .unwrap();
     assert!(text.contains("1 of 1 slot busy, 1 waiting"), "{text}");
     assert!(text.contains(&format!("pid {}", holder.id())), "{text}");
+    std::fs::write(&release, b"").unwrap();
     holder.wait().unwrap();
     waiter.wait().unwrap();
 }
@@ -471,6 +488,7 @@ fn slots_come_from_the_env_then_the_config_file_then_half_the_cores() {
     let f = fixture();
     let status_slots = |env: Option<&str>| -> u64 {
         let mut c = Command::new(BIN);
+        c.env("ATLAS_LANG", "en");
         c.env("ATLAS_HEAVY_DIR", &f.dir)
             .env("HOME", f.dir.parent().unwrap())
             .env_remove("ATLAS_HEAVY_SLOTS")

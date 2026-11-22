@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/permission_mode.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 
@@ -19,7 +20,7 @@ CrewmateEntry _crewmate(
   name: id,
   role: '',
   agent: 'omp',
-  approval: 'ask',
+  mode: PermissionMode.ask,
   state: state,
   pendingApproval: pending,
 );

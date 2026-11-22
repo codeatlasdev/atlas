@@ -1,0 +1,23 @@
+{
+  "pt-BR": {
+    "crew_workspace_setup_ask_name": "f5938eee8c93",
+    "crew_workspace_setup_ask_project": "3b6b1e24469e",
+    "crew_workspace_setup_ask_role": "91da50df0db2",
+    "crew_workspace_setup_change_subtitle": "2853b557b029",
+    "crew_workspace_setup_change_title": "8c81836130a3",
+    "crew_workspace_setup_confirm_title": "675741723fb1",
+    "crew_workspace_setup_default_role": "793c60b0bebf",
+    "crew_workspace_setup_project_other_subtitle": "4028847c0673",
+    "crew_workspace_setup_role_changelog_subtitle": "02f19b35b091",
+    "crew_workspace_setup_role_changelog_title": "272b45beea20",
+    "crew_workspace_setup_role_ci_subtitle": "63ef34423f83",
+    "crew_workspace_setup_role_ci_title": "b5c97a52ac51",
+    "crew_workspace_setup_role_other_subtitle": "a9a3a3ef3d8c",
+    "crew_workspace_setup_role_review_subtitle": "a93878350d92",
+    "crew_workspace_setup_role_review_title": "d1e6dca85aef",
+    "crew_workspace_setup_skip": "9d5e4440db18",
+    "crew_workspace_setup_something_else": "aa44308356e4",
+    "crew_workspace_setup_summary": "7081913b22e7",
+    "crew_workspace_setup_summary_project": "7fd400172d09"
+  }
+}

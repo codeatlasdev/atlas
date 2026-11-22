@@ -4,6 +4,7 @@
 	import { formatArgs, parseArgs } from "./args.ts";
 	import FieldInput from "./FieldInput.svelte";
 	import { commandProblem, hasCustom, jsonText, parseJsonObject } from "./languages.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/**
 	 * Custom server of one language: command, arguments and the two JSON blobs the server gets.
@@ -83,28 +84,28 @@
 
 <div class="custom">
 	<label class="field">
-		<span class="name">Command</span>
+		<span class="name">{m.settings_agents_agent_command()}</span>
 		<FieldInput
 			class="text mono"
 			style="width: 100%"
-			aria-label="{label} server command"
-			placeholder="Use Atlas's server (e.g. /opt/homebrew/bin/gopls)"
+			aria-label={m.settings_editor_custom_command_aria({ language: label })}
+			placeholder={m.settings_editor_custom_command_placeholder()}
 			spellcheck="false"
 			value={command}
 			onchange={(e) => commitCommand(e.currentTarget.value)}
 		/>
 		<span class="help" class:bad={!!cmdProblem}>
-			{cmdProblem ??
-				"A program on your PATH or an absolute path. Leave empty to use the server Atlas finds or installs."}
+			{cmdProblem ?? m.settings_editor_custom_command_help()}
 		</span>
 	</label>
 
 	<label class="field">
-		<span class="name">Arguments</span>
+		<span class="name">{m.settings_editor_custom_args()}</span>
+		<!-- i18n-ignore: an example flag, not prose -->
 		<FieldInput
 			class="text mono"
 			style="width: 100%"
-			aria-label="{label} server arguments"
+			aria-label={m.settings_editor_custom_args_aria({ language: label })}
 			placeholder="--stdio"
 			spellcheck="false"
 			value={argsDraft ?? argsText}
@@ -115,18 +116,18 @@
 			onchange={(e) => commitArgs(e.currentTarget.value)}
 		/>
 		<span class="help" class:bad={argsError !== ""}>
-			{argsError || 'Separated by spaces. Use quotes for a value with spaces: --root "My Projects".'}
+			{argsError || m.settings_editor_custom_args_help()}
 		</span>
 	</label>
 
 	<label class="field">
-		<span class="name">Initialization options</span>
+		<span class="name">{m.settings_editor_custom_init()}</span>
 		<textarea
 			class="json"
 			class:invalid={initError !== ""}
 			rows="4"
 			spellcheck="false"
-			aria-label="{label} initialization options (JSON)"
+			aria-label={m.settings_editor_custom_init_aria({ language: label })}
 			aria-invalid={initError !== ""}
 			placeholder={'{ "preferences": { "importModuleSpecifier": "relative" } }'}
 			value={initDraft ?? initText}
@@ -137,24 +138,24 @@
 				commitJson(
 					"initialization_options",
 					e.currentTarget.value,
-					(m) => (initError = m),
+					(msg) => (initError = msg),
 					(d) => (initDraft = d),
 				)}></textarea>
 		<span class="help" class:bad={initError !== ""}>
 			{initError
-				? `${initError} The last valid value is still in use.`
-				: "Sent once when the server starts (a JSON object)."}
+				? m.settings_editor_custom_last_valid_kept({ error: initError })
+				: m.settings_editor_custom_init_help()}
 		</span>
 	</label>
 
 	<label class="field">
-		<span class="name">Settings</span>
+		<span class="name">{m.settings_editor_custom_settings()}</span>
 		<textarea
 			class="json"
 			class:invalid={settingsError !== ""}
 			rows="4"
 			spellcheck="false"
-			aria-label="{label} settings (JSON)"
+			aria-label={m.settings_editor_custom_settings_aria({ language: label })}
 			aria-invalid={settingsError !== ""}
 			placeholder={'{ "gopls": { "staticcheck": true } }'}
 			value={settingsDraft ?? settingsText}
@@ -165,13 +166,13 @@
 				commitJson(
 					"settings",
 					e.currentTarget.value,
-					(m) => (settingsError = m),
+					(msg) => (settingsError = msg),
 					(d) => (settingsDraft = d),
 				)}></textarea>
 		<span class="help" class:bad={settingsError !== ""}>
 			{settingsError
-				? `${settingsError} The last valid value is still in use.`
-				: "Sent to the server as workspace configuration (a JSON object)."}
+				? m.settings_editor_custom_last_valid_kept({ error: settingsError })
+				: m.settings_editor_custom_settings_help()}
 		</span>
 	</label>
 
@@ -180,10 +181,9 @@
 			size="sm"
 			variant="outlined"
 			disabled={!hasCustom(pref) && !argsDraft && !initDraft && !settingsDraft}
-			onclick={reset}>Reset to default</Button
+			onclick={reset}>{m.settings_editor_custom_reset()}</Button
 		>
-		<span class="note">Changes apply to servers started after you save; restart the server to apply now.</span
-		>
+		<span class="note">{m.settings_editor_custom_apply_note()}</span>
 	</div>
 </div>
 

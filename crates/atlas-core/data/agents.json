@@ -1,0 +1,82 @@
+[
+  {
+    "id": "omp",
+    "label": "omp",
+    "bin": "omp",
+    "setup": "omp",
+    "yolo_args": ["--auto-approve"],
+    "ask_args": [],
+    "resume": ["--resume", "{session}"],
+    "prompt_flag": null,
+    "one_shot": [
+      "omp",
+      "-p",
+      "--no-session",
+      "--no-tools",
+      "--no-skills",
+      "--no-rules",
+      "--no-extensions",
+      "--no-lsp",
+      "--no-title"
+    ],
+    "sessions_dir": ".omp/agent/sessions",
+    "install": "curl -fsSL https://omp.sh/install | sh",
+    "key_env": "OPENROUTER_API_KEY",
+    "can_ask": true
+  },
+  {
+    "id": "claude",
+    "label": "Claude Code",
+    "bin": "claude",
+    "setup": "claude-code",
+    "yolo_args": ["--dangerously-skip-permissions"],
+    "ask_args": ["--permission-mode", "default"],
+    "resume": ["--resume", "{session}"],
+    "prompt_flag": null,
+    "one_shot": ["claude", "-p", "--no-session-persistence", "--tools", ""],
+    "sessions_dir": ".claude/projects",
+    "install": "curl -fsSL https://claude.ai/install.sh | bash",
+    "key_env": "ANTHROPIC_API_KEY",
+    "can_ask": true
+  },
+  {
+    "id": "codex",
+    "label": "Codex",
+    "bin": "codex",
+    "setup": "codex",
+    "yolo_args": ["--dangerously-bypass-approvals-and-sandbox"],
+    "ask_args": [],
+    "resume": ["resume", "{session}"],
+    "prompt_flag": null,
+    "one_shot": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--color",
+      "never",
+      "-"
+    ],
+    "sessions_dir": ".codex/sessions",
+    "install": "npm_config_prefix=\"$HOME/.npm-global\" npm install -g @openai/codex",
+    "key_env": "OPENAI_API_KEY",
+    "can_ask": false
+  },
+  {
+    "id": "opencode",
+    "label": "OpenCode",
+    "bin": "opencode",
+    "setup": "opencode",
+    "yolo_args": ["--auto"],
+    "ask_args": [],
+    "resume": ["--session", "{session}"],
+    "prompt_flag": "--prompt",
+    "one_shot": null,
+    "sessions_dir": null,
+    "install": "curl -fsSL https://opencode.ai/install | bash",
+    "key_env": "OPENAI_API_KEY",
+    "can_ask": false
+  }
+]

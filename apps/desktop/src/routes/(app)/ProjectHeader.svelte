@@ -5,7 +5,6 @@
 		DropdownMenu,
 		DropdownMenuItem,
 		DropdownMenuLabel,
-		NotificationBell,
 		Spinner,
 	} from "@codeatlasdev/ui";
 	import {
@@ -25,12 +24,15 @@
 	import { removeProject } from "#lib/components/sidebar/projects.ts";
 	import PanelOps from "#lib/panel/PanelOps.svelte";
 	import Crumbs from "#lib/shell/Crumbs.svelte";
+	import InboxBell from "#lib/shell/InboxBell.svelte";
 	import RightToggle from "#lib/shell/RightToggle.svelte";
+	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { docks, toggleDock } from "#lib/stores/docks.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { summarize } from "#lib/panel/metrics.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { p }: { p: ProjectView } = $props();
 
@@ -47,8 +49,18 @@
 	);
 
 	const DOCKS = [
-		{ side: "left", label: "Left dock", command: "workspace::ToggleLeftDock", icon: PanelLeft },
-		{ side: "bottom", label: "Bottom dock", command: "workspace::ToggleBottomDock", icon: PanelBottom },
+		{
+			side: "left",
+			label: () => m.shell_project_header_toggle_left_dock(),
+			command: "workspace::ToggleLeftDock",
+			icon: PanelLeft,
+		},
+		{
+			side: "bottom",
+			label: () => m.shell_project_header_toggle_bottom_dock(),
+			command: "workspace::ToggleBottomDock",
+			icon: PanelBottom,
+		},
 	] as const;
 
 	function openInbox(id: string) {
@@ -65,7 +77,18 @@
 	async function saveConfig(id: string) {
 		const saved = await store.run(`save:${id}`, () => api.saveConfig(id));
 		if (!saved) return;
-		toast.success("Saved atlas.yaml");
+		toast.success(m.shell_project_header_saved_atlas_yaml());
+		await store.refresh();
+		void store.loadConfig(id);
+	}
+
+	/** A plain folder: explorer and editor only. */
+	let folder = $derived(p.kind === "folder");
+
+	/** "Use as project": the folder keeps its files; it gets the services, Changes and PR parts of the app. */
+	async function promote(id: string) {
+		const done = await store.run(`promote:${id}`, async () => (await api.promote(id), true));
+		if (!done) return;
 		await store.refresh();
 		void store.loadConfig(id);
 	}
@@ -73,14 +96,18 @@
 
 <header data-tauri-drag-region class:inset={!docks.sidebar}>
 	<Crumbs />
-	<span class="pill t-{health.tone}" title={health.label}>
-		<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running ? health.label : "Stopped"}
-	</span>
-	{#if p.config_source === "detected"}
-		<span
-			class="detected"
-			title="No atlas.yaml in this folder: Atlas detected how to run it. Nothing was written to disk."
-			>Auto-detected</span
+	{#if folder}
+		<span class="detected" title={m.shell_project_header_a_plain_folder_atlas_shows()}
+			>{m.shell_project_header_folder()}</span
+		>
+	{:else}
+		<span class="pill t-{health.tone}" title={health.label}>
+			<span class="dot" class:pulse={health.tone === "ok"}></span>{health.label}
+		</span>
+	{/if}
+	{#if !folder && p.config_source === "detected"}
+		<span class="detected" title={m.shell_project_header_no_atlas_yaml_in_this()}
+			>{m.shell_project_header_auto_detected()}</span
 		>
 		<Button
 			variant="ghost"
@@ -88,13 +115,13 @@
 			disabled={!!store.busy[`save:${p.id}`]}
 			onclick={() => saveConfig(p.id)}
 		>
-			Save as atlas.yaml
+			{m.shell_project_header_save_as_atlas_yaml()}
 		</Button>
 	{/if}
 	<div class="grow" data-tauri-drag-region></div>
 	<div class="actions">
-		<NotificationBell
-			notifications={agents.inbox.map((n) => ({
+		<InboxBell
+			items={agents.inbox.map((n) => ({
 				id: n.id,
 				title: n.title,
 				body: n.body,
@@ -105,16 +132,17 @@
 			onRead={openInbox}
 			onReadAll={() => agents.inbox.forEach((n) => (n.read = true))}
 			onClear={() => (agents.inbox = [])}
+			onSettings={() => updates.show("notifications")}
 		/>
-		<div class="docks" role="group" aria-label="Docks">
+		<div class="docks" role="group" aria-label={m.shell_project_header_docks()}>
 			{#each DOCKS as d (d.side)}
-				<Tip label="Toggle {d.label.toLowerCase()}" command={d.command}>
+				<Tip label={d.label()} command={d.command}>
 					{#snippet child(props)}
 						<button
 							{...props}
 							class="dock-btn"
 							class:on={docks[d.side]}
-							aria-label="Toggle {d.label.toLowerCase()}"
+							aria-label={d.label()}
 							aria-pressed={docks[d.side]}
 							onclick={() => toggleDock(d.side)}
 						>
@@ -125,27 +153,37 @@
 			{/each}
 			<RightToggle />
 		</div>
-		<div class="ops" role="group" aria-label="Activity and actions">
-			<PanelOps project={p} />
-		</div>
+		{#if !folder}
+			<div class="ops" role="group" aria-label={m.shell_project_header_activity_and_actions()}>
+				<PanelOps project={p} />
+			</div>
+		{/if}
 		<DropdownMenu align="end">
 			{#snippet triggerChild(props)}
-				<button type="button" {...props} class="more" aria-label="Project menu"><Ellipsis size={16} /></button
+				<button type="button" {...props} class="more" aria-label={m.shell_project_header_project_menu()}
+					><Ellipsis size={16} /></button
 				>
 			{/snippet}
 			<DropdownMenuItem onclick={() => store.run("ed", () => api.openEditor(p.id))}>
-				<Code size={14} /> Open in external editor
+				<Code size={14} />
+				{m.shell_project_header_open_in_external_editor()}
 			</DropdownMenuItem>
 			<DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
-				{#if p.pinned}<PinOff size={14} /> Unpin{:else}<Pin size={14} /> Pin to top{/if}
+				{#if p.pinned}<PinOff size={14} /> {m.shell_project_header_unpin()}{:else}<Pin size={14} />
+					{m.shell_project_header_pin_to_top()}{/if}
 			</DropdownMenuItem>
 			{#if !p.parent}
 				<DropdownMenuItem variant="destructive" onclick={() => removeProject(p.id)}>
-					<Trash2 size={14} /> Remove from Atlas…
+					<Trash2 size={14} />
+					{m.shell_project_header_remove_from_atlas()}
 				</DropdownMenuItem>
 			{/if}
 		</DropdownMenu>
-		{#if p.running}
+		{#if folder}
+			<Button size="sm" disabled={!!store.busy[`promote:${p.id}`]} onclick={() => promote(p.id)}>
+				{m.shell_project_header_use_as_project()}
+			</Button>
+		{:else if p.running}
 			<Button
 				variant="glass"
 				size="sm"
@@ -156,7 +194,7 @@
 							size={12}
 							fill="currentColor"
 						/>{/if}{/snippet}
-				Stop
+				{m.shell_project_header_stop()}
 			</Button>
 		{:else}
 			<div class="split" class:has-menu={p.profiles.length > 0}>
@@ -169,16 +207,19 @@
 								size={12}
 								fill="currentColor"
 							/>{/if}{/snippet}
-					Start
+					{m.shell_project_header_start()}
 				</Button>
 				{#if p.profiles.length}
 					<DropdownMenu align="end">
 						{#snippet triggerChild(props)}
-							<button type="button" {...props} class="split-arrow" aria-label="Start with profile"
-								><ChevronDown size={13} /></button
+							<button
+								type="button"
+								{...props}
+								class="split-arrow"
+								aria-label={m.shell_project_header_start_with_profile()}><ChevronDown size={13} /></button
 							>
 						{/snippet}
-						<DropdownMenuLabel>Start with profile</DropdownMenuLabel>
+						<DropdownMenuLabel>{m.shell_project_header_start_with_profile()}</DropdownMenuLabel>
 						{#each p.profiles as prof (prof)}
 							<DropdownMenuItem onclick={() => store.run(`stack:${p.id}`, () => api.start(p.id, [prof]))}>
 								{prof}

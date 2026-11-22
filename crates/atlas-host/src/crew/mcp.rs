@@ -20,6 +20,7 @@
 
 use std::time::Duration;
 
+use crate::agents::hook_server::CREWMATE_DECISION_WAIT;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -30,7 +31,9 @@ pub async fn serve(crewmate_id: &str) -> anyhow::Result<()> {
     // Install the ring crypto provider so rustls-no-provider works.
     let _ = rustls::crypto::ring::default_provider().install_default();
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(1800)) // ask_user can take up to 30 min
+        // ask_user and approve wait for the owner up to hostd's own wait; this outlives it, so hostd answers first
+        // (a clear "nobody answered" and an audit entry) and not a bare HTTP timeout.
+        .timeout(CREWMATE_DECISION_WAIT + Duration::from_secs(60))
         .build()?;
 
     let env = Env::from_env(crewmate_id);
@@ -305,28 +308,30 @@ async fn tool_set_ui(client: &reqwest::Client, env: &Env) -> Result<Value, Strin
 // ─── approve ──────────────────────────────────────────────────────────────────
 
 async fn tool_approve(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
-    let path = format!(
-        "/hook/claude/decision?pane_key={}",
-        urlencoded(&env.pane_key)
-    );
+    // The pane is in the body, as the route reads it.
+    let path = "/hook/claude/decision";
     let body = json!({
         "pane_key": env.pane_key,
         "payload": args,
     });
-    let text = post_hook(client, env, "approve", &path, &body).await?;
+    let text = post_hook(client, env, "approve", path, &body).await?;
 
-    // Parse {"decision": "allow"|"deny"|null}
-    let decision: Option<String> = serde_json::from_str::<Value>(&text)
-        .ok()
-        .and_then(|v| v.get("decision").cloned())
-        .filter(|d| !d.is_null())
-        .and_then(|d| d.as_str().map(|s| s.to_string()));
+    // Parse {"decision": "allow"|"deny"|null, "message"?}
+    let reply: Value = serde_json::from_str(&text).unwrap_or_default();
+    let decision = reply["decision"].as_str();
+    let message = reply["message"].as_str().filter(|m| !m.is_empty());
 
-    let result = match decision.as_deref() {
-        Some("allow") | None => json!({ "behavior": "allow" }),
-        _ => json!({
+    // Only an explicit allow allows. No decision means nobody answered (no one could, or hostd's wait ran out).
+    // A deny carries what hostd says (why, and the person's comment): it is the message claude shows the model.
+    let result = match decision {
+        Some("allow") => json!({ "behavior": "allow" }),
+        Some(_) => json!({
             "behavior": "deny",
-            "message": "Permission denied by the user."
+            "message": message.unwrap_or("Permission denied by the user.")
+        }),
+        None => json!({
+            "behavior": "deny",
+            "message": message.unwrap_or("Permission denied: nobody answered the approval request.")
         }),
     };
 
@@ -493,24 +498,6 @@ pub(crate) async fn call_for_test(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Percent-encode a string for use in a URL query parameter value.
-fn urlencoded(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            _ => {
-                out.push('%');
-                out.push(char::from_digit((b >> 4) as u32, 16).unwrap_or('0'));
-                out.push(char::from_digit((b & 0xf) as u32, 16).unwrap_or('0'));
-            }
-        }
-    }
-    out
-}
-
 async fn write_line(
     out: &mut tokio::io::BufWriter<tokio::io::Stdout>,
     v: &Value,
@@ -593,17 +580,40 @@ mod tests {
         assert!(err.starts_with("locate: HTTP error: "), "{err}");
     }
 
-    #[test]
-    fn urlencoded_safe_chars() {
-        assert_eq!(urlencoded("abc-123"), "abc-123");
+    /// What `atlas:approve` tells Claude Code for hostd's reply to the prompt.
+    async fn approve_behavior(reply: &'static str) -> Value {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let env = answering("200 OK", reply).await;
+        let out = tool_approve(
+            json!({"tool_name": "Bash", "input": {"command": "ls"}}),
+            &reqwest::Client::new(),
+            &env,
+        )
+        .await
+        .unwrap();
+        serde_json::from_str(out["content"][0]["text"].as_str().unwrap()).unwrap()
     }
 
-    #[test]
-    fn urlencoded_encodes_special() {
-        let encoded = urlencoded("foo bar/baz");
-        assert!(!encoded.contains(' '));
-        assert!(!encoded.contains('/'));
-        assert!(encoded.contains('%'));
+    // #524 review of the same class: an approval nobody answered (no one could, or the 30 minutes ran out) came
+    // back from hostd as `{"decision":null}` and `atlas:approve` ALLOWED the tool, so a headless Claude crewmate
+    // with `approval: ask` ran every command nobody was there to approve. Only an explicit allow allows.
+    #[tokio::test]
+    async fn only_an_explicit_allow_lets_a_headless_claude_tool_run() {
+        assert_eq!(
+            approve_behavior(r#"{"decision":"allow"}"#).await["behavior"],
+            "allow"
+        );
+        let denied = approve_behavior(r#"{"decision":"deny"}"#).await;
+        assert_eq!(denied["behavior"], "deny");
+        assert_eq!(denied["message"], "Permission denied by the user.");
+        for unanswered in [r#"{"decision":null}"#, "{}"] {
+            let r = approve_behavior(unanswered).await;
+            assert_eq!(r["behavior"], "deny", "{unanswered}: nobody approved it");
+            assert!(
+                r["message"].as_str().unwrap().contains("nobody answered"),
+                "the agent is told it was not the owner's no: {r}"
+            );
+        }
     }
 
     #[test]

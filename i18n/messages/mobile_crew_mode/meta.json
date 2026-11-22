@@ -1,0 +1,21 @@
+{
+	"mobile_crew_mode_applies_next": "Note in the mode sheet: a switch is not retroactive for calls already decided, but a call waiting for an answer is decided again at once.",
+	"mobile_crew_mode_ask": "Permission mode name: every tool call waits for an answer. Same word as the desktop.",
+	"mobile_crew_mode_ask_detail": "One line under the Ask mode in the mode picker.",
+	"mobile_crew_mode_bypass": "Permission mode name: every tool call runs without asking, except what the rails hold. Never translated as a word; it is the mode's name.",
+	"mobile_crew_mode_bypass_detail": "One line under the Bypass mode in the mode picker. The rails (protected paths, GitHub and webhook tasks) ask in every mode.",
+	"mobile_crew_mode_change": "Screen reader hint of the mode button in the chat of a crewmate.",
+	"mobile_crew_mode_changed": "Message after switching a mode. {name} is the crewmate, {mode} the mode name. Same sentence as the Telegram /mode reply.",
+	"mobile_crew_mode_edits": "Permission mode name: file edits in the crewmate's worktree run without asking.",
+	"mobile_crew_mode_edits_detail": "One line under the Accept edits mode in the mode picker.",
+	"mobile_crew_mode_error_bypass_disabled": "Error (code crew.approval.bypass_disabled) when a switch to Bypass is refused because the crew does not allow it.",
+	"mobile_crew_mode_error_forbidden": "Error (code crew.approval.forbidden): the connection is not one of the owner's clients.",
+	"mobile_crew_mode_error_generic": "Error when a mode switch fails with a text no screen knows. {reason} is the server's own English text.",
+	"mobile_crew_mode_error_no_access": "Error when hostd answers `forbidden: approve`: the phone was paired without the approve scope.",
+	"mobile_crew_mode_error_unsupported_engine": "Error (code crew.approval.unsupported_engine): a mode other than Bypass was asked for a crewmate whose engine cannot ask. {engine} is the engine name.",
+	"mobile_crew_mode_label": "Label of the permission mode control on a crewmate (chat header sheet, profile, new crewmate sheet).",
+	"mobile_crew_mode_locked_semantics": "Screen reader label of the mode badge of a crewmate whose engine has no approval channel, so the mode is fixed.",
+	"mobile_crew_mode_no_channel": "Reason shown when a crewmate's engine (codex, opencode) cannot ask, so its mode is fixed at Bypass and cannot be changed.",
+	"mobile_crew_mode_semantics": "Screen reader label of the mode badge on a crewmate (list row, profile, chat). {mode} is Ask, Accept edits or Bypass.",
+	"mobile_crew_mode_sheet_title": "Title of the bottom sheet that switches a crewmate's mode. {name} is the crewmate."
+}

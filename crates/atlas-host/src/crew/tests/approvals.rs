@@ -99,16 +99,23 @@ async fn a_push_token_alone_is_nobody_who_can_answer_a_crewmate_prompt() {
 
     // The daemon notices the disconnect within moments; from then on the ask must return at once.
     // Each attempt is bounded, so a regression (a 30-minute wait) fails here instead of hanging.
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let attempt =
             tokio::time::timeout(Duration::from_millis(1500), decision(&dir, "crew:c1:t1")).await;
         match attempt {
             Ok(body) => {
+                let reply = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+                // `decision: null` as it always was (a headless engine reads it as a deny, a terminal agent's hook
+                // falls back to its own prompt), now with the reason.
                 assert_eq!(
-                    serde_json::from_str::<serde_json::Value>(&body).unwrap(),
-                    json!({"decision": null}),
-                    "nobody can answer: the prompt must come back with no decision"
+                    reply["decision"],
+                    json!(null),
+                    "nobody can answer: the prompt must come back with no decision: {reply}"
+                );
+                assert!(
+                    reply["message"].as_str().unwrap().contains("nobody"),
+                    "{reply}"
                 );
                 return;
             }

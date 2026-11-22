@@ -12,7 +12,9 @@ use std::path::Path;
 
 use atlas_core::sys::PortOwner;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
+use super::note::Note;
 use super::process::{ProcEntry, descendants};
 
 /// The foreign process on a service's port, as the status file, MCP and the wire carry it
@@ -41,9 +43,27 @@ impl PortConflict {
         }
     }
 
-    /// `port 4321 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or change the service port`.
+    /// The English sentence: `port 4321 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or
+    /// change the service port`. Equal to `PortOwner::describe` (a test holds them together).
     pub fn describe(&self, port: u16) -> String {
-        self.owner().describe(port)
+        self.note(port).message
+    }
+
+    /// The same sentence as a coded note (`port.held`, `port.held_cwd`).
+    pub fn note(&self, port: u16) -> Note {
+        let mut args = json!({
+            "port": port,
+            "pid": self.pid,
+            "cmd": if self.cmd.is_empty() { "?" } else { &self.cmd },
+            "stop": self.owner().stop_hint(),
+        });
+        match &self.cwd {
+            Some(cwd) => {
+                args["cwd"] = json!(cwd);
+                Note::new("port.held_cwd", args)
+            }
+            None => Note::new("port.held", args),
+        }
     }
 }
 
@@ -59,8 +79,15 @@ pub enum Holder {
 /// Classify `owner`: own when its pid is one of `own_roots` (the `.pids` entries), a descendant of
 /// one, or this very process.
 pub fn classify(owner: PortOwner, own_roots: &[i32], table: &[ProcEntry]) -> Holder {
+    classify_as(std::process::id() as i32, owner, own_roots, table)
+}
+
+/// [`classify`] for a process that is `me`. Tests name `me` and use a table of made-up pids: on Windows a
+/// real pid is any small multiple of 4, so a test that left `me` to the OS and used 100 or 900 as "somebody
+/// else" failed whenever its own process got that number.
+fn classify_as(me: i32, owner: PortOwner, own_roots: &[i32], table: &[ProcEntry]) -> Holder {
     let pid = owner.pid as i32;
-    let own = pid == std::process::id() as i32
+    let own = pid == me
         || own_roots
             .iter()
             .any(|&r| r == pid || descendants(r, table).iter().any(|e| e.pid == pid));
@@ -112,27 +139,37 @@ mod tests {
         }
     }
 
+    /// Who "we" are in the made-up tables below: no pid of the table, and not the OS's idea of this process.
+    const ME: i32 = 7000;
+
+    // Incident: on Windows (CI, PR #514) a real pid is any small multiple of 4 and the test process itself was
+    // numbered 900, the pid this test calls "somebody else's", so `classify` rightly called it our own.
     #[test]
     fn a_holder_in_our_pid_tree_is_own_and_anything_else_is_foreign() {
         // 100 (sh from .pids) -> 101 (turbo) -> 102 (vite); 900 is somebody else's.
         let table = [row(100, 1), row(101, 100), row(102, 101), row(900, 1)];
         let roots = [100];
         assert_eq!(
-            classify(owner(100, "sh"), &roots, &table),
+            classify_as(ME, owner(100, "sh"), &roots, &table),
             Holder::Own(owner(100, "sh"))
         );
         assert_eq!(
-            classify(owner(102, "node"), &roots, &table),
+            classify_as(ME, owner(102, "node"), &roots, &table),
             Holder::Own(owner(102, "node"))
         );
         assert_eq!(
-            classify(owner(900, "node"), &roots, &table),
+            classify_as(ME, owner(900, "node"), &roots, &table),
             Holder::Foreign(owner(900, "node"))
         );
         // No .pids at all: nothing is ours.
         assert_eq!(
-            classify(owner(100, "sh"), &[], &table),
+            classify_as(ME, owner(100, "sh"), &[], &table),
             Holder::Foreign(owner(100, "sh"))
+        );
+        // The same table seen by the process numbered 900 (what the OS may give a test): 900 is us.
+        assert_eq!(
+            classify_as(900, owner(900, "node"), &roots, &table),
+            Holder::Own(owner(900, "node"))
         );
     }
 

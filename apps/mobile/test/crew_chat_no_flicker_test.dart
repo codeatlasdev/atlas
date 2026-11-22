@@ -16,9 +16,12 @@ import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/profile/crewmate_profile_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
+import 'package:atlas_mobile/core/voice/platform_speech.dart';
+import 'package:atlas_mobile/core/voice/read_aloud.dart';
 import 'package:atlas_mobile/main.dart';
 
 import 'support/demo_harness.dart';
+import 'support/fake_speech.dart';
 import 'support/frame_probe.dart';
 
 // Regression (screen recording 2026-11-12: chat_open_fade_50s, send_jump_36s, statusbar_overlap_49s): the crewmate
@@ -229,6 +232,8 @@ Future<_Rig> _launch(WidgetTester t, _Server server) async {
         macStorageProvider.overrideWithValue(_Storage([_mac])),
         transportFactoryProvider.overrideWithValue((_, _) async => server),
         onboardingSeenProvider.overrideWith((_) => true),
+        readAloudStoreProvider.overrideWithValue(MemoryReadAloudStore()),
+        speechSynthesizerProvider.overrideWithValue(FakeSpeech()),
       ],
       child: MaterialApp.router(
         theme: atlasTheme().copyWith(platform: TargetPlatform.iOS),
@@ -595,8 +600,9 @@ void main() {
           reason: 'the background must start at the top of the screen',
         );
         expect(r.width, 393);
-        // It covers the status bar and the whole header row (back button, pill: 64 dp).
-        expect(r.bottom, greaterThanOrEqualTo(_statusBar + 64));
+        // It covers the status bar and the whole header: the row (back button, pill: 64 dp) and the mode row
+        // under it (48 dp).
+        expect(r.bottom, greaterThanOrEqualTo(_statusBar + 64 + 48));
         // Message text really is in the zone under the header (so the test means something).
         final under = [
           for (var n = 39; n >= 0; n--)

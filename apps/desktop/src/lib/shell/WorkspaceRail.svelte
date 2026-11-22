@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
+	import { kbd } from "#lib/keys.ts";
 	import { SHOW_DELAY_MS, HIDE_DELAY_MS } from "./workspaceRail.ts";
 	import { expireHint, hintPending, markHintSeen } from "./edgeHint.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
@@ -8,6 +9,7 @@
 	import CrewFlag from "#lib/crew/CrewFlag.svelte";
 	import { reducedMotion } from "#lib/crew/motion.ts";
 	import "#lib/crew/crew.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	// visible = rail is shown; everything else in the window slides right by RAIL_W to make room
 	let visible = $state(false);
@@ -20,7 +22,7 @@
 	const RAIL_W = 72;
 	const SLIDE_MS = 180;
 
-	const shortcut = $derived(shortcutFor("atlas::ToggleCrewWorkspace") ?? "Cmd+Shift+B");
+	const shortcut = $derived(shortcutFor("atlas::ToggleCrewWorkspace") ?? kbd("cmd-shift-b"));
 	const needsYouCount = $derived(crew.needsYouCount);
 
 	// "Push everything aside" without reflowing: animating a width relays out the sidebar, the page and every
@@ -122,7 +124,7 @@
 ></div>
 {#if hint && !visible}
 	<button class="crew-edge-hint edge-hint" onclick={() => (visible = true)} onmouseenter={onHotZoneEnter}>
-		Workspaces <span class="kbd">{shortcut}</span>
+		{m.shell_chrome_workspace_rail_workspaces()} <span class="kbd">{shortcut}</span>
 	</button>
 {/if}
 
@@ -132,7 +134,7 @@
 	class="rail"
 	class:visible
 	role="navigation"
-	aria-label="Workspace switcher"
+	aria-label={m.shell_chrome_workspace_rail_workspace_switcher()}
 	onmouseenter={onRailEnter}
 	onmouseleave={onRailLeave}
 >
@@ -141,8 +143,8 @@
 		class="item"
 		class:active={ws.appMode === "ide"}
 		onclick={() => setMode("ide")}
-		aria-label="IDE workspace"
-		title="IDE  {shortcut}"
+		aria-label={m.shell_chrome_workspace_rail_ide_workspace()}
+		title={m.shell_chrome_workspace_rail_ide_shortcut({ shortcut })}
 	>
 		<div class="pill" aria-hidden="true"></div>
 		<CodeXml size={24} />
@@ -155,13 +157,16 @@
 		class="item"
 		class:active={ws.appMode === "crew"}
 		onclick={() => setMode("crew")}
-		aria-label="Atlas Crew workspace"
-		title="Atlas Crew  {shortcut}"
+		aria-label={m.shell_chrome_workspace_rail_atlas_crew_workspace()}
+		title={m.shell_chrome_workspace_rail_atlas_crew_shortcut({ shortcut })}
 	>
 		<div class="pill" aria-hidden="true"></div>
 		<CrewFlag size={34} />
 		{#if needsYouCount > 0}
-			<span class="crew-badge needs-badge" aria-label="{needsYouCount} crewmates need your attention">
+			<span
+				class="crew-badge needs-badge"
+				aria-label={m.shell_chrome_workspace_rail_crewmates_need_you({ count: needsYouCount })}
+			>
 				{needsYouCount > 9 ? "9+" : needsYouCount}
 			</span>
 		{/if}

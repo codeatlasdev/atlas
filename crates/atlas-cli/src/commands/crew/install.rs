@@ -12,7 +12,12 @@
 //! 6. Append the caller's SSH public key to <home>/.ssh/authorized_keys
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::Args;
+use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use atlas_core::progress;
 
 use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Remote, shq};
@@ -32,6 +37,10 @@ pub struct InstallArgs {
     /// SSH port (default 22). Used when the server listens on a non-standard port.
     #[arg(long, default_value_t = 22)]
     pub port: u16,
+    /// Private key to sign in with (`ssh -i`), instead of the ones ssh finds by itself. Its public key is the one
+    /// added to the crew user's `authorized_keys`. Atlas Desktop passes the key picked in "Add a crew server".
+    #[arg(long)]
+    pub identity: Option<std::path::PathBuf>,
     /// Read sudo password from stdin instead of requiring passwordless sudo.
     /// Used by Atlas Desktop; the password is NEVER placed on argv.
     #[arg(long, hide = true)]
@@ -45,11 +54,45 @@ pub struct InstallArgs {
     /// Needs Node.js on the server and sudo for the apt libraries; the same as `atlas crew browsers install`.
     #[arg(long)]
     pub browsers: bool,
+    /// Also build the pinned whisper.cpp and fetch its model, so dictation (Desktop, Telegram voice notes)
+    /// recognises speech on this server and the audio never leaves your machines. Needs sudo for `apt-get install`
+    /// of cmake, a compiler and ffmpeg; the same as `atlas crew voice install`. Turning voice on is the owner's switch.
+    #[arg(long)]
+    pub voice: bool,
+    /// The model `--voice` fetches: `small` (about 470 MB, the default) or `base` (about 140 MB, faster).
+    #[arg(long, default_value = atlas_host::crew::voice::DEFAULT_MODEL, value_parser = super::voice::model_name)]
+    pub voice_model: String,
+    /// What stdout carries: `text` (`step: <key>` markers, for people and old clients) or `json` (one
+    /// event per line: kind, code, args, message; never translated). Atlas Desktop reads only `json`.
+    #[arg(long, value_enum, default_value_t = Progress::Text)]
+    pub progress: Progress,
 }
+
+/// See [`InstallArgs::progress`] and `atlas_core::progress` for the event contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Progress {
+    Text,
+    Json,
+}
+
+/// Whether this process prints events instead of `step:` markers (set once, by [`InstallArgs::run`]).
+static JSON_EVENTS: AtomicBool = AtomicBool::new(false);
 
 impl AtlasCommand for InstallArgs {
     async fn run(self) -> Result<()> {
-        run_install(self).await
+        let json = self.progress == Progress::Json;
+        JSON_EVENTS.store(json, Ordering::Relaxed);
+        if json {
+            // The machine channel is English end to end: the `message` of every event, including the error that
+            // ends it, is the English a client falls back to when it does not know the `code`.
+            atlas_i18n::set_lang(atlas_core::lang::DEFAULT);
+        }
+        let result = run_install(self).await;
+        // The failure is the last event, with the code of the error, so a client never reads text.
+        if let (true, Err(e)) = (json, &result) {
+            println!("{}", progress::error_line(e));
+        }
+        result
     }
 }
 
@@ -63,7 +106,24 @@ fn step(msg: &str) {
 }
 
 fn step_marker(key: &str) {
-    println!("step: {key}");
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        let message = match key {
+            "check" => "checking the server",
+            "install" => "installing atlas",
+            "user" => "creating the crew user",
+            "service" => "writing the systemd service",
+            "ssh" => "configuring SSH access",
+            "browsers" => "installing browsers",
+            "voice" => "installing the speech engine",
+            _ => "done",
+        };
+        println!(
+            "{}",
+            progress::event_line(progress::Kind::Step, key, json!({}), message)
+        );
+    } else {
+        println!("step: {key}");
+    }
 }
 
 /// Ask the host which of the pre-rename and current names exist (one ssh round trip).
@@ -76,7 +136,10 @@ async fn probe_host(r: &Remote) -> Result<Probe> {
         )
         .await?;
     if out.code != 0 {
-        bail!("probing the host failed: {}", out.stderr.trim());
+        bail!(
+            "{}",
+            t!("cmd_crew_probe_failed", reason = out.stderr.trim())
+        );
     }
     Ok(parse_probe(out.stdout.trim()))
 }
@@ -97,31 +160,44 @@ pub(super) fn swap_outcome(code: i32, stderr: &str, target: &str) -> Result<()> 
     match code {
         0 => Ok(()),
         3 => bail!(
-            "the new binary did not bring hostd up within {}s; the previous binary was restored and is running. \
-Look at: atlas crew logs {target}",
-            binary::HEALTH_TIMEOUT_S
+            "{}",
+            t!(
+                "cmd_crew_swap_rolled_back",
+                secs = binary::HEALTH_TIMEOUT_S,
+                target = target
+            )
         ),
         4 => bail!(
-            "hostd did not come up on {target} within {}s and there was no previous binary to go back to. \
-Look at: atlas crew logs {target}",
-            binary::HEALTH_TIMEOUT_S
+            "{}",
+            t!(
+                "cmd_crew_swap_no_previous",
+                target = target,
+                secs = binary::HEALTH_TIMEOUT_S
+            )
         ),
         _ => bail!(
-            "installing the binary on {target} failed: {}",
-            stderr.trim()
+            "{}",
+            t!(
+                "cmd_crew_install_binary_failed",
+                target = target,
+                reason = stderr.trim()
+            )
         ),
     }
 }
 
 async fn run_install(args: InstallArgs) -> Result<()> {
     let host = host_from_target(&args.ssh_target).to_owned();
-    let r = Remote::crew(&args.ssh_target, args.port);
+    let r = Remote::crew(&args.ssh_target, args.port).with_identity(args.identity.clone());
     // The key is looked up first: a person without one is told before anything is installed.
-    let pubkey = local_public_key(&args.ssh_target, args.port)?;
+    let pubkey = local_public_key(&args.ssh_target, args.port, args.identity.clone())?;
 
     // --- Preflight: reads only, names everything that is missing ---
     step_marker("check");
-    step(&format!("preflight {}", args.ssh_target));
+    step(&t!(
+        "cmd_crew_step_preflight",
+        target = args.ssh_target.as_str()
+    ));
     let target = preflight(&r, &args.ssh_target).await?;
 
     // --- Sudo check: with a password, every privileged call sends it itself (tty_tickets) ---
@@ -139,7 +215,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
 
     // --- Binary: staged only; it goes live in the swap below, after the unit exists ---
     step_marker("install");
-    step("staging atlas binary");
+    step(&t!("cmd_crew_step_staging"));
     let binary = args
         .binary
         .clone()
@@ -154,7 +230,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     if let Some(notice) = layout::reuse_notice(&account) {
         step(&notice);
     } else {
-        step(&format!("creating {} user", account.user));
+        step(&t!("cmd_crew_step_creating_user", user = account.user));
     }
     if account.create {
         let add = format!(
@@ -164,11 +240,26 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         );
         let o = p.exec(&add).await?;
         if o.code != 0 {
-            bail!("useradd failed: {}", o.stderr.trim());
+            bail!(
+                "{}",
+                t!("cmd_crew_useradd_failed", reason = o.stderr.trim())
+            );
         }
     }
     // The ssh user to reach this server as: Atlas Desktop reads it (it differs on a migrated server).
-    println!("user: {}", account.user);
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        let line = progress::event_line(
+            progress::Kind::Info,
+            "crew.user",
+            json!({ "user": account.user }),
+            &format!("the ssh user is {}", account.user),
+        );
+        println!("{line}");
+    } else {
+        // Old clients and people read this line as it is; Atlas Desktop reads the event above.
+        // i18n-ignore: read by old clients
+        println!("user: {}", account.user);
+    }
 
     // The desktop reaches a crew server over SSH as its user and runs `$HOME/.atlas/bin/atlas hostd`, the same
     // path as any remote; without this link it found no binary and the first crewmate never got created.
@@ -181,9 +272,12 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     let o = p.exec(&link).await?;
     if o.code != 0 {
         bail!(
-            "linking atlas for {} failed: {}",
-            account.user,
-            o.stderr.trim()
+            "{}",
+            t!(
+                "cmd_crew_link_failed",
+                user = account.user,
+                reason = o.stderr.trim()
+            )
         );
     }
 
@@ -195,7 +289,10 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     );
     let o = p.exec(&mk_ssh).await?;
     if o.code != 0 {
-        bail!("creating .ssh dir failed: {}", o.stderr.trim());
+        bail!(
+            "{}",
+            t!("cmd_crew_mkdir_ssh_failed", reason = o.stderr.trim())
+        );
     }
 
     // --- Systemd unit ---
@@ -203,32 +300,38 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     // A server installed as "Atlas Bot": stop and remove its unit first (two units must never run one hostd).
     let retire = layout::retire_legacy_service(probe);
     if !retire.is_empty() {
-        step("retiring the old atlas-bot service (data is kept)");
+        step(&t!("cmd_crew_step_retire"));
         for cmd in &retire {
             let o = p.exec(cmd).await?;
             if o.code != 0 {
-                bail!("`{cmd}` failed: {}", o.stderr.trim());
+                bail!(
+                    "{}",
+                    t!(
+                        "cmd_crew_command_failed",
+                        command = cmd.as_str(),
+                        reason = o.stderr.trim()
+                    )
+                );
             }
         }
     }
-    step("writing systemd service");
+    step(&t!("cmd_crew_step_unit"));
     let unit = layout::systemd_unit(&account);
-    let write_unit = format!(
-        "sudo tee /etc/systemd/system/{SERVICE}.service > /dev/null && sudo systemctl daemon-reload && sudo systemctl enable {SERVICE}"
-    );
-    let o = p.exec_stdin(&write_unit, Some(unit.as_bytes())).await?;
+    write_unit(&p, &format!("/etc/systemd/system/{SERVICE}.service"), &unit).await?;
+    let o = p
+        .exec(&format!(
+            "sudo systemctl daemon-reload && sudo systemctl enable {SERVICE}"
+        ))
+        .await?;
     if o.code != 0 {
-        bail!("writing the service failed: {}", o.stderr.trim());
+        bail!("{}", t!("cmd_crew_enable_failed", reason = o.stderr.trim()));
     }
 
     // --- One Linux user per crewmate ---
     // The helpers, the engines every crewmate user runs, and a user for each crewmate that already
     // exists. All before hostd is swapped in and restarted: it looks for the helper's socket when it starts.
     let ids = list_crewmates(&p, &account).await?;
-    step(&format!(
-        "setting up one Linux user per crewmate ({} existing)",
-        ids.len()
-    ));
+    step(&t!("cmd_crew_step_isolation", count = ids.len()));
     let engines = isolation_engines();
     for action in isolation::install_actions(
         &account,
@@ -245,9 +348,10 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     }
 
     // --- Swap in, restart and wait for hostd (rolls back to the binary that was there) ---
-    step(&format!(
-        "starting {SERVICE} and waiting for hostd (up to {}s)",
-        binary::HEALTH_TIMEOUT_S
+    step(&t!(
+        "cmd_crew_step_start",
+        service = SERVICE,
+        secs = binary::HEALTH_TIMEOUT_S
     ));
     let o = p
         .exec(&binary::install_script(binary::HEALTH_TIMEOUT_S))
@@ -260,13 +364,16 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         // The old binary dir goes only now: the old unit pointed at it and is gone, the new one is up.
         let o = p.exec(&layout::remove_legacy_install_dir()).await?;
         if o.code != 0 {
-            eprintln!("could not remove the old install dir: {}", o.stderr.trim());
+            eprintln!(
+                "{}",
+                t!("cmd_crew_old_dir_not_removed", reason = o.stderr.trim())
+            );
         }
     }
 
     // --- SSH authorized_keys ---
     step_marker("ssh");
-    step(&format!("configuring SSH access for {}", account.user));
+    step(&t!("cmd_crew_step_ssh", user = account.user));
     add_ssh_key(&p, &account, &pubkey).await?;
 
     if args.browsers {
@@ -274,11 +381,24 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         super::browsers::install(&p, &args.ssh_target).await?;
     }
 
-    println!(
-        "\x1b[32m✓\x1b[0m Crew server ready: {user}@{host}. \
-Add it in Atlas Desktop → Crew, then sign the agents in (atlas crew login <agent>).",
-        user = account.user
+    if args.voice {
+        step_marker("voice");
+        super::voice::install(&p, &args.ssh_target, &args.voice_model).await?;
+    }
+
+    let ready = format!(
+        "\x1b[32m✓\x1b[0m {}",
+        t!(
+            "cmd_crew_install_ready",
+            account = format!("{}@{host}", account.user)
+        )
     );
+    // With --progress json stdout carries events only.
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        eprintln!("{ready}");
+    } else {
+        println!("{ready}");
+    }
     step_marker("done");
     Ok(())
 }
@@ -291,10 +411,24 @@ pub(super) async fn preflight(r: &Remote, ssh_target: &str) -> Result<&'static s
     if out.code == 255 {
         // ssh's own failure (refused, timeout, key rejected): not the host's OS. Saying "needs Linux with systemd"
         // here sent the user hunting for the wrong problem on a server whose sshd was simply down.
-        bail!(
-            "could not connect to {ssh_target} over SSH: {}",
-            out.stderr.trim()
-        );
+        // The stable code lets a client tell "the key is not authorized yet" from "the host is down" without
+        // reading the text (OpenSSH's own English, which is not ours to translate or to match on).
+        let stderr = out.stderr.trim();
+        let code = if stderr.contains("Permission denied (publickey") {
+            "ssh.key_rejected"
+        } else {
+            "ssh.unreachable"
+        };
+        return Err(progress::Coded::new(
+            code,
+            json!({ "target": ssh_target, "detail": stderr }),
+            t!(
+                "cmd_crew_ssh_unreachable",
+                target = ssh_target,
+                reason = stderr
+            ),
+        )
+        .into());
     }
     let p = binary::parse_preflight(&out.stdout);
     // The OS first: a Mac or a BSD also lacks "tools", and the useful message is that it is not Linux.
@@ -317,30 +451,42 @@ pub(super) async fn stage_release(p: &Priv<'_>, version: &str, target: &str) -> 
     }
     let on_host = out.stderr.trim().to_owned();
     eprintln!(
-        "\x1b[33m◆\x1b[0m the host could not download atlas {version} ({}); downloading it here and sending it over ssh",
-        on_host.lines().last().unwrap_or("no reason given")
+        "\x1b[33m◆\x1b[0m {}",
+        t!(
+            "cmd_crew_host_download_failed",
+            version = version,
+            reason = on_host
+                .lines()
+                .last()
+                .map_or_else(|| t!("cmd_crew_no_reason_given"), str::to_owned)
+        )
     );
-    let tmp = tempfile::tempdir().context("creating a temp dir for the download")?;
+    let tmp = tempfile::tempdir().with_context(|| t!("cmd_crew_temp_dir_failed"))?;
     let (v, t, dir) = (version.to_owned(), target.to_owned(), tmp.path().to_owned());
     let here = tokio::task::spawn_blocking(move || download_binary_here(&v, &t, &dir))
         .await
-        .context("download task")?;
+        .with_context(|| t!("cmd_crew_download_task_failed"))?;
     match here {
         Ok(bin) => stage_upload(p, &bin).await,
         Err(e) => {
             let cache = dirs::home_dir()
-                .context("no home directory")?
+                .with_context(|| t!("cmd_desktop_no_home"))?
                 .join(binary::offline_cache_path(target));
             if !cache.exists() {
                 bail!(
-                    "could not get atlas {version} onto the host:\n  on the host: {on_host}\n  on this machine: {e:#}\n  \
-and there is no cached binary at {}.\n  \
-Check this machine's internet access (it honours https_proxy), or give a Linux binary with --binary.",
-                    cache.display()
+                    "{}",
+                    t!(
+                        "cmd_crew_get_binary_failed",
+                        version = version,
+                        on_host = on_host.as_str(),
+                        here = format!("{e:#}"),
+                        path = cache.display().to_string()
+                    )
                 );
             }
             eprintln!(
-                "\x1b[33m◆\x1b[0m could not download here either ({e:#}); uploading the cached binary"
+                "\x1b[33m◆\x1b[0m {}",
+                t!("cmd_crew_download_here_failed", reason = format!("{e:#}"))
             );
             stage_upload(p, &cache).await
         }
@@ -372,18 +518,22 @@ fn download_binary_here(
             return Ok(out);
         }
     }
-    bail!("{asset} has no `atlas` binary inside")
+    bail!("{}", t!("cmd_crew_asset_no_binary", asset = asset.as_str()))
 }
 
 /// Stream a local binary to `<INSTALL_DIR>/atlas.new`.
 pub(super) async fn stage_upload(p: &Priv<'_>, local_bin: &std::path::Path) -> Result<()> {
-    let content =
-        std::fs::read(local_bin).with_context(|| format!("reading {}", local_bin.display()))?;
+    let content = std::fs::read(local_bin).with_context(|| {
+        t!(
+            "cmd_install_read_failed",
+            path = local_bin.display().to_string()
+        )
+    })?;
     let o = p
         .exec_stdin(&binary::stage_upload_script(), Some(&content))
         .await?;
     if o.code != 0 {
-        bail!("binary upload failed: {}", o.stderr.trim());
+        bail!("{}", t!("cmd_crew_upload_failed", reason = o.stderr.trim()));
     }
     Ok(())
 }
@@ -392,7 +542,7 @@ pub(super) async fn stage_upload(p: &Priv<'_>, local_bin: &std::path::Path) -> R
 async fn list_crewmates(p: &Priv<'_>, a: &Account) -> Result<Vec<String>> {
     let o = p.exec(&isolation::list_crewmates_script(a)).await?;
     if o.code != 0 {
-        bail!("listing the crewmates failed: {}", o.stderr.trim());
+        bail!("{}", t!("cmd_crew_list_failed", reason = o.stderr.trim()));
     }
     Ok(o.stdout
         .lines()
@@ -402,13 +552,33 @@ async fn list_crewmates(p: &Priv<'_>, a: &Account) -> Result<Vec<String>> {
         .collect())
 }
 
-/// The engines installed system-wide: each agent with the vendor's own install line
-/// (`agent_install_hint`, the lines `atlas crew login` prints).
+/// The engines installed system-wide: each built-in agent with the vendor's own install line
+/// (`install` in `data/agents.json`, the lines `atlas crew login` prints).
 fn isolation_engines() -> Vec<(&'static str, String)> {
-    ["omp", "claude", "codex", "opencode"]
-        .into_iter()
-        .filter_map(|a| super::agent_install_hint(a).map(|c| (a, c.to_string())))
+    atlas_core::agents::all()
+        .iter()
+        .map(|a| (a.id.as_str(), a.install.clone()))
         .collect()
+}
+
+/// Write the unit `file` on the server through [`layout::write_unit_script`], the one way every unit Atlas owns is
+/// written: unmasked first, replaced rather than written through. A unit that had to be unmasked is said in one line;
+/// one that could not be fails with the command to run (and a `hint:` line on stderr, which Atlas Desktop shows as what to do).
+async fn write_unit(p: &Priv<'_>, file: &str, contents: &str) -> Result<()> {
+    let o = p
+        .exec_stdin(&layout::write_unit_script(file), Some(contents.as_bytes()))
+        .await?;
+    for unit in layout::unmasked_units(&o.stdout) {
+        step(&t!("cmd_crew_unit_unmasked", unit = unit.to_string()));
+    }
+    if o.code != 0 {
+        if o.code == layout::UNMASK_FAILED {
+            let unit = file.rsplit('/').next().unwrap_or(file);
+            eprintln!("{}", layout::unmask_hint(unit));
+        }
+        return Err(layout::unit_write_error(o.code, &o.stderr, file));
+    }
+    Ok(())
 }
 
 /// Run one isolation action on the server. Through [`Priv`], like every privileged step of the install:
@@ -425,42 +595,51 @@ async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
             if o.code != 0 {
                 let why = o.stderr.lines().rev().find(|l| !l.trim().is_empty());
                 eprintln!(
-                    "\x1b[33m◆\x1b[0m {agent} was not installed on the server ({}). Crewmates that use it cannot run until it is: fix that and run `atlas crew install` again, or install it with the vendor's line, `{line}`.",
-                    why.unwrap_or("the installer failed").trim()
+                    "\x1b[33m◆\x1b[0m {}",
+                    t!(
+                        "cmd_crew_engine_missing",
+                        agent = agent.to_string(),
+                        reason = why.map_or_else(
+                            || t!("cmd_crew_installer_failed"),
+                            |w| w.trim().to_owned()
+                        ),
+                        line = line.as_str()
+                    )
                 );
             }
             return Ok(());
         }
-        isolation::Action::Write { file, contents } => (
-            format!("writing {file}"),
-            p.exec_stdin(
-                &format!("sudo tee {} > /dev/null", shq(file)),
-                Some(contents.as_bytes()),
-            )
-            .await?,
-        ),
+        isolation::Action::Write { file, contents } => {
+            return write_unit(p, file, contents).await;
+        }
     };
     if o.code != 0 {
         bail!(
-            "`{}` failed: {}",
-            what.chars().take(120).collect::<String>(),
-            o.stderr.trim()
+            "{}",
+            t!(
+                "cmd_crew_command_failed",
+                command = what.chars().take(120).collect::<String>(),
+                reason = o.stderr.trim()
+            )
         );
     }
     Ok(())
 }
 
-/// The public key `ssh` itself would offer to `ssh_target` (`ssh -G`: `~/.ssh/config` identities and the default
-/// key names, so a key called anything is found), read before the install changes anything on the server.
-fn local_public_key(ssh_target: &str, port: u16) -> Result<String> {
-    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port));
-    let path = atlas_core::ssh::find_public_key(&target).with_context(|| {
-        "no SSH public key found (ssh -G lists none that exists as <identity>.pub); \
-create one with: ssh-keygen -t ed25519"
+/// The public key `ssh` itself would offer to `ssh_target`: the `--identity` key, else the first existing one of
+/// `ssh -G` (`~/.ssh/config` identities and the default key names, so a key called anything is found). Read before
+/// the install changes anything on the server.
+fn local_public_key(
+    ssh_target: &str,
+    port: u16,
+    identity: Option<std::path::PathBuf>,
+) -> Result<String> {
+    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port)).with_identity(identity);
+    let key = atlas_core::ssh::find_key(&target).with_context(|| match &target.identity {
+        Some(k) => t!("cmd_crew_key_missing", path = k.display().to_string()),
+        None => t!("cmd_crew_no_ssh_key"),
     })?;
-    let key =
-        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    Ok(key.trim().to_owned())
+    key.public_text().map_err(anyhow::Error::msg)
 }
 
 /// Append `pubkey` to the crew user's authorized_keys (idempotent), then lock the file down.
@@ -476,7 +655,10 @@ sudo chown {user}:{user} "$f""#,
     );
     let o = p.exec(&script).await?;
     if o.code != 0 {
-        bail!("adding SSH key failed: {}", o.stderr.trim());
+        bail!(
+            "{}",
+            t!("cmd_crew_add_key_failed", reason = o.stderr.trim())
+        );
     }
     Ok(())
 }
@@ -527,7 +709,7 @@ mod tests {
         // step_marker writes to stdout; capture by asserting the format we produce.
         // The frontend's parseInstallLine depends on this exact format.
         for key in [
-            "check", "install", "user", "service", "ssh", "browsers", "done",
+            "check", "install", "user", "service", "ssh", "browsers", "voice", "done",
         ] {
             // Verify the function compiles and the key is a valid str literal
             let expected = format!("step: {key}");
@@ -564,9 +746,13 @@ mod tests {
             ssh_target: "ubuntu@example.com".into(),
             yes: true,
             port: 22,
+            identity: None,
             sudo_password_stdin: true,
             binary: None,
             browsers: false,
+            voice: false,
+            voice_model: "small".into(),
+            progress: Progress::Text,
         };
     }
 }

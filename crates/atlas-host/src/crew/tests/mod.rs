@@ -9,6 +9,7 @@
 //! | `locate`      | the `locate` tool through a real hostd with a fake runner                 |
 //! | `uigate`      | the `ui_gate` tool through a real hostd: plan, cache hit, regression replay |
 //! | `crewmates`   | create/update, the look, caps, secrets, the `crewmate_list` contract     |
+//! | `crewmate_state` | `crewmate_list`'s `state`: working, needs_you (any card), idle, and the transitions between them |
 //! | `triggers`    | routines, webhooks, crewmate-chain triggers, trigger validation          |
 //! | `automations` | triggers in `crewmate_list`, the `add_trigger` action                    |
 //! | `projects`    | Git/path projects, checkout before the first task                        |
@@ -16,6 +17,7 @@
 //! | `engine_stop` | pause, cancel and the task timeout end an engine turn and its child process |
 //! | `engine_login`| `crew_engine_login` / `crew_engine_status`: sign an engine in from a phone, expired sign-ins |
 //! | `actions`     | `ATLAS_ACTION` parsing, `waiting_action`, GitHub login                   |
+//! | `answers`     | a card takes one answer: choose, ask_user, a terminal run; the task is running after it |
 //! | `approvals`   | approval prompts of a crewmate's pane                                    |
 //! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
@@ -33,18 +35,31 @@
 //! | `github_out`  | the progress comment: created, edited (throttled), finished, failed      |
 //! | `github_fake` | the `GithubApi` fake both of those run against                           |
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
+//! | `github_hook_events` | GitHub webhook deliveries to tasks: the same task the poll makes, authors, the actions the poll never sees |
+//! | `github_webhook` | `POST /github/webhook` through a real hostd: signature, replays, audit, polling handover, the public URL setting |
+//! | `github_app`  | the GitHub App commands, the desktop fixture, the agent's git env and credential helper |
 //! | `attachments` | images on tasks: stored, staged, refused, fetched, from Telegram, scopes |
 //! | `structure`   | a grep guard: code that touches an isolated crewmate's tree says how it is safe |
+//! | `time_contract` | cron and time zone semantics (DST included) pinned across the date-time crate swap |
+//! | `old_crons`   | crons croner 2 accepted and croner 4 refuses: load, list as invalid, never fire, edits of the rest |
+//! | `omp_approval` | omp's `ask` through the real approval extension, under omp's own handler limit and a virtual clock |
+//! | `permissions` | permission modes (#642): the rails, each mode on claude and omp, switching, scopes, comments, the AX, Telegram `/mode`, the contract fixtures |
+//! | `voice`       | dictation (#647): the engines, hints and replacements, the audio's lifetime, Telegram voice notes, the fixtures |
+//! | `voice_answers` | spoken replies and voice answers (#648): what needs a tap, exact phrases, choice cards, `spoken`, the fixtures |
 //! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
+mod github_hook_events;
 mod github_in;
 mod github_out;
 mod payloads;
 mod structure;
+mod time_contract;
 
 #[cfg(unix)]
 mod actions;
+#[cfg(unix)]
+mod answers;
 #[cfg(unix)]
 mod approvals;
 #[cfg(unix)]
@@ -56,6 +71,8 @@ mod automations;
 #[cfg(unix)]
 mod capture;
 #[cfg(unix)]
+mod crewmate_state;
+#[cfg(unix)]
 mod crewmates;
 #[cfg(unix)]
 mod engine_login;
@@ -66,7 +83,11 @@ mod engines;
 #[cfg(unix)]
 mod fixture;
 #[cfg(unix)]
+mod github_app;
+#[cfg(unix)]
 mod github_e2e;
+#[cfg(unix)]
+mod github_webhook;
 #[cfg(unix)]
 mod guards;
 #[cfg(unix)]
@@ -80,7 +101,13 @@ mod locate;
 #[cfg(unix)]
 mod mobile_payloads;
 #[cfg(unix)]
+mod old_crons;
+#[cfg(unix)]
+mod omp_approval;
+#[cfg(unix)]
 mod pause;
+#[cfg(unix)]
+mod permissions;
 #[cfg(unix)]
 mod prepare;
 #[cfg(unix)]
@@ -101,3 +128,7 @@ mod triggers;
 mod uigate;
 #[cfg(unix)]
 mod untrusted;
+#[cfg(unix)]
+mod voice;
+#[cfg(unix)]
+mod voice_answers;

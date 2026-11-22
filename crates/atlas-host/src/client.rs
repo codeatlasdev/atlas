@@ -9,12 +9,92 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use atlas_core::ipc;
+use atlas_core::progress::Coded;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{broadcast, oneshot};
 
 use crate::paths;
+
+/// The failures of this client that a program tells apart by `code` (`atlas_core::progress::Coded`): stable,
+/// never translated, never reworded. Atlas Desktop renders its own sentence from the code and `args`; `message`
+/// is English, for logs, the CLI and a client that does not know the code. A new code is added to [`CODES`] in
+/// the same change as the desktop's message for it (`apps/desktop/src/lib/hostText.ts`).
+///
+/// | code | args | message |
+/// |---|---|---|
+/// | `hostd.closed` | none | `hostd closed the connection` |
+/// | `hostd.disconnected` | none | `hostd disconnected` |
+/// | `hostd.start_failed` | none | `hostd did not start` |
+/// | `hostd.refused` | `why`: what hostd answered (`unauthorized`, `hello timeout`...) | `hostd: <why>` |
+/// | `hostd.busy` | none | `hostd: hostd busy` |
+/// | `hostd.too_many_clients` | none | `hostd: too many clients` |
+/// | `hostd.cli_not_found` | `command`: the installer line for this OS | [`NOT_FOUND`] |
+///
+/// A failed request of a daemon that codes its failures (`protocol::REPLY_CODES`: the filesystem and `exec`) comes
+/// back as a [`Coded`] of that code too (`reply_error`).
+pub const CODES: &[&str] = &[
+    CLOSED,
+    DISCONNECTED,
+    START_FAILED,
+    REFUSED,
+    BUSY,
+    TOO_MANY_CLIENTS,
+    CLI_NOT_FOUND,
+];
+pub const CLOSED: &str = "hostd.closed";
+pub const DISCONNECTED: &str = "hostd.disconnected";
+pub const START_FAILED: &str = "hostd.start_failed";
+pub const REFUSED: &str = "hostd.refused";
+pub const BUSY: &str = "hostd.busy";
+pub const TOO_MANY_CLIENTS: &str = "hostd.too_many_clients";
+pub const CLI_NOT_FOUND: &str = "hostd.cli_not_found";
+
+fn coded(code: &'static str, args: Value, message: impl Into<String>) -> anyhow::Error {
+    Coded::new(code, args, message).into()
+}
+
+fn closed() -> anyhow::Error {
+    coded(CLOSED, json!({}), "hostd closed the connection")
+}
+
+fn disconnected() -> anyhow::Error {
+    coded(DISCONNECTED, json!({}), "hostd disconnected")
+}
+
+fn start_failed() -> anyhow::Error {
+    coded(START_FAILED, json!({}), "hostd did not start")
+}
+
+/// What hostd answers when it refuses a client because it already serves as many as it takes (the daemon's own
+/// answer for a full house, next to [`crate::server::ERR_BUSY`]).
+const ERR_TOO_MANY_CLIENTS: &str = "too many clients";
+
+/// hostd answered a hello or a request with `why` instead of its data. A loaded daemon's two refusals (`hostd busy`,
+/// `too many clients`) have a code of their own: the app tells them from a daemon that is gone by it.
+fn refused(why: &str) -> anyhow::Error {
+    let message = format!("hostd: {why}");
+    match why {
+        crate::server::ERR_BUSY => coded(BUSY, json!({}), message),
+        ERR_TOO_MANY_CLIENTS => coded(TOO_MANY_CLIENTS, json!({}), message),
+        _ => coded(REFUSED, json!({"why": why}), message),
+    }
+}
+
+/// The failure a reply line says (`{"ok":false,"error":..}`): a [`Coded`] when it carries a `code` this build knows
+/// (`protocol::REPLY_CODES`), else the text alone, which is all an older daemon sends and what every caller printed
+/// before the codes. The text is the same either way.
+pub(crate) fn reply_error(v: &Value) -> anyhow::Error {
+    let message = v["error"].as_str().unwrap_or("error");
+    let known = v["code"]
+        .as_str()
+        .and_then(|c| crate::protocol::REPLY_CODES.iter().find(|k| **k == c));
+    match known {
+        Some(code) => coded(code, v["args"].clone(), message),
+        None => anyhow!(message.to_string()),
+    }
+}
 
 /// How long a call waits for hostd's reply unless [`deadline_for`] says it legitimately takes longer (#298).
 pub const CALL_DEADLINE: Duration = Duration::from_secs(10);
@@ -44,12 +124,14 @@ const LONG_CALL_DEADLINE: Duration = Duration::from_secs(3600);
 #[cfg(test)]
 const QUICK: &[&str] = &[
     "agent_approve",
+    "agent_approve_voice",
     "agent_bind",
     "agent_interrupt",
     "agent_pane_exited",
     "agent_send",
     "agent_status_all",
     "crew_audit",
+    "crew_github_app_manifest",
     "crew_github_connect_resume",
     "crew_pause",
     "crew_resume",
@@ -59,7 +141,10 @@ const QUICK: &[&str] = &[
     "crew_telegram_link",
     "crew_telegram_set",
     "crew_telegram_status",
+    "crew_voice_set",
+    "crew_voice_status",
     "crewmate_action_answer",
+    "crewmate_action_answer_voice",
     "crewmate_answer",
     "crewmate_attachment",
     "crewmate_attachment_put",
@@ -71,11 +156,14 @@ const QUICK: &[&str] = &[
     "crewmate_memory_set",
     "crewmate_routine_set",
     "crewmate_secret_set",
+    "crewmate_set_approval",
     "crewmate_task",
     "crewmate_tasks",
     "crewmate_triggers_set",
     "crewmate_update",
     "crewmate_usage",
+    // One piece (at most 512 KiB) appended to a file.
+    "crewmate_voice_put",
     "engine_limits",
     "fs_list",
     "fs_mkdir",
@@ -126,6 +214,10 @@ const LONG: &[&str] = &[
     "agent_tree",
     "agent_integrations",
     "agent_launch",
+    // Talk to GitHub (a conversion, the installations of the app, revoking its tokens), and read or write the key file.
+    "crew_github_app_convert",
+    "crew_github_app_status",
+    "crew_github_app_remove",
     "crew_github_status",
     "crew_github_login_start",
     "crew_github_login_poll",
@@ -133,6 +225,8 @@ const LONG: &[&str] = &[
     "crew_engine_status",
     "crew_engine_login",
     "crewmate_delete",
+    // Runs the speech engine over up to five minutes of audio, or waits for a hosted endpoint.
+    "crewmate_transcribe",
     "fs_read",
     "fs_write",
     "fs_remove",
@@ -244,11 +338,11 @@ pub fn is_unusable(e: &CallError) -> bool {
 /// A pushed event: `{"ev": "...", ...}`.
 pub type HostEvent = Arc<Value>;
 
-type ReplyRx = oneshot::Receiver<Result<Value, String>>;
+type ReplyRx = oneshot::Receiver<Result<Value>>;
 
 /// How a wait for a reply ended.
 enum Waited {
-    Reply(Result<Value, String>),
+    Reply(Result<Value>),
     /// The connection went away with the call unanswered.
     Dropped,
     /// The liveness probe found the daemon silent.
@@ -287,7 +381,7 @@ fn see_log(log: Option<&Path>) -> String {
 
 /// Calls waiting for their reply. `None` once the connection dropped: the reader closes it as it
 /// exits, so a call can never register after the last moment anyone would answer it (#226).
-type Pending = Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>>;
+type Pending = Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Value>>>>>>;
 
 #[derive(Clone)]
 pub struct HostClient {
@@ -332,13 +426,16 @@ impl HostClient {
         })?;
         let (r, mut w) = ipc::split(stream);
         let mut lines = BufReader::new(r).lines();
-        let hello = crate::protocol::hello_line(token, client);
+        // Inside a crewmate's agent (hostd gives it ATLAS_CREWMATE_ID) every client says so, and hostd then
+        // refuses what only the owner may do (`crewmate_set_approval`).
+        let who = match std::env::var("ATLAS_CREWMATE_ID") {
+            Ok(id) if !id.is_empty() => format!("crewmate:{id}"),
+            _ => client.to_string(),
+        };
+        let hello = crate::protocol::hello_line(token, &who);
         let first = tokio::time::timeout(handshake, async {
             w.write_all(format!("{hello}\n").as_bytes()).await?;
-            lines
-                .next_line()
-                .await?
-                .ok_or_else(|| anyhow!("hostd closed the connection"))
+            lines.next_line().await?.ok_or_else(closed)
         })
         .await
         .map_err(|_| {
@@ -354,7 +451,7 @@ impl HostClient {
             // Only a refused token proves the daemon unusable; any other answer is a daemon that is alive.
             return Err(match why {
                 "unauthorized" => Unusable(format!("hostd: {why}")).into(),
-                _ => anyhow!("hostd: {why}"),
+                _ => refused(why),
             });
         }
         let lab = !v["data"]["lab"].is_null();
@@ -383,7 +480,7 @@ impl HostClient {
                         let res = if v["ok"] == true {
                             Ok(v.get("data").cloned().unwrap_or(Value::Null))
                         } else {
-                            Err(v["error"].as_str().unwrap_or("error").to_string())
+                            Err(reply_error(&v))
                         };
                         let _ = tx.send(res);
                     }
@@ -422,12 +519,12 @@ impl HostClient {
         let (otx, orx) = oneshot::channel();
         match self.pending.lock().as_mut() {
             Some(m) => m.insert(id, otx),
-            None => return Err(anyhow!("hostd disconnected")),
+            None => return Err(disconnected()),
         };
         let slot = Slot { client: self, id };
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string();
         if self.tx.force(line).is_err() {
-            return Err(anyhow!("hostd disconnected"));
+            return Err(disconnected());
         }
         Ok((slot, orx))
     }
@@ -483,8 +580,8 @@ impl HostClient {
         };
         match tokio::time::timeout(deadline, wait).await {
             Ok(Waited::Reply(Ok(v))) => Ok(v),
-            Ok(Waited::Reply(Err(e))) => Err(anyhow!(e)),
-            Ok(Waited::Dropped) => Err(anyhow!("hostd disconnected")),
+            Ok(Waited::Reply(Err(e))) => Err(e),
+            Ok(Waited::Dropped) => Err(disconnected()),
             Ok(Waited::Silent) => Err(Unanswered(format!(
                 "hostd stopped answering while `{cmd}` was running: no reply to its liveness probes{}",
                 see_log(self.log.as_deref())
@@ -543,16 +640,34 @@ pub fn atlas_bin_with(login_path: Option<&std::ffi::OsStr>) -> Result<PathBuf> {
         login_path,
         std::env::var_os("PATH").as_deref(),
     )
-    .ok_or_else(|| anyhow!(NOT_FOUND))
+    .ok_or_else(cli_not_found)
 }
 
-/// What the user can do when no runnable `atlas` was found (the CLI that `atlas desktop --install` lives in is the
-/// one that is missing, so the message gives the installer itself).
-pub const NOT_FOUND: &str = if cfg!(windows) {
-    "atlas CLI not found — install (PowerShell): irm https://atlas.codeatlas.com.br/install.ps1 | iex"
+/// The line that installs the CLI on this OS (the CLI that `atlas desktop --install` lives in is the one that is
+/// missing, so the message gives the installer itself).
+pub const INSTALL_COMMAND: &str = if cfg!(windows) {
+    "irm https://atlas.codeatlas.com.br/install.ps1 | iex"
 } else {
-    "atlas CLI not found — install: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
+    "curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
 };
+
+/// What the user can do when no runnable `atlas` was found: English, for logs and a client that does not know
+/// `hostd.cli_not_found`.
+pub const NOT_FOUND: &str = if cfg!(windows) {
+    "atlas CLI not found. Install it in PowerShell: irm https://atlas.codeatlas.com.br/install.ps1 | iex"
+} else {
+    "atlas CLI not found. Install it with: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
+};
+
+fn cli_not_found() -> anyhow::Error {
+    cli_not_found_with(INSTALL_COMMAND, NOT_FOUND)
+}
+
+/// `hostd.cli_not_found` for a given installer line: production passes this OS's, the desktop contract test passes
+/// one fixed line so the fixture is the same on every OS (the desktop shows `command` as given).
+fn cli_not_found_with(command: &str, message: &str) -> anyhow::Error {
+    coded(CLI_NOT_FOUND, json!({"command": command}), message)
+}
 
 /// Connect to the local hostd, starting it (detached, own session) if needed.
 pub async fn ensure_local(atlas: &Path, client: &str) -> Result<HostClient> {
@@ -601,6 +716,7 @@ async fn ensure_in_within(
         .stderr(log);
     // Detach hostd from our session so it survives the app quitting.
     let mut child = atlas_core::sys::spawn_detached(&mut cmd)
+        // i18n-ignore: context of an error chain (names the program being started), read in logs and after the coded message
         .with_context(|| format!("spawn {}", atlas.display()))?;
     std::thread::spawn(move || child.wait());
     let mut last = None;
@@ -611,7 +727,8 @@ async fn ensure_in_within(
             Err(e) => last = Some(e),
         }
     }
-    Err(last.unwrap_or_else(|| anyhow!("hostd did not start")))
+    Err(last.unwrap_or_else(start_failed))
+        // i18n-ignore: context of an error chain (names the log to read), read in logs and after the coded message
         .with_context(|| format!("see {}", paths::log(dir).display()))
 }
 
@@ -717,7 +834,9 @@ pub struct RawPty {
 
 /// Open a dedicated raw byte stream for `pty` on the hostd at `dir`.
 pub async fn attach_raw(dir: &Path, pty: &str, replay: bool) -> Result<RawPty> {
-    let token = paths::read_token(dir).context("hostd token")?;
+    let token = paths::read_token(dir)
+        // i18n-ignore: context of an error chain (names the file being read), read in logs
+        .context("hostd token")?;
     let stream = ipc::connect(&paths::socket(dir)).await?;
     let (r, mut w) = ipc::split(stream);
     let mut reader = BufReader::new(r);
@@ -744,11 +863,11 @@ async fn reply_line(r: &mut BufReader<ipc::ReadHalf>) -> Result<Value> {
             ))
         })??;
     if n == 0 {
-        return Err(anyhow!("hostd closed the connection"));
+        return Err(closed());
     }
     let v: Value = serde_json::from_str(&line)?;
     if v["ok"] != true {
-        return Err(anyhow!("hostd: {}", v["error"].as_str().unwrap_or("error")));
+        return Err(refused(v["error"].as_str().unwrap_or("error")));
     }
     Ok(v.get("data").cloned().unwrap_or(Value::Null))
 }
@@ -757,6 +876,7 @@ async fn reply_line(r: &mut BufReader<ipc::ReadHalf>) -> Result<Value> {
 mod tests {
     use super::{HostClient, deadline_for, is_hostd_command};
     use atlas_core::ipc;
+    use atlas_core::scaling::HANG;
     use serde_json::json;
     use std::time::Duration;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -792,7 +912,7 @@ mod tests {
     async fn hang_up(c: &HostClient, hang_up: tokio::sync::oneshot::Sender<()>) {
         let mut ev = c.events();
         drop(hang_up);
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG, async {
             while ev.recv().await.unwrap()["ev"] != "disconnected" {}
         })
         .await
@@ -807,7 +927,7 @@ mod tests {
     async fn a_call_on_a_connection_that_already_dropped_fails_at_once() {
         let (_tmp, c, h) = fake_hostd(0).await;
         hang_up(&c, h).await;
-        let r = tokio::time::timeout(Duration::from_secs(5), c.call("info", json!({})))
+        let r = tokio::time::timeout(HANG, c.call("info", json!({})))
             .await
             .expect("a call on a dead connection must not wait forever");
         assert!(r.unwrap_err().to_string().contains("disconnected"));
@@ -818,7 +938,7 @@ mod tests {
     async fn closed_resolves_when_asked_after_the_drop() {
         let (_tmp, c, h) = fake_hostd(0).await;
         hang_up(&c, h).await;
-        tokio::time::timeout(Duration::from_secs(5), c.closed())
+        tokio::time::timeout(HANG, c.closed())
             .await
             .expect("closed() must resolve for a connection that is already gone");
     }
@@ -828,7 +948,7 @@ mod tests {
     async fn a_call_in_flight_when_the_daemon_hangs_up_fails() {
         let (_tmp, c, h) = fake_hostd(1).await;
         drop(h);
-        let r = tokio::time::timeout(Duration::from_secs(5), c.call("info", json!({})))
+        let r = tokio::time::timeout(HANG, c.call("info", json!({})))
             .await
             .expect("an unanswered call must fail when the connection drops");
         assert!(r.unwrap_err().to_string().contains("disconnected"));
@@ -841,13 +961,18 @@ mod tests {
         let (_tmp, c, _h) = fake_hostd(1).await;
         let t = std::time::Instant::now();
         let r = tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG,
             c.call_within("info", json!({}), Duration::from_millis(300)),
         )
         .await
         .expect("the deadline must end the call, not the test's own timeout");
         let e = r.unwrap_err();
-        assert!(t.elapsed() < Duration::from_secs(2));
+        // The deadline was waited for, not given up at once; that it ends the call at all is the timeout above.
+        assert!(
+            t.elapsed() >= Duration::from_millis(300),
+            "{:?}",
+            t.elapsed()
+        );
         assert!(e.to_string().contains("hostd.log") && e.to_string().contains("`info`"));
         assert!(e.downcast_ref::<super::Unanswered>().is_some());
         assert!(c.pending.lock().as_ref().unwrap().is_empty());
@@ -859,15 +984,14 @@ mod tests {
     async fn a_long_call_fails_at_the_first_unanswered_probe_not_at_its_class_deadline() {
         let (_tmp, mut c, _h) = fake_hostd(1).await;
         c.probe = Some((Duration::from_millis(200), Duration::from_millis(200)));
-        let t = std::time::Instant::now();
         let r = tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG,
             c.call_within("project_action", json!({}), Duration::from_secs(3600)),
         )
         .await
         .expect("a probe must end the call long before its deadline");
         let e = r.unwrap_err();
-        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        // Ended by the probe: the class deadline (an hour) is far past HANG, so only the probe can get here.
         assert!(e.downcast_ref::<super::Unanswered>().is_some());
         assert!(e.to_string().contains("hostd.log") && e.to_string().contains("project_action"));
         assert!(c.pending.lock().as_ref().unwrap().is_empty());
@@ -930,11 +1054,19 @@ mod tests {
             std::future::pending::<()>().await;
         });
         let t = std::time::Instant::now();
-        let e = HostClient::connect_dir_within(tmp.path(), "test", Duration::from_millis(300))
-            .await
-            .err()
-            .expect("a silent daemon must not connect");
-        assert!(t.elapsed() < Duration::from_secs(2));
+        let e = tokio::time::timeout(
+            HANG,
+            HostClient::connect_dir_within(tmp.path(), "test", Duration::from_millis(300)),
+        )
+        .await
+        .expect("the handshake deadline must end the connect, not the test's own timeout")
+        .err()
+        .expect("a silent daemon must not connect");
+        assert!(
+            t.elapsed() >= Duration::from_millis(300),
+            "{:?}",
+            t.elapsed()
+        );
         assert!(e.to_string().contains("handshake") && e.to_string().contains("hostd.log"));
         assert!(!super::is_unusable(&e), "slow is not unusable");
         assert!(super::HANDSHAKE_DEADLINE <= Duration::from_secs(5));
@@ -1027,9 +1159,8 @@ mod tests {
         let mut c = HostClient::connect(&sock, "t", "test").await.unwrap();
         c.probe = Some((Duration::from_millis(50), Duration::from_millis(50)));
         c.probe_misses = 3;
-        let t = std::time::Instant::now();
         let e = tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG,
             c.call_within("project_action", json!({}), Duration::from_secs(3600)),
         )
         .await
@@ -1037,8 +1168,8 @@ mod tests {
             "streaming must not keep a call that gets no probe reply alive for its class deadline",
         )
         .unwrap_err();
+        // The class deadline (an hour) is far past HANG: only the missed probes can end the call.
         assert!(e.downcast_ref::<super::Unanswered>().is_some());
-        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
         assert!(c.pending.lock().as_ref().unwrap().is_empty());
     }
 
@@ -1061,11 +1192,11 @@ mod tests {
         let dir = tmp.path();
         // SIGTERM ignored before `exec`, so the `atlas hostd` process inherits it.
         let mut hostd = std::process::Command::new("bash")
-            .args(["-c", "trap '' TERM; exec -a 'atlas hostd' sleep 60"])
+            .args(["-c", "trap '' TERM; exec -a 'atlas hostd' sleep 600"])
             .spawn()
             .unwrap();
         std::fs::write(crate::paths::pid(dir), hostd.id().to_string()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG, async {
             while super::live_hostd_pid(dir).is_none() {
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
@@ -1075,10 +1206,17 @@ mod tests {
 
         super::retire_hostd_within(dir, Duration::from_millis(100), Duration::from_millis(400))
             .await;
-        let ended = (0..50).any(|_| {
+        // The process outlives HANG by itself, so only the kill can end it: wait for that exit event.
+        let t0 = std::time::Instant::now();
+        let ended = loop {
+            if hostd.try_wait().unwrap().is_some() {
+                break true;
+            }
+            if t0.elapsed() > HANG {
+                break false;
+            }
             std::thread::sleep(Duration::from_millis(20));
-            hostd.try_wait().unwrap().is_some()
-        });
+        };
         let _ = hostd.kill();
         let _ = hostd.wait();
         assert!(ended, "a hostd that ignores SIGTERM was left running");
@@ -1102,7 +1240,7 @@ mod tests {
             .spawn()
             .unwrap();
         std::fs::write(crate::paths::pid(dir), hostd.id().to_string()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG, async {
             while super::live_hostd_pid(dir).is_none() {
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
@@ -1213,7 +1351,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
         };
-        tokio::time::timeout(Duration::from_secs(5), verified)
+        tokio::time::timeout(HANG, verified)
             .await
             .expect("the fake hostd never showed an `atlas hostd` command line");
 
@@ -1316,5 +1454,107 @@ mod tests {
             cfg!(windows)
         );
         assert!(!is_hostd_command(r#""C:\Program Files\x\atlas.exe" mcp"#));
+    }
+}
+
+#[cfg(test)]
+mod coded_error_tests {
+    use super::*;
+
+    fn wire(e: &anyhow::Error) -> Value {
+        e.chain()
+            .find_map(|c| c.downcast_ref::<Coded>())
+            .expect("a Coded error")
+            .wire()
+    }
+
+    /// Contract with the desktop: `apps/desktop/src/lib/__fixtures__/hostd-client-errors.json` is the REAL wire
+    /// shape of every coded failure of this client (each built by the function the client uses), next to [`CODES`],
+    /// which `apps/desktop/src/lib/hostText.test.ts` renders from the catalog: one message per code, or the test
+    /// fails. `UPDATE_FIXTURES=1` regenerates it.
+    #[test]
+    fn client_errors_json_contract() {
+        let samples = [
+            closed(),
+            disconnected(),
+            start_failed(),
+            refused("hello timeout"),
+            refused("hostd busy"),
+            refused("too many clients"),
+            // One fixed line, not this OS's: the fixture must be byte-identical on every CI runner.
+            cli_not_found_with(
+                "curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash",
+                "atlas CLI not found. Install it with: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash",
+            ),
+        ];
+        let errors: Vec<Value> = samples.iter().map(wire).collect();
+        for c in CODES {
+            assert!(
+                errors.iter().any(|e| e["code"] == *c),
+                "no sample for the code {c}"
+            );
+        }
+        for e in &errors {
+            assert!(
+                CODES.contains(&e["code"].as_str().unwrap()),
+                "{e} is not in CODES"
+            );
+        }
+        let value = json!({"codes": CODES, "errors": errors});
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/hostd-client-errors.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    /// A code with a context around it (`see <log>`, added by `ensure_in`) is still found, and the text stays the
+    /// one every caller printed before: the English of the whole chain.
+    #[test]
+    fn a_coded_error_survives_the_context_added_around_it() {
+        let e: anyhow::Error = Err::<(), _>(start_failed())
+            .with_context(|| "see /tmp/hostd.log")
+            .unwrap_err();
+        assert_eq!(wire(&e)["code"], START_FAILED);
+        assert_eq!(format!("{e:#}"), "see /tmp/hostd.log: hostd did not start");
+    }
+
+    /// What every caller matched on or printed before the codes: the sentences are unchanged.
+    #[test]
+    fn the_english_of_every_error_is_what_it_always_was() {
+        assert_eq!(closed().to_string(), "hostd closed the connection");
+        assert_eq!(disconnected().to_string(), "hostd disconnected");
+        assert_eq!(start_failed().to_string(), "hostd did not start");
+        assert_eq!(refused("unauthorized").to_string(), "hostd: unauthorized");
+        // The two refusals of a loaded daemon read as before and have a code of their own.
+        assert_eq!(refused("hostd busy").to_string(), "hostd: hostd busy");
+        assert_eq!(
+            refused("too many clients").to_string(),
+            "hostd: too many clients"
+        );
+        assert_eq!(wire(&refused("hostd busy"))["code"], BUSY);
+        assert_eq!(wire(&refused("too many clients"))["code"], TOO_MANY_CLIENTS);
+        assert_eq!(wire(&refused("hello timeout"))["code"], REFUSED);
+        assert!(
+            cli_not_found()
+                .to_string()
+                .starts_with("atlas CLI not found. Install it")
+        );
     }
 }

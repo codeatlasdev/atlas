@@ -8,6 +8,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 use atlas_core::sys::CommandExt as _;
+use atlas_i18n::t;
 
 /// Where the installer registers itself (per user), with the installed version as
 /// `DisplayVersion`: the Tauri installer's uninstall key, named after the product.
@@ -63,8 +64,11 @@ fn reg_value(out: &str, name: &str) -> Option<String> {
 pub(super) fn install(source: &Path, target: &Path, version: Option<&str>) -> Result<()> {
     if !is_pe(source) {
         bail!(
-            "{} is not a Windows installer (expected an .exe)",
-            source.display()
+            "{}",
+            t!(
+                "cmd_desktop_not_installer",
+                path = source.display().to_string()
+            )
         );
     }
     // The silent installer terminates a running Atlas Desktop: bring it back afterwards (the terminal
@@ -106,9 +110,20 @@ fn run_installer(source: &Path, dir: &Path) -> Result<()> {
         .raw_arg(format!("/D={}", dir.display()))
         .stdin(Stdio::null())
         .status()
-        .with_context(|| format!("cannot run {}", source.display()))?;
+        .with_context(|| {
+            t!(
+                "cmd_desktop_run_failed",
+                command = source.display().to_string()
+            )
+        })?;
     if !st.success() {
-        bail!("the Atlas installer failed ({st})");
+        bail!(
+            "{}",
+            t!(
+                "cmd_desktop_installer_failed",
+                status = crate::chrome::exit_text(st)
+            )
+        );
     }
     Ok(())
 }
@@ -182,7 +197,12 @@ fn install_with(
     run: impl FnOnce(&Path) -> Result<()>,
     registered: impl FnOnce() -> Option<String>,
 ) -> Result<()> {
-    let dir = target.parent().context("bad install path")?;
+    let dir = target.parent().with_context(|| {
+        t!(
+            "cmd_desktop_bad_install_path",
+            path = target.display().to_string()
+        )
+    })?;
     let pid = std::process::id();
     recover(dir, pid);
     let suffix = aside_suffix(pid);
@@ -199,8 +219,12 @@ fn install_with(
                 for (f, t) in aside.iter().rev() {
                     let _ = std::fs::rename(t, f);
                 }
-                return Err(err)
-                    .with_context(|| format!("cannot move {} aside to update it", from.display()));
+                return Err(err).with_context(|| {
+                    t!(
+                        "cmd_desktop_move_aside_failed",
+                        path = from.display().to_string()
+                    )
+                });
             }
             aside.push((from, to));
         }
@@ -209,15 +233,33 @@ fn install_with(
     let old_version = std::fs::read(vf).ok();
 
     let result = (|| -> Result<()> {
-        std::fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
+        std::fs::create_dir_all(dir).with_context(|| {
+            t!(
+                "cmd_install_create_failed",
+                path = dir.display().to_string()
+            )
+        })?;
         run(dir)?;
         if !target.is_file() {
-            bail!("the installer finished but {} is missing", target.display());
+            bail!(
+                "{}",
+                t!(
+                    "cmd_desktop_installer_no_app",
+                    path = target.display().to_string()
+                )
+            );
         }
         if let (Some(want), Some(got)) = (version, registered())
             && got != want
         {
-            bail!("the installer left Atlas Desktop {got}, expected {want}");
+            bail!(
+                "{}",
+                t!(
+                    "cmd_desktop_installer_wrong_version",
+                    found = got,
+                    expected = want
+                )
+            );
         }
         record_version(vf, version)
     })();
@@ -254,9 +296,9 @@ fn install_with(
                 }
             }
             Err(e.context(if had_old {
-                "Atlas Desktop update failed; the previous install was restored"
+                t!("cmd_desktop_update_rolled_back")
             } else {
-                "Atlas Desktop install failed"
+                t!("cmd_desktop_install_rolled_back")
             }))
         }
     }
@@ -295,8 +337,12 @@ pub(super) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    atlas_core::sys::spawn_detached(&mut cmd)
-        .with_context(|| format!("cannot start {}", app.display()))?;
+    atlas_core::sys::spawn_detached(&mut cmd).with_context(|| {
+        t!(
+            "cmd_desktop_start_failed",
+            program = app.display().to_string()
+        )
+    })?;
     Ok(())
 }
 
@@ -333,7 +379,12 @@ mod tests {
             let p = tmp.path().join("setup.exe");
             std::fs::write(&p, bad).unwrap();
             let e = install(&p, &target, Some("1.0.0")).unwrap_err();
-            assert!(e.to_string().contains("not a Windows installer"), "{e}");
+            let want = atlas_i18n::t_in!(
+                "en",
+                "cmd_desktop_not_installer",
+                path = p.display().to_string()
+            );
+            assert_eq!(e.to_string(), want);
         }
         assert!(!target.exists());
     }
@@ -418,7 +469,13 @@ mod install_tests {
             Some("1.0.5".into())
         })
         .unwrap_err();
-        assert!(format!("{e:#}").contains("left Atlas Desktop 1.0.5, expected 1.1.0"));
+        let want = atlas_i18n::t_in!(
+            "en",
+            "cmd_desktop_installer_wrong_version",
+            found = "1.0.5",
+            expected = "1.1.0"
+        );
+        assert!(format!("{e:#}").contains(&want), "{e:#}");
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "old");
         assert_eq!(std::fs::read_to_string(&vf).unwrap(), "1.0.0");
         assert_eq!(names(tmp.path()), ["Atlas", "app-version"]);

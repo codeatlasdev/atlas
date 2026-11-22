@@ -32,6 +32,7 @@ mod pty;
 mod recover;
 mod reporting;
 mod slots;
+pub(crate) mod spoken;
 pub(crate) use reporting::Live as ReportingLive;
 #[cfg(test)]
 pub(crate) use reporting::branch_to_report;
@@ -57,6 +58,9 @@ use conversation::run_one_conversational;
 pub(crate) use guard::strip_unproven as guard_strip_unproven;
 pub(crate) use guard::{OVERRIDE as REFUSAL_OVERRIDE, RETRY as REFUSAL_RETRY};
 use outcome::{audit_task, update_task};
+// Only the Unix-only `crew::tests::permissions` reaches it from outside; on Windows it would be an unused import.
+#[cfg(all(test, unix))]
+pub(crate) use pty::launch_argv;
 use pty::run_one_pty;
 #[cfg(test)]
 pub(crate) use recover::interrupted_for_fixture;
@@ -201,6 +205,7 @@ pub(crate) fn cancel_all(hub: &Hub, reason: &str) {
     };
     for (crewmate_id, task_id) in running {
         if let Err(e) = cancel_with(hub, &hub.crew.store, &crewmate_id, &task_id, Some(reason)) {
+            // i18n-ignore: log
             eprintln!("atlas crew: pause: cannot cancel task {task_id} of {crewmate_id}: {e}");
         }
     }
@@ -229,6 +234,7 @@ pub(crate) fn resume_all(hub: &Hub) {
                 tokio::spawn(async move { run_worker(hub_arc, crewmate).await });
             }
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: resume: crewmate {id} unreadable, its queue stays held: {e}"
                 );

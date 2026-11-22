@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use super::super::store::{Routine, Trigger, TriggerKind};
+use super::super::store::{Mode, Routine, Trigger, TriggerKind};
 use super::super::{events, now_s, schedule, triggers};
 use crate::server::Hub;
 
@@ -32,8 +32,17 @@ pub(crate) fn set_routines(hub: &Hub, id: String, routines: Vec<Value>) -> Resul
     // Parse and validate the routines.
     let parsed: Vec<Routine> =
         serde_json::from_value(json!(routines)).map_err(|e| format!("invalid routines: {e}"))?;
+    // A routine kept as it is stays, even when its cron no longer parses (one saved under an older cron parser):
+    // it must not block editing the others, and `crewmate_list` marks it `invalid` until the user fixes or
+    // deletes it. Only what is new or changed is validated.
     for r in &parsed {
-        schedule::validate_cron(&r.cron)?;
+        if !crewmate
+            .routines
+            .iter()
+            .any(|old| old.id == r.id && old.cron == r.cron)
+        {
+            schedule::validate_cron(&r.cron)?;
+        }
     }
     let old = std::mem::replace(&mut crewmate.routines, parsed);
     hub.crew
@@ -62,13 +71,19 @@ pub(crate) fn set_triggers(hub: &Hub, id: String, triggers: Vec<Value>) -> Resul
         .map(|v| {
             let mut t: Trigger =
                 serde_json::from_value(v).map_err(|e| format!("invalid trigger: {e}"))?;
-            // Validate tz before anything else.
-            if let Some(tz_str) = &t.tz {
-                tz_str
-                    .parse::<chrono_tz::Tz>()
-                    .map_err(|_| format!("unknown timezone: {tz_str}"))?;
+            // Validate what is new or changed; a trigger kept as it is stays (see `set_routines`).
+            let unchanged = old_triggers.iter().any(|ot| {
+                ot.id == t.id
+                    && ot.tz == t.tz
+                    && serde_json::to_value(&ot.kind).ok() == serde_json::to_value(&t.kind).ok()
+            });
+            if !unchanged {
+                // Validate tz before anything else.
+                if let Some(tz_str) = &t.tz {
+                    schedule::validate_tz(tz_str)?;
+                }
+                triggers::validate_trigger(&t)?;
             }
-            triggers::validate_trigger(&t)?;
             // Preserve last_fired of an existing trigger with the same id;
             // baseline new schedule/interval triggers so first fire is on-schedule.
             if let Some(existing) = old_triggers.iter().find(|ot| ot.id == t.id) {
@@ -167,26 +182,37 @@ pub(crate) fn get(hub: &Hub) -> Result<Value, String> {
         "short_replies_model": settings.short_replies_model,
         "max_agents": settings.max_agents,
         "agent_memory_max": settings.agent_memory_max,
+        "default_approval": settings.default_approval,
+        "allow_bypass": settings.allow_bypass,
+        "public_url": settings.public_url,
         // What agents run under now, or why there is no cap: asked of the helper, never assumed.
         "memory_cap": super::super::memory_cap::report(hub),
     }))
 }
 
-/// What `crew_settings_set` carries.
+/// What `crew_settings_set` carries. Every field is optional: an absent one is left as it is.
 pub(crate) struct SettingsIn {
-    pub short_replies: bool,
-    pub short_replies_model: Option<String>,
+    pub short_replies: Option<bool>,
+    /// `Some(None)` clears it (the default model).
+    pub short_replies_model: Option<Option<String>>,
     pub max_agents: Option<usize>,
     pub agent_memory_max: Option<u64>,
+    pub default_approval: Option<String>,
+    pub allow_bypass: Option<bool>,
+    /// Absent leaves it, `""` clears it (webhooks off).
+    pub public_url: Option<String>,
 }
 
 /// `CrewSettingsSet`
-pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
+pub(crate) async fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
     let SettingsIn {
         short_replies,
         short_replies_model,
         max_agents,
         agent_memory_max,
+        default_approval,
+        allow_bypass,
+        public_url,
     } = input;
     if max_agents == Some(0) {
         return Err("max_agents must be at least 1: 0 would stop every task".into());
@@ -194,24 +220,75 @@ pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
     let memory_max = agent_memory_max
         .map(super::super::memory_cap::parse_setting)
         .transpose()?;
+    let public_url = public_url
+        .as_deref()
+        .map(super::super::store::normalize_public_url)
+        .transpose()?;
     // Load, change, save: the file also holds `paused`, which this command must never reset.
     let mut settings = hub.crew.store.load_crew_settings();
-    settings.short_replies = short_replies;
-    settings.short_replies_model = short_replies_model;
+    if let Some(on) = short_replies {
+        settings.short_replies = on;
+    }
+    if let Some(model) = short_replies_model {
+        settings.short_replies_model = model.filter(|m| !m.trim().is_empty());
+    }
     if let Some(n) = max_agents {
         settings.max_agents = n;
     }
     if let Some(m) = memory_max {
         settings.agent_memory_max = m;
     }
+    if let Some(allow) = allow_bypass {
+        settings.allow_bypass = allow;
+    }
+    let old_url = settings.public_url.clone();
+    if let Some(url) = public_url {
+        settings.public_url = url;
+    }
+    if let Some(m) = default_approval.as_deref().map(Mode::parse).transpose()? {
+        if m == Mode::Bypass && !settings.allow_bypass {
+            return Err("bypass is not allowed on this crew (allow_bypass is off)".into());
+        }
+        settings.default_approval = m;
+    }
+    // Taking Bypass off the crew also takes it off the default a new crewmate would start in.
+    if !settings.allow_bypass && settings.default_approval == Mode::Bypass {
+        settings.default_approval = Mode::Ask;
+    }
     hub.crew
         .store
         .save_crew_settings(&settings)
         .map_err(|e| format!("save_crew_settings: {e}"))?;
+    if !settings.allow_bypass {
+        super::super::approval::revoke_bypass(hub, "owner");
+    }
     hub.crew.agent_slots.set_limit(settings.max_agents);
     // The cap depends on both numbers: the helper rewrites memory.max of the agents that run.
     let cap = super::super::memory_cap::apply(hub);
-    Ok(json!({ "memory_cap": cap }))
+    // The webhook follows the URL: what was verified under the old one is forgotten and GitHub is told the new one.
+    // The setting is saved either way; a failure to tell GitHub is said in the reply and retried by the
+    // reconciliation loop.
+    let mut webhook_error = None;
+    if settings.public_url != old_url {
+        hub.crew.audit.record(
+            None,
+            "github_webhook_url_set",
+            json!({"url": settings.public_url}),
+        );
+        webhook_error = hub
+            .crew
+            .github_app
+            .webhook_url_changed(settings.public_url.as_deref())
+            .await
+            .err();
+    }
+    Ok(json!({
+        "memory_cap": cap,
+        "default_approval": settings.default_approval,
+        "allow_bypass": settings.allow_bypass,
+        "public_url": settings.public_url,
+        "webhook_error": webhook_error,
+    }))
 }
 
 /// `EngineLimits`

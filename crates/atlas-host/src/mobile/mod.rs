@@ -13,7 +13,8 @@
 //!
 //! The endpoint binds only once a phone is paired or a pairing starts: a hostd nobody
 //! pairs never touches the network. `ServeOpts::no_mobile_relay` (`ATLAS_MOBILE_RELAY=0`
-//! for `atlas hostd`) turns relays and address lookup off (LAN, tests).
+//! for `atlas hostd`) turns relays and address lookup off (LAN, tests). `ServeOpts::mobile_loopback`
+//! (`ATLAS_MOBILE_LOOPBACK=1`) binds loopback only: tests, so a Mac's firewall never asks about them.
 
 mod addrs;
 mod session;
@@ -112,6 +113,9 @@ pub struct Mobile {
     binding: tokio::sync::Mutex<()>,
     /// Use n0's public relays (off: direct addresses only, for tests and local runs).
     relay: bool,
+    /// Bind loopback only (tests): the default listens on every interface, which makes the macOS
+    /// firewall ask "accept incoming network connections?" for each new test binary.
+    loopback: bool,
     /// The daemon, for the sessions the endpoint accepts (set once it exists).
     hub: std::sync::OnceLock<std::sync::Weak<Hub>>,
     /// Pending mobile invites (url, name, created_at); pruned on expiry.
@@ -178,9 +182,16 @@ impl Mobile {
             endpoint: Mutex::new(None),
             binding: tokio::sync::Mutex::new(()),
             relay,
+            loopback: false,
             hub: std::sync::OnceLock::new(),
             invites: Mutex::new(invites),
         })
+    }
+
+    /// Bind loopback only (see [`loopback_only`]).
+    pub fn loopback_only(mut self, on: bool) -> Self {
+        self.loopback = on;
+        self
     }
 
     pub fn node_id(&self) -> String {
@@ -451,6 +462,8 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
         "crewmate_task" => Scope::Read,
+        // A crewmate's definition changed (its permission mode included): the phone reads it again.
+        "crewmate_updated" | "crewmate_approval_unanswered" => Scope::Read,
         "atlas_update" => Scope::Read,
         "computer_invite" => Scope::Read,
         _ => return None,
@@ -515,7 +528,8 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::GitCommitMessage { .. }
         | C::GitPush { .. }
         | C::GitPrCreate { .. } => Scope::Act,
-        C::AgentApprove { .. } => Scope::Approve,
+        // Answering by voice is answering: the same grant, and hostd still refuses what needs a tap.
+        C::AgentApprove { .. } | C::AgentApproveVoice { .. } => Scope::Approve,
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
@@ -528,6 +542,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::CrewmateTask { .. } | C::CrewmateAttachmentPut { .. } | C::CrewmateCancel { .. } => {
             Scope::Act
         }
+        // Switching the permission mode is what answering a prompt amounts to (a phone that may allow a call may
+        // allow the next ones): it needs the same grant. The phone's own connection names it in the audit.
+        C::CrewmateSetApproval { .. } => Scope::Approve,
         C::CrewmateCreate { .. }
         | C::CrewmateUpdate { .. }
         | C::CrewmateDelete { .. }
@@ -535,6 +552,12 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::CrewmateRoutineSet { .. } => Scope::Act,
         C::PushRegister { .. } | C::PushUnregister { .. } => Scope::Read,
         C::CrewTelegramSet { .. } | C::CrewTelegramLink {} | C::CrewTelegramStatus {} => {
+            return Err("not available on mobile");
+        }
+        // The phone recognises speech on the phone and never sends audio to hostd; it only reads whether voice is on
+        // and the replacement table. Switching voice is the owner's, from the desktop.
+        C::CrewVoiceStatus {} => Scope::Read,
+        C::CrewVoiceSet { .. } | C::CrewmateVoicePut { .. } | C::CrewmateTranscribe { .. } => {
             return Err("not available on mobile");
         }
         C::CrewmateTriggersSet { .. } => Scope::Act,
@@ -545,9 +568,17 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::MobileInvite { .. } => return Err("not available on mobile"),
         C::MobileInvites {} => Scope::Read,
         C::MobileInviteDismiss { .. } => Scope::Act,
+        // The crew server's GitHub App is the owner's to set up: its key never leaves the server, and a phone
+        // neither creates nor removes it (nor reads which repositories it reaches).
+        C::CrewGithubAppManifest { .. }
+        | C::CrewGithubAppConvert { .. }
+        | C::CrewGithubAppStatus {}
+        | C::CrewGithubAppRemove {} => return Err("not available on mobile"),
         C::CrewGithubStatus {} | C::CrewGithubLoginPoll {} => Scope::Read,
         C::CrewGithubLoginStart {} | C::CrewGithubLogout {} => Scope::Act,
-        C::CrewmateActionAnswer { .. } | C::CrewGithubConnectResume {} => Scope::Act,
+        C::CrewmateActionAnswer { .. }
+        | C::CrewmateActionAnswerVoice { .. }
+        | C::CrewGithubConnectResume {} => Scope::Act,
         C::CrewPause {} | C::CrewResume {} => Scope::Act,
         C::CrewSettingsGet {} => Scope::Read,
         C::CrewSettingsSet { .. } => Scope::Act,
@@ -593,6 +624,7 @@ pub(crate) fn start(hub: &Arc<Hub>) {
         let mobile = hub.mobile.clone();
         tokio::spawn(async move {
             if let Err(e) = mobile.ensure_endpoint().await {
+                // i18n-ignore: log
                 eprintln!("hostd: mobile gateway: {e}");
             }
         });
@@ -614,21 +646,45 @@ fn accept_phones(ep: Endpoint, hub: std::sync::Weak<Hub>) {
     });
 }
 
+/// `builder` listening on loopback (IPv4 and IPv6) only. iroh's default binds `0.0.0.0` and `[::]`,
+/// which the macOS application firewall asks about; a phone on the same machine needs nothing more.
+pub(crate) fn loopback_only(
+    builder: iroh::endpoint::Builder,
+) -> Result<iroh::endpoint::Builder, String> {
+    builder
+        .bind_addr("127.0.0.1:0")
+        .and_then(|b| b.bind_addr("[::1]:0"))
+        .map_err(|e| format!("mobile gateway: {e}"))
+}
+
 impl Mobile {
+    /// The sockets the endpoint is bound to (empty until it is).
+    #[cfg(all(test, unix))]
+    pub(crate) fn endpoint_sockets(&self) -> Vec<std::net::SocketAddr> {
+        self.endpoint
+            .lock()
+            .as_ref()
+            .map(|e| e.bound_sockets())
+            .unwrap_or_default()
+    }
+
     /// Bind the iroh endpoint (once) and accept phones until the process exits.
     pub(crate) async fn ensure_endpoint(self: &Arc<Self>) -> Result<(), String> {
         let _one = self.binding.lock().await;
         if self.endpoint.lock().is_some() {
             return Ok(());
         }
-        let builder = if self.relay {
+        let mut builder = if self.relay {
             Endpoint::builder(iroh::endpoint::presets::N0)
         } else {
             Endpoint::builder(iroh::endpoint::presets::Minimal)
-        };
+        }
+        .secret_key(self.key.clone())
+        .alpns(vec![ALPN.to_vec()]);
+        if self.loopback {
+            builder = loopback_only(builder)?;
+        }
         let ep = builder
-            .secret_key(self.key.clone())
-            .alpns(vec![ALPN.to_vec()])
             .bind()
             .await
             .map_err(|e| format!("mobile gateway: {e}"))?;
@@ -679,6 +735,7 @@ impl Mobile {
         if let Some(d) = all.iter_mut().find(|d| d.node_id == node && !d.revoked) {
             d.last_seen = Some(now_s());
             if let Err(e) = self.save(&all) {
+                // i18n-ignore: log
                 eprintln!("hostd: mobile: saving last seen: {e}");
             }
         }

@@ -128,14 +128,15 @@ test("a second click on the … closes the menu again without activating the row
 // in any of them and this fails.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+// The label is a catalog key (the app is translated): the markup must pass this key's message to the RowMore.
 const rows = {
-	"sidebar/ProjectHead.svelte": "Project menu",
-	"sidebar/WorktreeRow.svelte": "Worktree menu",
+	"sidebar/ProjectHead.svelte": "shell_project_header_project_menu",
+	"sidebar/WorktreeRow.svelte": "sidebar_worktree_row_worktree_menu",
 };
-for (const [file, label] of Object.entries(rows)) {
+for (const [file, key] of Object.entries(rows)) {
 	test(`${file}: the … is a RowMore button and the row ignores events from its menu`, () => {
 		const src = readFileSync(join(import.meta.dir, file), "utf8");
-		expect(src).toContain(`<RowMore label="${label}"`);
+		expect(src).toContain(`<RowMore label={m.${key}()}`);
 		expect(src).not.toMatch(/\{#snippet trigger\(\)\}/);
 		expect(src).not.toMatch(/<DropdownMenu\b/);
 		expect(src).toContain("fromMenu(");
@@ -152,7 +153,7 @@ test("ProjectHead.svelte: right-click opens the RowMore menu; RowMenu carries Re
 	expect(head).toMatch(/oncontextmenu=\{\(e\) => \{[^}]*fromMenu\(e\)[^}]*menuTrigger\?\.click\(\)/);
 	expect(head).toContain("<RowMenu ");
 	expect(readFileSync(join(import.meta.dir, "sidebar/RowMenu.svelte"), "utf8")).toContain(
-		"Remove from Atlas",
+		"m.shell_project_header_remove_from_atlas()",
 	);
 });
 
@@ -164,7 +165,7 @@ test("Explorer.svelte: the … opens the shared PointerMenu and the row/tree ign
 	expect(src).not.toMatch(/<DropdownMenu\b/);
 	expect(src).not.toMatch(/\{#snippet trigger\(\)\}/);
 	const more = src.match(/<button[^>]*class="more"[\s\S]*?<\/button\s*>/)?.[0] ?? "";
-	expect(more).toContain('aria-label="More actions"');
+	expect(more).toContain("aria-label={m.capture_quick_page_more_actions()}");
 	expect(more).toContain("ev.stopPropagation()");
 	expect(more).toContain("openMenu(menuOf(rel, isDir)");
 	// row click, row Space key and the tree's key handler all consult it

@@ -1,0 +1,105 @@
+{
+  "answer": {
+    "choice": {
+      "choice": "Create a branch",
+      "verdict": "choice"
+    },
+    "needs_tap_card": {
+      "reason": null,
+      "verdict": "needs_tap"
+    },
+    "unclear": {
+      "verdict": "unclear"
+    }
+  },
+  "approve": {
+    "allow": {
+      "verdict": "allow"
+    },
+    "comment": {
+      "comment": "allow but only this file",
+      "verdict": "comment"
+    },
+    "deny": {
+      "verdict": "deny"
+    },
+    "needs_tap_bypass": {
+      "reason": "bypass",
+      "verdict": "needs_tap"
+    },
+    "needs_tap_destructive": {
+      "reason": "destructive",
+      "verdict": "needs_tap"
+    },
+    "needs_tap_rail": {
+      "reason": "rail",
+      "verdict": "needs_tap"
+    },
+    "needs_tap_untrusted": {
+      "reason": "untrusted",
+      "verdict": "needs_tap"
+    },
+    "unclear": {
+      "verdict": "unclear"
+    }
+  },
+  "crewmate": {
+    "agent": "omp",
+    "approval": "auto",
+    "approval_supported": true,
+    "engine": {
+      "kind": "omp"
+    },
+    "id": "0123456789abcdef",
+    "last": {
+      "state": "done",
+      "text": "Went with it in src/a.rs.",
+      "ts": 1700000000
+    },
+    "mode": "bypass",
+    "name": "Gerente",
+    "queued": 0,
+    "role": "r",
+    "routines": [],
+    "spoken_replies": true,
+    "state": "idle",
+    "triggers": []
+  },
+  "task_agent_line": {
+    "action": {
+      "kind": "choose",
+      "options": [
+        "Use main",
+        "Create a branch"
+      ],
+      "question": "Which base?"
+    },
+    "answer": "Create a branch",
+    "finished_at": 1700000000,
+    "id": "fedcba9876543210",
+    "pane": "crew:0123456789abcdef:fedcba9876543210",
+    "prompt": "pick",
+    "reply": "Went with it in src/a.rs.",
+    "result": "Went with it in src/a.rs.",
+    "source": "test",
+    "spoken": "I used a new branch. Everything is in place.",
+    "started_at": 1700000000,
+    "state": "done",
+    "summarized": false,
+    "ts": 1700000000
+  },
+  "task_first_sentences": {
+    "finished_at": 1700000000,
+    "id": "fedcba9876543210",
+    "pane": "crew:0123456789abcdef:fedcba9876543210",
+    "prompt": "pick",
+    "reply": "I renamed the helper and fixed the typo. More detail follows.",
+    "result": "I renamed the helper and fixed the typo. More detail follows.",
+    "source": "test",
+    "spoken": "I renamed the helper and fixed the typo. More detail follows.",
+    "started_at": 1700000000,
+    "state": "done",
+    "summarized": false,
+    "ts": 1700000000
+  }
+}

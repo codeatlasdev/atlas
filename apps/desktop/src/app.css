@@ -74,7 +74,7 @@ html.custom-chrome.tiling-wm {
 	--dur: 200ms;
 	--dur-slow: 260ms;
 
-	/* Space accent; the shell overrides these on the content root per space. */
+	/* Space accent defaults; each layer overrides them (SpaceLayer) and the few leaves outside a layer carry their own (+layout.svelte). */
 	--space-accent: var(--ca-brand-main);
 	--space-tint: transparent;
 	--dot-ok: var(--atlas-state-success, var(--ca-semantic-success));
@@ -125,6 +125,13 @@ html.custom-chrome.tiling-wm {
 	display: flex;
 	height: 100vh;
 	overflow: hidden;
+}
+
+/* Holds the crew workspace's place (same box and ground as `.crewmates-workspace`) while its module loads. */
+.crew-pending {
+	width: 100%;
+	height: 100%;
+	background: var(--ca-surface-base);
 }
 
 /* The pinned sidebar takes its width from the flex row; hiding animates it to 0 so the
@@ -251,21 +258,21 @@ html.custom-chrome.tiling-wm {
 html.ground-holes .content {
 	background: transparent;
 }
-html.ground-holes .content::before {
+html.ground-holes .space-wash {
 	display: none;
 }
 /* With the sidebar hidden the content owns the whole window. */
 .content.full {
 	margin-left: var(--window-pad);
 }
-/* A wash of the space's hue behind everything, so each space feels like its own place. */
-.content::before {
-	content: "";
+/* A wash of the space's hue behind everything, so each space feels like its own place. A leaf of its own that carries
+   `--space-tint` (+layout.svelte): on `.content` or `.app` the custom property would restyle everything below it. */
+.space-wash {
 	position: absolute;
 	z-index: -1;
 	inset: 0;
 	pointer-events: none;
-	background: radial-gradient(120% 60% at 0% 0%, var(--space-tint), transparent 70%);
+	background: radial-gradient(120% 60% at 0% 0%, var(--space-tint, transparent), transparent 70%);
 	transition: background var(--dur-slow) var(--ease);
 }
 
@@ -512,5 +519,39 @@ html {
 		animation: none;
 		width: 100%;
 		opacity: 0.5;
+	}
+}
+
+/* UI kit workaround (docs/desktop.md, "UI kit workarounds"; atlas#501): a menu, popover or tooltip stays in the page for
+   its exit fade (kit `presence.svelte.js`) and keeps taking presses over its own box, so a click on what was under it
+   right after it closed was lost. It does not make the page inert (a modal does: `shell/closingLayers.ts` handles
+   those), so the fade can keep playing while the presses pass through.
+   @codeatlasdev/ui 4.6.0, `components/Popover/FloatingLayer.svelte` (`popover="manual"` set by `primitives/layer.js`).
+   Remove when the kit sets this itself. */
+[popover][data-state="closed"] {
+	pointer-events: none;
+}
+
+/* UI kit workaround (shell/closingLayers.ts, atlas#501): a closing modal is released from modality and fades out where it
+   is. Its `::backdrop` ended with the modality, so this element replays the kit's scrim (colour, fade; no blur: Atlas sets `--ca-scrim-blur: none`, and noBackdropBlur.test.ts keeps app.css free of backdrop-filter), and the
+   dialog (made `inert`, so presses and focus go to the page) is lifted above it. Duration and curve are the kit's
+   `ca-overlay-out`. @codeatlasdev/ui 4.6.0, `components/Dialog/dialog.css`. Remove with the module. */
+.closing-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: calc(var(--ca-z-modal) - 1);
+	background: var(--ca-scrim-color);
+	pointer-events: none;
+	animation: closing-scrim-out var(--ca-enter-fast) var(--ca-ease-standard) both;
+}
+dialog.ca-overlay[data-released] {
+	z-index: var(--ca-z-modal);
+}
+@keyframes closing-scrim-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
 	}
 }

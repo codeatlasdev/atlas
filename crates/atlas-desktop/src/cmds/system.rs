@@ -2,7 +2,7 @@
 //! file manager's `ShowItems` D-Bus call and the first GUI editor found. Windows: VS Code's `code`, the default
 //! browser and File Explorer.
 //!
-//! What to run is decided by pure functions of an [`Os`] ([`url_argv`], [`reveal_argv`], [`editor_argvs`]), so every
+//! What to run is decided by pure functions of an [`Os`] ([`url_launch`], [`reveal_argv`], [`editor_argvs`]), so every
 //! OS's command line is tested on any machine; [`run`] only starts it.
 
 use std::ffi::{OsStr, OsString};
@@ -41,26 +41,101 @@ fn win(p: &Path) -> String {
     p.to_string_lossy().replace('/', "\\")
 }
 
-/// What `open_url` hands to the browser: web pages and mail links. Never `file:` (it would open or run local
-/// things from a link in a terminal or a README) nor `javascript:` and the like.
-const URL_SCHEMES: [&str; 3] = ["http://", "https://", "mailto:"];
-
-fn url_argv(os: Os, url: &str) -> Result<Argv, String> {
-    let ok = URL_SCHEMES.iter().any(|s| {
-        url.get(..s.len())
-            .is_some_and(|p| p.eq_ignore_ascii_case(s))
-    });
-    if !ok {
-        return Err(format!(
-            "refusing to open {url}: only http, https and mailto links open in the browser"
-        ));
+/// May `path` (already absolute) be shown in the file manager? Windows refuses a UNC path in any spelling, `\\?\UNC\`
+/// and `//server` included: Explorer would contact the host, which hands it the user's NTLM hash. The one `\\?\`
+/// form let through is a drive (`\\?\C:\`).
+fn reveal_target(os: Os, path: &str) -> Result<(), String> {
+    if os != Os::Windows {
+        return Ok(());
     }
-    let program = match os {
-        Os::Mac => "open",
-        Os::Linux => "xdg-open",
-        Os::Windows => "explorer.exe",
+    let refuse = || {
+        Err(format!(
+            "refusing to reveal {path}: a network path would contact its server"
+        ))
     };
-    Ok(av([OsStr::new(program), OsStr::new(url)]))
+    let p = path.replace('/', "\\");
+    // The NT namespace spelling (`\??\UNC\...`) reaches a share the same way.
+    if p.starts_with("\\??\\") {
+        return refuse();
+    }
+    let Some(rest) = p.strip_prefix("\\\\") else {
+        return Ok(());
+    };
+    let drive = rest.strip_prefix("?\\").is_some_and(|r| {
+        let mut c = r.chars();
+        matches!((c.next(), c.next(), c.next()), (Some(l), Some(':'), Some('\\')) if l.is_ascii_alphabetic())
+    });
+    if drive { Ok(()) } else { refuse() }
+}
+
+/// What a link is handed to the OS as. Windows never gets a command line: Explorer parses commas (`/select,`) and
+/// other switches out of whatever string follows it, so a link would be able to open a second object.
+#[derive(Debug, PartialEq)]
+enum Launch {
+    Argv(Argv),
+    /// `ShellExecuteW("open", url)`: one string, no parsing of it.
+    ShellExecute(String),
+}
+
+/// The only links that open in the browser: `http`/`https` with a host and no user info, and `mailto` with an
+/// address. Never `file:` (it would open or run local things from a link in a terminal or a README), `smb:`,
+/// `javascript:` and the like. Returns the URL as the parser re-serializes it (scheme lowercased, host as
+/// punycode, characters escaped), which is what the OS gets: not the caller's string.
+fn checked_url(raw: &str) -> Result<String, String> {
+    let refuse = |why: &str| format!("refusing to open {raw}: {why}");
+    if raw != raw.trim() || raw.chars().any(char::is_control) {
+        return Err(refuse("it has spaces around it or control characters"));
+    }
+    let u = url::Url::parse(raw).map_err(|e| refuse(&e.to_string()))?;
+    match u.scheme() {
+        "http" | "https" => {
+            // The parser forgives `https:/x`, `https:///x` and `https:\\x`; a link that is not spelled
+            // `scheme://host` is not one we opened before and is not opened now.
+            let authority = raw
+                .split_once("://")
+                .map(|(_, rest)| rest.split(['/', '?', '#', '\\']).next().unwrap_or(""))
+                .ok_or_else(|| refuse("a web link is spelled scheme://host"))?;
+            if authority.is_empty() || authority.contains('@') {
+                return Err(refuse("a web link needs a host and carries no user name"));
+            }
+            if u.host_str().is_none_or(str::is_empty) {
+                return Err(refuse("a web link needs a host"));
+            }
+        }
+        "mailto" => {
+            let to = u.path();
+            if to.is_empty() || to.starts_with(',') || to.contains('\\') {
+                return Err(refuse("a mail link needs an address"));
+            }
+        }
+        _ => {
+            return Err(refuse(
+                "only http, https and mailto links open in the browser",
+            ));
+        }
+    }
+    Ok(u.into())
+}
+
+fn url_launch(os: Os, url: &str) -> Result<Launch, String> {
+    let url = checked_url(url)?;
+    Ok(match os {
+        Os::Mac => Launch::Argv(av([OsStr::new("open"), OsStr::new(&url)])),
+        Os::Linux => Launch::Argv(av([OsStr::new("xdg-open"), OsStr::new(&url)])),
+        Os::Windows => Launch::ShellExecute(url),
+    })
+}
+
+fn start(launch: Launch) -> Result<(), String> {
+    match launch {
+        Launch::Argv(argv) => run(&argv),
+        #[cfg(windows)]
+        Launch::ShellExecute(url) => {
+            atlas_core::sys::shell_open(&url).map_err(|e| format!("could not open {url}: {e}"))
+        }
+        #[cfg(not(windows))]
+        Launch::ShellExecute(_) => Err("ShellExecute exists on Windows only".into()),
+    }
 }
 
 /// The command that shows `target` in the file manager: macOS and Windows select it; Linux has no portable
@@ -333,6 +408,7 @@ fn user_env(name: &str) -> Option<String> {
 #[tauri::command]
 pub async fn open_in_editor(id: String) -> Result<(), String> {
     let root = root_of(&id)?;
+    crate::native_ui::launch("open in the editor", &root.to_string_lossy())?;
     blocking(move || {
         let argvs = editor_argvs(
             Os::current(),
@@ -348,14 +424,16 @@ pub async fn open_in_editor(id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn open_url(url: String) -> Result<(), String> {
-    let argv = url_argv(Os::current(), &url)?;
-    blocking(move || run(&argv)).await
+    let launch = url_launch(Os::current(), &url)?;
+    crate::native_ui::launch("open URL", &url)?;
+    blocking(move || start(launch)).await
 }
 
 /// Show a project's `atlas.yaml` (its folder on Linux when it has none) in the file manager.
 #[tauri::command]
 pub async fn reveal(id: String) -> Result<(), String> {
     let root = root_of(&id)?;
+    crate::native_ui::launch("reveal in the file manager", &root.to_string_lossy())?;
     blocking(move || {
         let file = root.join("atlas.yaml");
         reveal_local(if cfg!(target_os = "linux") && !file.exists() {
@@ -378,6 +456,8 @@ pub async fn reveal_path(path: String) -> Result<(), String> {
     if crate::host::host_for_path(&path) != crate::host::LOCAL {
         return Err(REMOTE_UNSUPPORTED.into());
     }
+    reveal_target(Os::current(), &path)?;
+    crate::native_ui::launch("reveal in the file manager", &path)?;
     blocking(move || {
         if !p.exists() {
             return Err(format!("{} does not exist", p.display()));
@@ -406,49 +486,150 @@ mod tests {
     #[test]
     fn urls_open_with_each_oss_own_opener() {
         let u = "https://github.com/codeatlasdev/atlas/issues/305";
-        assert_eq!(url_argv(Os::Mac, u).unwrap(), argv(&["open", u]));
-        assert_eq!(url_argv(Os::Linux, u).unwrap(), argv(&["xdg-open", u]));
         assert_eq!(
-            url_argv(Os::Windows, u).unwrap(),
-            argv(&["explorer.exe", u])
+            url_launch(Os::Mac, u).unwrap(),
+            Launch::Argv(argv(&["open", u]))
         );
+        assert_eq!(
+            url_launch(Os::Linux, u).unwrap(),
+            Launch::Argv(argv(&["xdg-open", u]))
+        );
+    }
+
+    // Security review of #620: Explorer parses commas and switches out of a raw string (`/select,`), so on Windows a
+    // link must never be a command line: it is ONE string for ShellExecuteW.
+    #[test]
+    fn windows_opens_a_link_with_shell_execute_never_with_explorer() {
+        let u = "https://github.com/codeatlasdev/atlas/issues/305";
+        assert_eq!(
+            url_launch(Os::Windows, u).unwrap(),
+            Launch::ShellExecute(u.into())
+        );
+        // a comma or `/select,` inside a valid link stays inside the one string
+        for ok in ["mailto:a@b.c", "https://a.b/x,y?z=/select,C:"] {
+            assert_eq!(
+                url_launch(Os::Windows, ok).unwrap(),
+                Launch::ShellExecute(checked_url(ok).unwrap()),
+                "{ok}"
+            );
+        }
     }
 
     // Regression #305: on Linux every link, "Open in editor" and "Reveal" ran macOS's `open`, which Linux lacks.
     #[test]
     fn linux_never_runs_macos_open() {
         let os = Os::Linux;
-        assert_ne!(url_argv(os, "http://a.b").unwrap()[0], "open");
+        assert_eq!(
+            url_launch(os, "http://a.b").unwrap(),
+            Launch::Argv(argv(&["xdg-open", "http://a.b/"]))
+        );
         assert_ne!(reveal_argv(os, Path::new("/a/b"))[0], "open");
         let ed = editor_argvs(os, Path::new("/a"), &found(&["code"]), None, None).unwrap();
         assert_ne!(ed[0][0], "open");
     }
 
-    // Only web and mail links go to the OS opener: `file:` would open or run local things from a link in a
-    // terminal or a README, and the rest are script/handler schemes.
+    // Only web and mail links go to the OS opener, as the parser spells them: `file:` would open or run local things
+    // from a link in a terminal or a README, `smb:` reaches a share, and the rest are script/handler schemes.
     #[test]
-    fn only_http_https_and_mailto_reach_the_opener_on_every_os() {
+    fn only_http_https_and_mailto_reach_the_opener_as_the_parser_spells_them() {
+        let spelled = [
+            ("http://a.b/c", "http://a.b/c"),
+            ("https://a.b", "https://a.b/"),
+            ("HTTPS://A.B", "https://a.b/"),
+            ("mailto:a@b.c", "mailto:a@b.c"),
+            ("MAILTO:a@b.c?subject=x", "mailto:a@b.c?subject=x"),
+            ("https://a.b/a b", "https://a.b/a%20b"),
+            // an IDN host goes out as punycode, the form every opener and the Windows shell take
+            ("https://bücher.de/x", "https://xn--bcher-kva.de/x"),
+            ("https://a.b:8080/p?q=1#f", "https://a.b:8080/p?q=1#f"),
+        ];
         for os in [Os::Mac, Os::Linux, Os::Windows] {
-            for ok in ["http://a.b/c", "https://a.b", "HTTPS://A.B", "mailto:a@b.c"] {
-                assert!(url_argv(os, ok).is_ok(), "{os:?} {ok}");
+            for (raw, want) in spelled {
+                let got = checked_url(raw).unwrap_or_else(|e| panic!("{raw}: {e}"));
+                assert_eq!(got, want, "{os:?} {raw}");
+                assert!(url_launch(os, raw).is_ok(), "{os:?} {raw}");
             }
             for bad in [
                 "file:///etc/passwd",
                 "FILE:///etc/passwd",
+                "file://host/share/x.exe",
+                "smb://host/share",
+                "\\\\host\\share\\x.exe",
                 "javascript:alert(1)",
+                "JaVaScRiPt:alert(1)",
                 "data:text/html,<script>1</script>",
                 "ssh://host",
+                "ms-msdt:/id x",
                 "x-apple.systempreferences:com.apple.Keyboard-Settings.extension",
                 "/etc/passwd",
                 "--version",
+                "-https://a.b",
                 "http:/a.b",
                 "https",
                 "",
                 "é",
+                // the review's payload: passes a scheme check, and Explorer would split it at the comma
+                "mailto:a,\\\\attacker\\share\\x.exe",
+                "mailto:,x",
+                "mailto:",
+                "mailto:?subject=x",
+                // a web link with no host, or with a user name in front of it
+                "https:///x",
+                "https://@x",
+                "https://user:pw@x",
+                "https://x@evil.test",
+                "https:\\\\x",
+                "https://",
+                "http://:80",
+                // the parser strips these: a link must not smuggle one
+                " https://a.b",
+                "https://a.b ",
+                "https://a.b/\n/select,x",
+                "https://a\tb",
+                // forbidden host characters, and an IDN that does not normalize
+                "https://a b",
+                "https://a%2fb",
+                "https://xn--/",
             ] {
-                let e = url_argv(os, bad).unwrap_err();
-                assert!(e.contains("refusing to open"), "{os:?} {bad}: {e}");
+                let e = checked_url(bad).unwrap_err();
+                assert!(e.contains("refusing to open"), "{bad}: {e}");
+                assert!(url_launch(os, bad).is_err(), "{os:?} {bad}");
             }
+        }
+    }
+
+    // Explorer asked to select a file on `\\server\share` contacts the server and offers it the user's NTLM
+    // credentials: a path from a page or a link must never reach it. Windows refuses every spelling; a path that is
+    // valid and local on another OS (`//x/y` on Linux) is untouched.
+    #[test]
+    fn windows_refuses_unc_paths_in_every_spelling_and_keeps_local_ones() {
+        for unc in [
+            "\\\\server\\share\\x.txt",
+            "//server/share/x.txt",
+            "\\/server\\share",
+            "/\\server/share",
+            "\\\\?\\UNC\\server\\share\\x.txt",
+            "\\\\?\\unc\\server\\share",
+            "//?/UNC/server/share/x.txt",
+            "\\\\.\\UNC\\server\\share",
+            "\\\\server@SSL\\share\\x.txt",
+            "\\\\192.168.0.1\\c$\\x",
+            "\\\\?\\GLOBALROOT\\Device\\Mup\\server\\share",
+            "\\??\\UNC\\server\\share\\x.txt",
+        ] {
+            let e = reveal_target(Os::Windows, unc).unwrap_err();
+            assert!(e.contains("network path"), "{unc}: {e}");
+        }
+        for local in [
+            "C:\\Users\\me\\x.txt",
+            "c:/Users/me/x.txt",
+            "D:\\a b\\c,d\\x.txt",
+            "\\\\?\\C:\\Users\\me\\x.txt",
+        ] {
+            assert_eq!(reveal_target(Os::Windows, local), Ok(()), "{local}");
+        }
+        for os in [Os::Mac, Os::Linux] {
+            assert_eq!(reveal_target(os, "//server/share/x"), Ok(()), "{os:?}");
         }
     }
 
@@ -605,9 +786,8 @@ mod tests {
 /// back when the launcher fails, is missing or outlives us.
 #[cfg(all(test, target_os = "linux"))]
 mod launch_tests {
-    use std::time::{Duration, Instant};
-
     use atlas_core::login_env::{Installed, Probe};
+    use atlas_core::scaling::HANG;
 
     use super::*;
 
@@ -663,51 +843,46 @@ mod launch_tests {
         }
     }
 
-    const WAIT: Duration = Duration::from_secs(5);
+    // How long a launcher gets to fail: a ceiling, so a slow runner does not turn a launcher that exits into one
+    // that "outlived" it.
+    const WAIT: std::time::Duration = HANG;
+
+    fn link_argv(url: &str) -> Argv {
+        match url_launch(Os::current(), url).unwrap() {
+            Launch::Argv(a) => a,
+            other => panic!("a unix link is a command line, not {other:?}"),
+        }
+    }
 
     #[test]
     fn a_link_runs_xdg_open_with_the_url_as_one_argument() {
         let f = fake();
         f.program("xdg-open", "exit 0");
         let url = "https://example.com/a b?x=1&y=2";
-        run(&url_argv(Os::current(), url).unwrap()).unwrap();
-        assert_eq!(f.recorded(), vec![format!("xdg-open {url}")]);
+        run_within(&link_argv(url), WAIT).unwrap();
+        // what the OS gets is the parser's spelling of the link, as one argument
+        assert_eq!(
+            f.recorded(),
+            vec!["xdg-open https://example.com/a%20b?x=1&y=2"]
+        );
     }
 
     #[test]
     fn xdg_open_failing_is_an_error_that_names_the_cause() {
         let f = fake();
         f.program("xdg-open", "exit 4");
-        let e = run(&url_argv(Os::current(), "https://a.b").unwrap()).unwrap_err();
+        let e = run_within(&link_argv("https://a.b"), WAIT).unwrap_err();
         assert!(e.contains("no application is set"), "{e}");
         f.program("xdg-open", "exit 9");
-        let e = run(&url_argv(Os::current(), "https://a.b").unwrap()).unwrap_err();
+        let e = run_within(&link_argv("https://a.b"), WAIT).unwrap_err();
         assert!(e.contains("xdg-open exited with status 9"), "{e}");
     }
 
     #[test]
     fn a_missing_launcher_says_it_is_not_installed() {
         let _f = fake();
-        let e = run(&url_argv(Os::current(), "https://a.b").unwrap()).unwrap_err();
+        let e = run_within(&link_argv("https://a.b"), WAIT).unwrap_err();
         assert!(e.contains("xdg-open is not installed"), "{e}");
-    }
-
-    // xdg-open stays alive while the browser it started does: that is success, and it must not block the app.
-    #[test]
-    fn a_launcher_that_outlives_the_grace_is_success_without_blocking() {
-        let f = fake();
-        f.program("xdg-open", "/bin/sleep 2");
-        let t = Instant::now();
-        run_within(
-            &url_argv(Os::current(), "https://a.b").unwrap(),
-            Duration::from_millis(200),
-        )
-        .unwrap();
-        assert!(
-            t.elapsed() < Duration::from_millis(1500),
-            "{:?}",
-            t.elapsed()
-        );
     }
 
     #[test]
@@ -766,5 +941,66 @@ mod launch_tests {
         .unwrap();
         run_first(&argvs).unwrap();
         assert_eq!(f.recorded(), vec!["code /p/my app"]);
+    }
+}
+
+/// `run_within` against a real child: what comes back while the launcher is still running.
+#[cfg(all(test, unix))]
+mod detached_tests {
+    use std::process::Command;
+    use std::time::Duration;
+
+    use atlas_core::scaling::HANG;
+
+    use super::*;
+
+    fn alive(pid: &str) -> bool {
+        Command::new("kill")
+            .args(["-0", pid])
+            .output()
+            .is_ok_and(|o| o.status.success())
+    }
+
+    // xdg-open stays alive while the browser it started does: that is success, and it must not block the app
+    // (#417). The launcher here runs for longer than the hang ceiling and tells its pid; the call must have returned
+    // while that process is still running (a call that waited for the launcher would return only once it was gone),
+    // so the guard is the child's state at the return, not a stopwatch.
+    #[test]
+    fn a_launcher_that_outlives_the_grace_is_success_without_blocking() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("launcher");
+        let pid_file = dir.path().join("pid");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\necho $$ > '{0}.tmp' && mv '{0}.tmp' '{0}'\nexec /bin/sleep {1}\n",
+                pid_file.display(),
+                HANG.as_secs() + 30
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        run_within(&[script.into_os_string()], Duration::from_millis(200)).unwrap();
+
+        // The script may not have started yet on a loaded machine: wait for its pid (a real event).
+        let end = std::time::Instant::now() + HANG;
+        let pid = loop {
+            if let Ok(p) = std::fs::read_to_string(&pid_file) {
+                break p.trim().to_string();
+            }
+            assert!(
+                std::time::Instant::now() < end,
+                "the launcher never started"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let still_running = alive(&pid);
+        let _ = Command::new("kill").arg(&pid).output();
+        assert!(
+            still_running,
+            "the call returned only after the launcher was gone: it blocked on it"
+        );
     }
 }

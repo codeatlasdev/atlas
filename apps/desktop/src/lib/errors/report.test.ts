@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 import {
 	detailsText,
 	fileNames,
@@ -82,9 +83,14 @@ describe("report + issueUrl", () => {
 		expect(t).toContain("Where: Editor (editor)");
 		expect(t).toContain("File: main.rs");
 	});
+	// The stack is clipped by frames and by line length: both shapes of "too long" stay under the URL budget. (The line is
+	// words, not one 50k run of `x`: `redactText` takes time quadratic in a long run of token characters, 780 ms for
+	// 50k, which timed this test out on a loaded machine; a real frame has separators.)
 	test("long stacks stay under the URL budget", () => {
-		const long = { ...r, stack: "x".repeat(50_000) };
-		expect(issueUrl(long).length).toBeLessThan(9000);
+		const frames = { ...r, stack: "    at f (a.ts:1:1)\n".repeat(5000) };
+		const oneLongLine = { ...r, stack: "    at f (a.ts:1:1) ".repeat(2500) };
+		expect(issueUrl(frames).length).toBeLessThan(9000);
+		expect(issueUrl(oneLongLine).length).toBeLessThan(9000);
 	});
 });
 
@@ -232,10 +238,10 @@ describe("headline", () => {
 		];
 		expect(new Set(all).size).toBe(4);
 		expect(all).toEqual([
-			"Unexpected error",
-			"A background task failed",
-			"Restart terminal host failed",
-			"Terminal host not reachable",
+			m.errors_headline_error_title(),
+			m.errors_headline_rejection_title(),
+			m.errors_headline_restart_host_title(),
+			m.errors_headline_host_title(),
 		]);
 		expect(all.join()).not.toContain("An action didn't finish");
 	});
@@ -243,7 +249,8 @@ describe("headline", () => {
 		expect(titles("command", "  ")).toBe("A command failed");
 	});
 	test("the hint says what happened, not only that Atlas runs on", () => {
-		expect(headline({ origin: "rejection", where: "window" }).hint).toContain("on its own");
-		expect(headline({ origin: "error", where: "window" }).hint).toContain("threw");
+		expect(headline({ origin: "rejection", where: "window" }).hint).toBe(m.errors_headline_rejection_hint());
+		expect(headline({ origin: "error", where: "window" }).hint).toBe(m.errors_headline_error_hint());
+		expect(headline({ origin: "command", where: "window" }).hint).toBe(m.errors_headline_command_hint());
 	});
 });

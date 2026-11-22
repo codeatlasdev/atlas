@@ -11,7 +11,7 @@ A dev-environment orchestrator: one `atlas.yaml` starts your infra and services 
 
 ## How is it different from `docker compose`, `foreman` or `process-compose`?
 
-`docker compose` runs containers; Atlas runs your *processes* (and calls `docker compose up -d` for the infrastructure). Compared with Procfile runners it adds dependency conditions (`healthy`, `completed_successfully`, `log_ready`), restart backoff, health probes, log search, config validation, an MCP server and a desktop app. It does not do file-watch restarts, replica scaling or Windows (yet).
+`docker compose` runs containers; Atlas runs your *processes* (and calls `docker compose up -d` for the infrastructure). Compared with Procfile runners it adds dependency conditions (`healthy`, `completed_successfully`, `log_ready`), restart backoff, health probes, log search, config validation, an MCP server and a desktop app. It does not do file-watch restarts or replica scaling.
 
 ## Does it run on Linux or Windows?
 

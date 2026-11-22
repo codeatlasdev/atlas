@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::Args;
 
 use super::AtlasCommand;
@@ -35,6 +36,14 @@ pub struct DesktopArgs {
     /// Install/update only; do not launch the app
     #[arg(long)]
     pub no_open: bool,
+
+    /// Linux: install the AppImage even on a distro that has a native package (`.deb`, `.rpm`, Arch)
+    #[arg(long, hide = !cfg!(target_os = "linux"))]
+    pub appimage: bool,
+
+    /// Linux: do not ask before installing the distro package as root (the password prompt remains)
+    #[arg(long, short = 'y', hide = !cfg!(target_os = "linux"))]
+    pub yes: bool,
 
     /// Run the app from source with hot reload (`bun run desktop:dev`, inside the atlas repo)
     #[arg(long, conflicts_with_all = ["install", "from", "sync"])]
@@ -111,6 +120,7 @@ impl AtlasCommand for DesktopArgs {
         // Linux: a distro package's app is opened as is; its package manager updates it.
         if installed.is_none()
             && !self.install
+            && !self.appimage
             && self.from.is_none()
             && let Some(pkg) = atlas_core::paths::packaged_app()
         {
@@ -119,12 +129,40 @@ impl AtlasCommand for DesktopArgs {
             }
             return Ok(());
         }
+        // Linux on a distro with a release package (#267): the first install is that package, not the
+        // AppImage, after the same confirmation and escalation `atlas update` uses. Anything that keeps
+        // the package from installing (no confirmation, a refusal, a failure) falls through to the AppImage.
+        #[cfg(target_os = "linux")]
+        if installed.is_none()
+            && !self.appimage
+            && self.from.is_none()
+            && let Some(pm) = super::desktop_linux::native_manager()
+        {
+            let version = if self.latest {
+                latest_release()?
+            } else {
+                current_version().to_string()
+            };
+            if let Some(app) = super::desktop_linux::install_package(pm, &version, self.yes) {
+                println!(
+                    "\x1b[32m✓\x1b[0m {}",
+                    atlas_i18n::t!("desktop_pkg_installed", path = app.display().to_string())
+                );
+                if !self.no_open {
+                    open(&app, &[])?;
+                }
+                return Ok(());
+            }
+        }
         let target = installed.clone().unwrap_or_else(default_location);
         if self.install || self.from.is_some() || installed.is_none() {
             if is_symlink(&target) {
                 bail!(
-                    "{} is linked to a dev build (atlas link --desktop); run atlas unlink first",
-                    target.display()
+                    "{}",
+                    t!(
+                        "cmd_desktop_linked_to_dev",
+                        path = target.display().to_string()
+                    )
                 );
             }
             // Keeps the downloaded tarball alive until the install is done.
@@ -132,6 +170,9 @@ impl AtlasCommand for DesktopArgs {
             let (source, version) = match self.from {
                 Some(p) => (p, None),
                 None => {
+                    if let Some(why) = no_desktop_build(atlas_i18n::lang(), &current_platform()) {
+                        bail!("{why}");
+                    }
                     let version = if self.latest {
                         latest_release()?
                     } else {
@@ -143,12 +184,16 @@ impl AtlasCommand for DesktopArgs {
                 }
             };
             install_app(&source, &target, version.as_deref())?;
-            let version = app_version(&target).map(|v| format!(" ({v})"));
-            println!(
-                "\x1b[32m✓\x1b[0m Installed {}{}",
-                target.display(),
-                version.unwrap_or_default()
-            );
+            let path = target.display().to_string();
+            let line = match app_version(&target) {
+                Some(version) => t!(
+                    "cmd_desktop_installed_version",
+                    path = path,
+                    version = version
+                ),
+                None => t!("desktop_pkg_installed", path = path),
+            };
+            println!("\x1b[32m✓\x1b[0m {line}");
         }
         if !self.no_open {
             open(&target, &[])?;
@@ -237,28 +282,73 @@ pub(crate) fn asset_name(version: &str) -> String {
     format!("Atlas-{version}-{}{ext}", current_platform())
 }
 
+/// Platforms `release.yml` builds Atlas Desktop for (`build`, `build-linux`, `build-windows`): the same set
+/// `generate-manifest.py` lists a `desktop` asset for (pinned by `scripts/release-platforms.test.ts`).
+const DESKTOP_PLATFORMS: [&str; 3] = [
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+];
+
+/// Why the release has no Atlas Desktop for `platform` (a target triple as [`current_platform`] names it),
+/// `None` when it has one, worded in `lang`. Asking for the asset anyway ends in a 404 that explains nothing (#268).
+pub(crate) fn no_desktop_build(lang: &str, platform: &str) -> Option<String> {
+    if DESKTOP_PLATFORMS.contains(&platform) {
+        return None;
+    }
+    let (arch, rest) = platform.split_once('-').unwrap_or((platform, ""));
+    let os = if rest.ends_with("apple-darwin") {
+        "macOS"
+    } else if rest.ends_with("windows-msvc") {
+        "Windows"
+    } else {
+        "Linux"
+    };
+    let mut args = atlas_i18n::Args::new();
+    args.set("arch", arch);
+    args.set("system", os);
+    args.set("url", format!("https://github.com/{REPO}/releases"));
+    Some(atlas_i18n::translate(
+        lang,
+        "desktop_cli_no_build",
+        Some(&args),
+    ))
+}
+
 // ── actions ───────────────────────────────────────────────────────────────────
 
 fn status(installed: Option<&Path>) -> Result<()> {
     match installed {
         None => match atlas_core::paths::packaged_app() {
             Some(pkg) => println!(
-                "Atlas Desktop: {} (from a distro package; update it with your package manager)",
-                pkg.display()
+                "{}",
+                t!(
+                    "cmd_desktop_status_packaged",
+                    path = pkg.display().to_string()
+                )
             ),
-            None => println!("Atlas Desktop: not installed (run: atlas desktop)"),
+            None => println!("{}", t!("cmd_desktop_status_missing")),
         },
         Some(app) => {
             let version = app_version(app).unwrap_or_else(|| "?".into());
-            println!("Atlas Desktop {version}");
-            println!("  path: {}", app.display());
+            println!("{}", t!("cmd_desktop_status_version", version = version));
+            println!(
+                "  {}",
+                t!("cmd_desktop_status_path", path = app.display().to_string())
+            );
             if is_symlink(app) {
                 let to = std::fs::read_link(app).unwrap_or_default();
-                println!("  linked → {} (atlas unlink to restore)", to.display());
+                println!(
+                    "  {}",
+                    t!("cmd_desktop_status_linked", path = to.display().to_string())
+                );
             }
         }
     }
-    println!("  cli:  {}", current_version());
+    println!(
+        "  {}",
+        t!("cmd_desktop_status_cli", version = current_version())
+    );
     Ok(())
 }
 
@@ -276,17 +366,35 @@ async fn sync(installed: Option<&Path>) -> Result<()> {
 /// The one line `atlas update` prints when the app is a dev-build link it will not replace.
 fn linked_notice(app: &Path) -> String {
     format!(
-        "\x1b[2m◆ Atlas Desktop is linked to a dev build ({}); left alone. Run atlas unlink to update it.\x1b[0m",
-        app.display()
+        "\x1b[2m◆ {}\x1b[0m",
+        t!(
+            "cmd_desktop_linked_notice",
+            path = app.display().to_string()
+        )
     )
 }
 
 /// Bring the installed app to this CLI's version. Fails (instead of printing and moving on)
 /// so `atlas update` can roll the CLI back and the app never ends up on another version.
 pub(crate) fn sync_app(installed: Option<&Path>) -> Result<()> {
+    sync_app_for(&current_platform(), installed)
+}
+
+/// [`sync_app`] on `platform`: where the release has no Atlas Desktop, an app that is installed anyway (built from
+/// source, installed with `--from`) is left as it is and `atlas update` goes on, instead of failing on a download
+/// that cannot exist and rolling the CLI back.
+fn sync_app_for(platform: &str, installed: Option<&Path>) -> Result<()> {
     let Some(app) = installed else { return Ok(()) };
     if is_symlink(app) {
         println!("{}", linked_notice(app));
+        return Ok(());
+    }
+    if no_desktop_build(atlas_i18n::lang(), platform).is_some() {
+        let path = app.display().to_string();
+        println!(
+            "\x1b[2m◆ {}\x1b[0m",
+            atlas_i18n::t!("desktop_cli_left_alone", path = path, platform = platform)
+        );
         return Ok(());
     }
     let want = current_version();
@@ -294,10 +402,16 @@ pub(crate) fn sync_app(installed: Option<&Path>) -> Result<()> {
         return Ok(());
     }
     update_core::phase(update_core::Phase::UpdateApp);
-    println!("\x1b[1;34m◆\x1b[0m Updating Atlas Desktop to v{want}...");
+    println!(
+        "\x1b[1;34m◆\x1b[0m {}",
+        t!("cmd_desktop_updating", version = want)
+    );
     let (_dir, src) = download(want)?;
     install_app(&src, app, Some(want))?;
-    println!("\x1b[32m✓\x1b[0m Atlas Desktop v{want}");
+    println!(
+        "\x1b[32m✓\x1b[0m {}",
+        t!("cmd_desktop_updated", version = want)
+    );
     Ok(())
 }
 
@@ -316,7 +430,10 @@ fn download(version: &str) -> Result<(tempfile::TempDir, PathBuf)> {
     let dir = tempfile::Builder::new()
         .prefix(&format!("atlas-desktop-{version}-"))
         .tempdir()?;
-    println!("\x1b[1;34m◆\x1b[0m Downloading {asset}...");
+    println!(
+        "\x1b[1;34m◆\x1b[0m {}",
+        t!("desktop_pkg_downloading", asset = asset.as_str())
+    );
     let tarball = download_verified(
         &format!("v{version}"),
         &asset,
@@ -345,9 +462,18 @@ fn install_app(source: &Path, target: &Path, version: Option<&str>) -> Result<()
 /// a bundle [`recover`] puts back, never no app at all. Staging dirs are removed on every path.
 #[cfg(target_os = "macos")]
 pub(crate) fn install(source: &Path, target: &Path) -> Result<()> {
-    let parent = target.parent().context("bad install path")?;
-    std::fs::create_dir_all(parent)
-        .with_context(|| format!("cannot create {}", parent.display()))?;
+    let parent = target.parent().with_context(|| {
+        t!(
+            "cmd_desktop_bad_install_path",
+            path = target.display().to_string()
+        )
+    })?;
+    std::fs::create_dir_all(parent).with_context(|| {
+        t!(
+            "cmd_install_create_failed",
+            path = parent.display().to_string()
+        )
+    })?;
     recover(target);
     let staging = Staging(parent.join(".Atlas.app.new"));
     let extract = Staging(parent.join(".Atlas.app.extract"));
@@ -366,7 +492,14 @@ pub(crate) fn install(source: &Path, target: &Path) -> Result<()> {
             .arg(&extract.0))?;
         let app = extract.0.join(APP);
         if !app.is_dir() {
-            bail!("{} does not contain {APP}", source.display());
+            bail!(
+                "{}",
+                t!(
+                    "cmd_desktop_no_app_in_source",
+                    path = source.display().to_string(),
+                    app = APP
+                )
+            );
         }
         app
     };
@@ -415,14 +548,23 @@ fn swap(staging: &Path, target: &Path) -> Result<()> {
     let _ = remove(&old);
     let had_old = target.symlink_metadata().is_ok();
     if had_old {
-        std::fs::rename(target, &old)
-            .with_context(|| format!("cannot move {}", target.display()))?;
+        std::fs::rename(target, &old).with_context(|| {
+            t!(
+                "cmd_desktop_move_failed",
+                path = target.display().to_string()
+            )
+        })?;
     }
     if let Err(e) = std::fs::rename(staging, target) {
         if had_old {
             let _ = std::fs::rename(&old, target);
         }
-        return Err(e).with_context(|| format!("cannot install {}", target.display()));
+        return Err(e).with_context(|| {
+            t!(
+                "cmd_desktop_install_failed",
+                path = target.display().to_string()
+            )
+        });
     }
     let _ = remove(&old);
     Ok(())
@@ -451,8 +593,11 @@ fn recover_interrupted_swap() {
     for dir in [PathBuf::from("/Applications"), home.join("Applications")] {
         if recover(&dir.join(APP)) {
             eprintln!(
-                "\x1b[33m◆\x1b[0m Restored {} from an interrupted update",
-                dir.join(APP).display()
+                "\x1b[33m◆\x1b[0m {}",
+                t!(
+                    "cmd_desktop_restored",
+                    path = dir.join(APP).display().to_string()
+                )
             );
         }
     }
@@ -471,11 +616,15 @@ fn remove(p: &Path) -> std::io::Result<()> {
 fn run(cmd: &mut Command) -> Result<()> {
     let out = cmd
         .output()
-        .with_context(|| format!("cannot run {cmd:?}"))?;
+        .with_context(|| t!("cmd_desktop_run_failed", command = format!("{cmd:?}")))?;
     if !out.status.success() {
         bail!(
-            "{cmd:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
+            "{}",
+            t!(
+                "cmd_desktop_command_failed",
+                command = format!("{cmd:?}"),
+                reason = String::from_utf8_lossy(&out.stderr).trim().to_string()
+            )
         );
     }
     Ok(())
@@ -507,7 +656,7 @@ pub(crate) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
 /// Agent instances live on a private macOS virtual display; there is no equivalent here.
 #[cfg(windows)]
 fn agent(_stop: bool, _gc: bool, _name: Option<String>, _scratch: bool) -> Result<()> {
-    bail!("agent instances (atlas desktop --agent) need macOS")
+    bail!("{}", t!("cmd_desktop_agent_not_on_windows"))
 }
 
 /// `atlas desktop --agent [--name N] [--scratch] [--stop]`: see `desktop_agent.rs`.
@@ -537,15 +686,27 @@ fn agent(stop: bool, gc: bool, name: Option<String>, scratch: bool) -> Result<()
 fn dev() -> Result<()> {
     let ws = super::link::find_workspace_root()?;
     if !ws.join("apps/desktop/package.json").is_file() {
-        bail!("{} is not the atlas repo (no apps/desktop)", ws.display());
+        bail!(
+            "{}",
+            t!(
+                "cmd_desktop_not_atlas_repo",
+                path = ws.display().to_string()
+            )
+        );
     }
     let st = Command::new("bun")
         .args(["run", "desktop:dev"])
         .current_dir(&ws)
         .status()
-        .context("bun not found")?;
+        .with_context(|| t!("cmd_desktop_no_bun"))?;
     if !st.success() {
-        bail!("desktop:dev exited with {st}");
+        bail!(
+            "{}",
+            t!(
+                "cmd_desktop_dev_exited",
+                status = crate::chrome::exit_text(st)
+            )
+        );
     }
     Ok(())
 }
@@ -592,6 +753,54 @@ mod tests {
         } else {
             assert_eq!(name, format!("Atlas-1.6.0-{}.AppImage", current_platform()));
         }
+    }
+
+    // #268: `atlas desktop` on arm64 Linux asked for `Atlas-<v>-aarch64-unknown-linux-gnu.AppImage`, which release.yml
+    // never builds, and printed a download error.
+    #[test]
+    fn a_platform_the_release_has_no_desktop_for_says_so_instead_of_a_404() {
+        let why = no_desktop_build("en", "aarch64-unknown-linux-gnu")
+            .expect("no desktop build for arm64 Linux");
+        assert!(why.contains("not published for aarch64 Linux"), "{why}");
+        assert!(why.contains("CLI"), "says what is published: {why}");
+        assert!(
+            why.contains(&format!("https://github.com/{REPO}/releases")),
+            "links the release: {why}"
+        );
+        assert!(
+            why.contains("--from"),
+            "says how to use a build of one's own: {why}"
+        );
+        // Arm Windows and Intel macOS are not built either.
+        assert!(
+            no_desktop_build("en", "aarch64-pc-windows-msvc")
+                .unwrap()
+                .contains("aarch64 Windows")
+        );
+        assert!(
+            no_desktop_build("en", "x86_64-apple-darwin")
+                .unwrap()
+                .contains("x86_64 macOS")
+        );
+    }
+
+    #[test]
+    fn every_platform_the_release_builds_has_a_desktop_download() {
+        for p in DESKTOP_PLATFORMS {
+            assert_eq!(no_desktop_build("en", p), None, "{p}");
+        }
+    }
+
+    /// An app installed by hand on a platform without a release build does not fail `atlas update`.
+    #[cfg(unix)]
+    #[test]
+    fn sync_skips_an_app_the_release_cannot_update_instead_of_downloading() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("atlas-desktop");
+        std::fs::write(&app, "my own build").unwrap();
+        // No network and no stub curl here: an attempted download would be an error.
+        sync_app_for("aarch64-unknown-linux-gnu", Some(&app)).unwrap();
+        assert_eq!(std::fs::read_to_string(&app).unwrap(), "my own build");
     }
 
     /// A minimal bundle: enough for `install` and `app_version`.

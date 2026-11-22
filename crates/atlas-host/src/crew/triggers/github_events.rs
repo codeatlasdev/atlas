@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::{author_allowed, untrusted_event};
 use crate::crew::github::{GithubApi, REPLY_MARKER};
-use crate::crew::store::{GithubOrigin, GithubOriginKind};
+use crate::crew::store::{Crewmate, GithubOrigin, GithubOriginKind, Trigger, TriggerKind};
 
 /// The log tail a failed check puts in the prompt: the end of the log, which is where the failure is.
 const LOG_LINES: usize = 200;
@@ -27,6 +27,38 @@ pub(crate) struct Cfg {
     pub assignee: Option<String>,
     /// The login the crew writes as: its own comments never trigger it.
     pub own_login: String,
+}
+
+impl Cfg {
+    /// A `Github` trigger's settings as `decide` needs them, with the repo it watches; `None` for any other kind.
+    /// The poll and the webhook both build it here, so what a trigger accepts is decided in one place.
+    pub(crate) fn for_trigger(
+        crewmate: &Crewmate,
+        trigger: &Trigger,
+        own_login: String,
+    ) -> Option<(String, Cfg)> {
+        let TriggerKind::Github {
+            repo,
+            events,
+            handle,
+            assignee,
+            authors,
+            ..
+        } = &trigger.kind
+        else {
+            return None;
+        };
+        Some((
+            repo.clone(),
+            Cfg {
+                events: events.clone(),
+                authors: authors.clone(),
+                handle: handle_for(handle.as_deref(), &crewmate.name),
+                assignee: assignee.clone(),
+                own_login,
+            },
+        ))
+    }
 }
 
 /// A task to start.
@@ -189,6 +221,7 @@ pub(crate) async fn decide(
                     .failed_log(repo, id)
                     .await
                     .inspect_err(|e| {
+                        // i18n-ignore: log
                         eprintln!("atlas crew: github: no failed log for run {id} in {repo}: {e}")
                     })
                     .ok(),
@@ -284,6 +317,7 @@ fn fired(
             comment_id,
             branch,
             reply_comment_id: None,
+            requester: None,
         }),
     }
 }

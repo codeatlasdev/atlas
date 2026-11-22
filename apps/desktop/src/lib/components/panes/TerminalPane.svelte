@@ -13,6 +13,7 @@
 	import { fileTarget } from "#lib/termPath.ts";
 	import { FileProbe } from "#lib/termPathExists.ts";
 	import { host } from "#lib/host.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** `pty` is set: the caller only renders this for terminals that have one. */
 	let { t, pty, active, focused }: { t: Tab; pty: string; active: boolean; focused: boolean } = $props();
@@ -36,29 +37,38 @@
 </script>
 
 {#if t.chat && !ended}
-	<PaneNotice onclick={() => (t.rawView = false)}>Raw omp protocol · back to chat</PaneNotice>
+	<PaneNotice onclick={() => (t.rawView = false)}>{m.workbench_term_pane_raw_protocol_back()}</PaneNotice>
 {/if}
 {#if ws.hostDown}
 	<!-- The host did not answer: the terminal may well be alive, and Restart would fail the same way. -->
 	<PaneNotice>
-		<span>Terminal host not reachable</span>
+		<span>{m.workbench_term_pane_host_unreachable()}</span>
 		<IconButton
 			size="sm"
 			variant="text"
-			aria-label="Restart terminal host"
+			aria-label={m.workbench_term_pane_restart_host()}
 			onclick={() => errors.restartHost()}
 		>
 			<RotateCw size={13} />
 		</IconButton>
-		<span class="hint">Restart terminal host</span>
+		<span class="hint">{m.workbench_term_pane_restart_host()}</span>
 	</PaneNotice>
 {:else if ended}
 	<PaneNotice>
-		<span>{ended === "gone" ? "Terminal is gone" : `Process ended (${ws.exited[pty] ?? "?"})`}</span>
-		<IconButton size="sm" variant="text" aria-label="Restart" onclick={() => ws.restart(t.id)}>
+		<span
+			>{ended === "gone"
+				? m.workbench_term_pane_gone()
+				: m.workbench_term_pane_ended({ code: ws.exited[pty] ?? "?" })}</span
+		>
+		<IconButton
+			size="sm"
+			variant="text"
+			aria-label={m.settings_host_action_restart()}
+			onclick={() => ws.restart(t.id)}
+		>
 			<RotateCw size={13} />
 		</IconButton>
-		<span class="hint">Restart</span>
+		<span class="hint">{m.settings_host_action_restart()}</span>
 	</PaneNotice>
 {/if}
 {#if ended !== "gone"}

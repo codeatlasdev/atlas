@@ -8,6 +8,9 @@
  * for servers that kept the older `atlas-bot` user alike.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { invokeHost } from "#lib/host.ts";
+import { builtinAgent } from "#lib/agentRegistry.ts";
+import { m } from "#lib/i18n/m.ts";
 import {
 	buildClaudeEnvLines,
 	buildCodexConfigToml,
@@ -31,44 +34,17 @@ export const AGENT_AUTH_TYPE: Record<string, "apikey" | "both"> = {
 	opencode: "both",
 };
 
-/** What the key field asks for, per engine. */
-export const AGENT_KEY_LABEL: Record<string, string> = {
-	omp: "OpenRouter or OpenAI key",
-	claude: "Anthropic API key (optional)",
-	codex: "OpenAI API key",
-	opencode: "Provider API key",
-};
-
-/** The env var each engine reads its key from. */
-export const AGENT_KEY_ENV: Record<string, string> = {
-	omp: "OPENROUTER_API_KEY",
-	claude: "ANTHROPIC_API_KEY",
-	codex: "OPENAI_API_KEY",
-	opencode: "OPENAI_API_KEY",
-};
-
-/** The command that starts an engine's interactive sign-in. */
-export const AGENT_SIGNIN_CMD: Record<string, string> = {
-	claude: "claude",
-	codex: "codex",
-	opencode: "opencode",
-	omp: "omp",
-};
-
 /** Run a shell script on a crew server through hostd; resolves with hostd's exec result. */
 export function runOnServer(
 	hostKey: string,
 	script: string,
 	opts: { cwd?: string; timeoutMs?: number } = {},
 ): Promise<unknown> {
-	return invoke("host_call", {
-		cmd: "exec",
-		args: {
-			host: hostKey,
-			cwd: opts.cwd ?? "/",
-			argv: ["sh", "-c", script],
-			timeout_ms: opts.timeoutMs ?? 30000,
-		},
+	return invokeHost("exec", {
+		host: hostKey,
+		cwd: opts.cwd ?? "/",
+		argv: ["sh", "-c", script],
+		timeout_ms: opts.timeoutMs ?? 30000,
 	});
 }
 
@@ -100,7 +76,7 @@ export async function writeAgentEnv(hostKey: string, agentId: string, content: s
  * user in `ps`).
  */
 export async function applyAgentApiKey(hostKey: string, agentId: string, apiKey: string): Promise<void> {
-	await writeAgentEnv(hostKey, agentId, `${AGENT_KEY_ENV[agentId] ?? "API_KEY"}=${apiKey.trim()}\n`);
+	await writeAgentEnv(hostKey, agentId, `${builtinAgent(agentId)?.key_env ?? "API_KEY"}=${apiKey.trim()}\n`);
 	if (agentId === "codex") {
 		await runOnServer(
 			hostKey,
@@ -196,7 +172,7 @@ export async function probeProvider(baseUrl: string, apiKey: string): Promise<{ 
 	return {
 		ok: true,
 		text: models.length
-			? `Connected — ${models.length} model${models.length === 1 ? "" : "s"} available`
-			: "Connected",
+			? m.crew_workspace_provider_connected_models({ count: models.length })
+			: m.crew_workspace_integrations_catalog_connected(),
 	};
 }

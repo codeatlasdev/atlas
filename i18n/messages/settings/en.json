@@ -1,0 +1,55 @@
+{
+	"settings_automation_invalid": "Not running: {reason}",
+	"settings_display_language_description": "The language of Atlas menus, buttons and messages.",
+	"settings_display_language_env_override": "ATLAS_LANG is set, so it decides the language for now. Your choice is saved and applies once it is unset.",
+	"settings_display_language_failed": "Could not change the language: {error}",
+	"settings_display_language_label": "Display language",
+	"settings_display_language_match_system": "Match system",
+	"settings_display_language_match_system_with": "Match system ({language})",
+	"settings_group_language": "Language",
+	"settings_host_action_dont_wait": "Don't wait",
+	"settings_host_action_restart": "Restart",
+	"settings_host_action_restart_confirm": "Restart…",
+	"settings_host_badge_postponed": "Postponed",
+	"settings_host_badge_restarts_when_idle": "Restarts when idle",
+	"settings_host_name": "Terminal host",
+	"settings_host_sub_current": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Up to date · no running terminals",
+				"countExact=*, countPlural=one": "Up to date · {count} running terminal",
+				"countExact=*, countPlural=*": "Up to date · {count} running terminals"
+			}
+		}
+	],
+	"settings_host_sub_older": [
+		{
+			"declarations": [
+				"input version",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Older than Atlas {version} · no running terminals",
+				"countExact=*, countPlural=one": "Older than Atlas {version} · {count} running terminal",
+				"countExact=*, countPlural=*": "Older than Atlas {version} · {count} running terminals"
+			}
+		}
+	],
+	"settings_host_sub_restarting": "Restarting…",
+	"settings_host_sub_updating": "Updating, terminals stay attached…"
+}

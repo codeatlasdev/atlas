@@ -39,16 +39,29 @@ test("--space-accent-text and --space-on-accent are read only by layer descendan
 	expect(all.sort()).toEqual([...BELOW_A_LAYER].sort());
 });
 
-test("the layout writes on `.app` only the vars its chrome reads, never text/on-accent", () => {
+// #452: `--space-accent` and `--space-tint` on `.app` still cost ~2 ms of style recalculation per switch (a custom property
+// inherits, so the whole chrome restyles). The few readers outside a layer carry the value on their own element.
+test("no --space-* custom property is written on `.app` or `.content`; the chrome's readers carry their own", () => {
 	const layout = readFileSync(join(src, "routes/(app)/+layout.svelte"), "utf8");
-	const appTag = layout.slice(
-		layout.indexOf('<div\n\tclass="app"'),
-		layout.indexOf(">", layout.indexOf('class="app"')),
-	);
-	expect(appTag).toContain("--space-accent=");
-	expect(appTag).toContain("--space-tint=");
-	expect(appTag).not.toContain("--space-accent-text");
-	expect(appTag).not.toContain("--space-on-accent");
+	const open = (cls: string) => {
+		const at = layout.indexOf(`class="${cls}"`);
+		const start = layout.lastIndexOf("<", at);
+		return layout.slice(start, layout.indexOf(">", at));
+	};
+	expect(open("app")).not.toContain("--space-");
+	expect(
+		layout.slice(layout.indexOf('<main class="content"'), layout.indexOf(">", layout.indexOf("<main"))),
+	).not.toContain("--space-");
+	expect(open("space-wash")).toContain("style:--space-tint=");
+	expect(open("nav-chip nav-chip-prev")).toContain("style:--space-accent=");
+	expect(open("nav-chip nav-chip-next")).toContain("style:--space-accent=");
+});
+
+test("the edge peek's glass and the selected worktree row carry --space-accent themselves", () => {
+	const peek = readFileSync(join(src, "lib/shell/EdgePeek.svelte"), "utf8");
+	const row = readFileSync(join(src, "lib/components/sidebar/WorktreeRow.svelte"), "utf8");
+	expect(peek).toMatch(/class="peek-glass"[^>]*style:--space-accent=/s);
+	expect(row).toContain("style:--space-accent=");
 });
 
 test("every layer declares all four vars itself (the only source for the readers above)", () => {

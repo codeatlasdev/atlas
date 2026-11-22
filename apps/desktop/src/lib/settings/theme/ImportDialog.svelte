@@ -7,29 +7,21 @@
 	import { Button, Checkbox, Dialog, Select, TextArea, TextField, toast } from "@codeatlasdev/ui";
 	import { TriangleAlert, Upload } from "@lucide/svelte";
 	import { homeDir } from "@tauri-apps/api/path";
-	import { open as pickFile } from "@tauri-apps/plugin-dialog";
-	import { errText } from "#lib/api.ts";
+	import { api, errText } from "#lib/api.ts";
 	import { b64decode, host } from "#lib/host.ts";
+	import { aroundSlot } from "#lib/i18n/slot.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import type { ImportResult } from "#lib/theme/import/color.ts";
 	import { detectFormat, importAny, type ThemeFormat } from "#lib/theme/import/detect.ts";
 	import ImportPreview from "./ImportPreview.svelte";
 	import PackageImport from "./PackageImport.svelte";
+	import { FORMAT_MESSAGES, appearanceLabel } from "./labels.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { open = $bindable(false) }: { open: boolean } = $props();
 
-	const FORMAT_LABEL: Record<ThemeFormat, string> = {
-		ghostty: "Ghostty config",
-		iterm: "iTerm colors",
-		vscode: "VS Code theme",
-		base16: "Base16 scheme",
-		zed: "Zed theme file",
-		atlas: "Atlas theme file",
-	};
-	const FILE_FILTER = [
-		{ name: "Theme", extensions: ["json", "jsonc", "itermcolors", "yaml", "yml", "conf", "txt"] },
-		{ name: "Any file", extensions: ["*"] },
-	];
+	/** Two lines of a Ghostty config as the text area's placeholder: syntax, not words, so it is never translated. */
+	const SAMPLE_CONFIG = "palette = 0=#21222c\nbackground = #282a36";
 
 	let fileName = $state("");
 	let text = $state("");
@@ -50,6 +42,14 @@
 	let hasPrefs = $derived(!!result && (!!result.font || !!result.terminal));
 	let ready = $derived(copyOnly || !!result);
 	let preview = $derived<ImportResult | null>(result && { ...result, name, appearance });
+	/** The text around the detected format's name (shown in bold); a format copied as is says so in the same sentence. */
+	let detected = $derived(
+		aroundSlot((slot) =>
+			copyOnly
+				? m.settings_theme_import_dialog_copy_only({ format: slot })
+				: m.settings_theme_import_dialog_detected({ format: slot }),
+		),
+	);
 
 	// A closed dialog starts empty again.
 	$effect(() => {
@@ -101,7 +101,16 @@
 	}
 
 	async function choose() {
-		const path = await pickFile({ title: "Import a theme", multiple: false, filters: FILE_FILTER });
+		const path = await api.pickPath({
+			title: m.settings_theme_import_dialog_import_a_theme(),
+			filters: [
+				{
+					name: m.settings_theme_import_dialog_filter_theme(),
+					extensions: ["json", "jsonc", "itermcolors", "yaml", "yml", "conf", "txt"],
+				},
+				{ name: m.settings_theme_import_dialog_filter_any(), extensions: ["*"] },
+			],
+		});
 		if (typeof path !== "string") return;
 		try {
 			await load(path, b64decode((await host.fsRead(path, 2_000_000)).data));
@@ -116,7 +125,7 @@
 		const file = e.dataTransfer?.files[0];
 		if (!file || packaged) return;
 		if (/\.(zip|vsix)$/i.test(file.name)) {
-			error = "A dropped archive has no path to unpack: use Archive (.zip, .vsix)… to choose it.";
+			error = m.settings_theme_import_dialog_archive_dropped();
 			return;
 		}
 		await load(file.name, await file.text());
@@ -129,7 +138,7 @@
 		await host.fsMkdir(dir).catch(() => {});
 		await host.fsWrite(`${dir}/${base || "theme"}.json`, text);
 		await themes.reload();
-		toast.success("Theme file added");
+		toast.success(m.settings_theme_import_dialog_file_added());
 	}
 
 	async function run() {
@@ -138,7 +147,11 @@
 			if (copyOnly) await copyFamily();
 			else if (preview) {
 				const t = await themes.importResult(preview, { applyFont: applyFont && hasPrefs, select });
-				toast.success(select ? `Using ${t.name}` : `Imported ${t.name}`);
+				toast.success(
+					select
+						? m.settings_theme_toast_using({ name: t.name })
+						: m.settings_theme_import_dialog_imported({ name: t.name }),
+				);
 			}
 			open = false;
 		} catch (e) {
@@ -151,8 +164,8 @@
 
 <Dialog
 	bind:open
-	title="Import a theme"
-	description="Ghostty, iTerm, VS Code, Alacritty, Base16 or Atlas / Zed themes: one file, pasted text, or a zip, vsix or folder with many."
+	title={m.settings_theme_import_dialog_import_a_theme()}
+	description={m.settings_theme_import_dialog_description()}
 	size="lg"
 >
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -166,16 +179,18 @@
 		ondragleave={() => (dragging = false)}
 		ondrop={drop}
 	>
-		<PackageImport bind:open bind:active={packaged} onerror={(m) => (error = m)} />
+		<PackageImport bind:open bind:active={packaged} onerror={(message) => (error = message)} />
 		{#if !packaged}
 			<div class="pick">
-				<Button variant="outlined" onclick={choose}><Upload size={13} /> Choose file…</Button>
-				<span class="hint">or drop a file here, or paste its text below</span>
+				<Button variant="outlined" onclick={choose}
+					><Upload size={13} /> {m.settings_theme_import_dialog_choose_file()}</Button
+				>
+				<span class="hint">{m.settings_theme_import_dialog_drop_hint()}</span>
 			</div>
 			<TextArea
-				label="Theme text"
+				label={m.settings_theme_import_dialog_theme_text()}
 				rows={5}
-				placeholder="palette = 0=#21222c&#10;background = #282a36"
+				placeholder={SAMPLE_CONFIG}
 				bind:value={text}
 				oninput={() => {
 					fileName = "";
@@ -188,33 +203,37 @@
 			<p class="error" role="alert"><TriangleAlert size={13} /> {error}</p>
 		{:else if format}
 			<p class="detected" role="status">
-				Detected: <b>{FORMAT_LABEL[format]}</b>
-				{#if copyOnly}· the file is added to your themes as it is{/if}
+				{detected[0]}<b>{FORMAT_MESSAGES[format]()}</b>{detected[1]}
 			</p>
 		{/if}
 
 		{#if !packaged && preview && result}
 			<div class="grid">
 				<div class="fields">
-					<TextField label="Name" bind:value={name} />
+					<TextField label={m.settings_agents_agent_name()} bind:value={name} />
 					<Select
-						label="Appearance"
+						label={m.settings_theme_import_dialog_appearance()}
 						value={appearance}
 						options={[
-							{ value: "dark", label: "Dark" },
-							{ value: "light", label: "Light" },
+							{ value: "dark", label: appearanceLabel("dark") },
+							{ value: "light", label: appearanceLabel("light") },
 						]}
 						onchange={(v) => (appearance = v as "dark" | "light")}
 					/>
 					{#if hasPrefs}
-						<Checkbox bind:checked={applyFont} label="Also use its font and cursor settings" />
+						<Checkbox bind:checked={applyFont} label={m.settings_theme_import_dialog_apply_font()} />
 					{/if}
-					<Checkbox bind:checked={select} label={`Use as ${appearance} theme`} />
+					<Checkbox
+						bind:checked={select}
+						label={appearance === "dark"
+							? m.settings_theme_import_dialog_use_as_dark()
+							: m.settings_theme_import_dialog_use_as_light()}
+					/>
 				</div>
 				<ImportPreview result={preview} {name} />
 			</div>
 			{#if result.warnings.length}
-				<ul class="warnings" aria-label="Import warnings">
+				<ul class="warnings" aria-label={m.settings_theme_import_dialog_import_warnings()}>
 					{#each result.warnings as w, i (i)}<li>{w}</li>{/each}
 				</ul>
 			{/if}
@@ -222,10 +241,10 @@
 	</div>
 
 	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
+		<Button variant="ghost" onclick={() => (open = false)}>{m.common_action_cancel()}</Button>
 		{#if !packaged}
 			<Button disabled={!ready || busy || (!copyOnly && !name.trim())} loading={busy} onclick={run}
-				>Import</Button
+				>{m.settings_theme_import_dialog_import()}</Button
 			>
 		{/if}
 	{/snippet}

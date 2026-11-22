@@ -1,0 +1,15 @@
+{
+	"cli_chrome_arguments": "Arguments",
+	"cli_chrome_caused_by": "caused by:",
+	"cli_chrome_commands": "Commands",
+	"cli_chrome_error": "error:",
+	"cli_chrome_exit_code": "exit code {code}",
+	"cli_chrome_exit_signal": "signal {signal}",
+	"cli_chrome_help_flag": "Print help",
+	"cli_chrome_help_subcommand": "Print this message or the help of the given subcommand(s)",
+	"cli_chrome_help_subcommand_arg": "Print help for the subcommand(s)",
+	"cli_chrome_options": "Options",
+	"cli_chrome_tip": "tip:",
+	"cli_chrome_usage": "Usage:",
+	"cli_chrome_warning": "warning:"
+}

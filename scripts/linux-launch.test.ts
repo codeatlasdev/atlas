@@ -3,7 +3,7 @@
 // the launch check's verdicts on a real private sway when the machine has one.
 import { shArgv } from "./sh";
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -60,9 +60,27 @@ describe("the .deb and .rpm", () => {
 		expect(conf.bundle.linux.deb.depends).toContain("git");
 		expect(conf.bundle.linux.rpm.depends).toContain("git");
 	});
+	// Dictation (#647) records through cpal, which links ALSA's libasound: without it the app does not start at all.
+	test("both depend on ALSA's runtime library (dictation links it)", () => {
+		expect(conf.bundle.linux.deb.depends).toContain("libasound2t64 | libasound2");
+		expect(conf.bundle.linux.rpm.depends).toContain("alsa-lib");
+		const arch = read("packaging/arch/PKGBUILD.in").match(/^depends=\((.*)\)$/m)?.[1] ?? "";
+		expect(arch).toContain("'alsa-lib'");
+	});
 	test("verify-linux checks, after the install, that the plugins are on disk", () => {
 		const steps = release.jobs["verify-linux"].steps.map((s: any) => s.run ?? "").join("\n");
 		expect(steps).toContain("libgstogg.so");
+	});
+	test("both depend on ripgrep, which project search runs (#267)", () => {
+		expect(conf.bundle.linux.deb.depends).toContain("ripgrep");
+		expect(conf.bundle.linux.rpm.depends).toContain("ripgrep");
+	});
+	test("verify-linux reads the declared dependencies of the package it is about to install", () => {
+		const steps = release.jobs["verify-linux"].steps as { name?: string; run?: string }[];
+		const deps = steps.findIndex((s) => String(s.run ?? "").includes("scripts/linux-pkg-deps.sh"));
+		const install = steps.findIndex((s) => s.name === "Install the package");
+		expect(deps).toBeGreaterThan(-1);
+		expect(deps).toBeLessThan(install);
 	});
 });
 
@@ -85,6 +103,44 @@ describe("the Arch package", () => {
 		const depends = read("packaging/arch/PKGBUILD.in").match(/^depends=\((.*)\)$/m)?.[1] ?? "";
 		expect(depends).toContain("'gst-plugins-base'");
 		expect(depends).toContain("'gst-plugins-good'");
+	});
+
+	// #267: project search runs `rg` through hostd (search.svelte.ts) and falls back to `git grep`, which has no columns
+	// and no .gitignore handling outside a repository; only `git` was declared.
+	test("depends on ripgrep, which project search runs", () => {
+		const depends = read("packaging/arch/PKGBUILD.in").match(/^depends=\((.*)\)$/m)?.[1] ?? "";
+		expect(depends).toContain("'ripgrep'");
+	});
+});
+
+// #267: the PKGBUILD of every published release is pushed to the AUR. The account is the maintainer's (a secret, see
+// docs/release.md), so what is testable here is the wiring and the one thing that would make a push unsafe: the host key.
+describe("publishing to the AUR", () => {
+	const job = release.jobs["publish-aur"];
+	const push = (job.steps as { name?: string; run?: string }[]).find((s) => s.name === "Push PKGBUILD and .SRCINFO")!;
+
+	test("runs after publish, only for a real release that was published", () => {
+		expect(job.needs).toEqual(["publish"]);
+		expect(job.if).toContain("!inputs.build_only");
+		expect(job.if).toContain("needs.publish.result == 'success'");
+	});
+
+	test("without the secret it says so and succeeds before touching ssh", () => {
+		expect(push.run).toMatch(/if \[ -z "\$AUR_SSH_PRIVATE_KEY" \]; then\n\s+echo "::notice::[^\n]*\n\s+exit 0/);
+		expect(push.run!.indexOf("exit 0")).toBeLessThan(push.run!.indexOf("ssh://"));
+		expect(read(".github/workflows/release.yml")).not.toMatch(/StrictHostKeyChecking|ssh-keyscan/);
+	});
+
+	// The three fingerprints https://aur.archlinux.org/ publishes; the pinned line must be one of them, or a push would
+	// trust (or reject) the wrong server.
+	test.skipIf(!Bun.which("ssh-keygen"))("the pinned AUR host key is the Ed25519 key aurweb publishes", () => {
+		const line = push.run!.match(/'(aur\.archlinux\.org ssh-ed25519 [^']+)'/)?.[1];
+		expect(line).toBeDefined();
+		const d = mkdtempSync(join(tmpdir(), "aur-hostkey-"));
+		writeFileSync(join(d, "known_hosts"), `${line}\n`);
+		const out = Bun.spawnSync(["ssh-keygen", "-lf", join(d, "known_hosts")]).stdout.toString();
+		rmSync(d, { recursive: true, force: true });
+		expect(out).toContain("SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4");
 	});
 });
 
@@ -129,6 +185,12 @@ describe("linux-launch-check.sh", () => {
 		const markers = new RegExp(read("scripts/linux-launch-check.sh").match(/^MARKERS='(.*)'$/m)![1]!);
 		test("`appsrc not found` (bundled GStreamer without its plugins) fails the launch", () => {
 			expect(markers.test("GStreamer element appsrc not found. Please install it")).toBe(true);
+		});
+		// #426: the line libayatana-appindicator's GtkStatusIcon fallback printed on every Wayland start without a tray host
+		// (copied from the real stderr). It was allow-listed once; a GTK CRITICAL is a bug of the app and must fail the gate.
+		test("a GTK CRITICAL fails the launch and the script keeps no allow-list that hides one", () => {
+			expect(markers.test("(atlas-desktop:2680831): Gtk-CRITICAL **: 09:31:53.199: gtk_widget_get_scale_factor: assertion 'GTK_IS_WIDGET (widget)' failed")).toBe(true);
+			expect(read("scripts/linux-launch-check.sh")).not.toMatch(/KNOWN|gtk_widget_get_scale_factor/);
 		});
 		test("a host with no audio sink or no AAC decoder is not a launch failure", () => {
 			expect(markers.test("GStreamer element autoaudiosink not found. Please install it")).toBe(false);

@@ -65,6 +65,8 @@ These rules are enforced by a GitHub ruleset on `main` and `release/*` (pull req
 
 **Agents** never push to `main`, merge a pull request or use the bypass on their own initiative. An agent run by a maintainer may merge, or use the bypass, when that maintainer says so for that change. An agent working for an external contributor opens a branch and a pull request like that contributor would, and stops there; it is not one of the two approvals. Why the approval rule exists is in [GOVERNANCE.md](GOVERNANCE.md#why-external-contributors-do-not-merge-their-own-pull-requests).
 
+**Merging is `bun run pr:merge <pr>`, never a hand-typed `gh pr merge`.** It refuses unless the branch is not behind `main`, the pull request head is the tip of its branch, the `ci.yml` run of exactly that head concluded `success` (not the status rollup, which can still show the previous push), and the title is a conventional commit subject. It writes the squash message itself: subject `<title> (#N)`, one `Closes #M` line per issue the pull request links (GitHub's `closingIssuesReferences`, so link the issue in the pull request's Development sidebar or with `Closes #M` in its description before merging), and your `Signed-off-by` from `git config` (a placeholder identity is refused). It merges with the ruleset bypass only when `gh` is signed in as an active member of `atlas-maintainers`, and passes `--match-head-commit` so a push between the check and the merge cannot slip in. `--dry-run` decides and prints the message without merging, and `--json` prints `{pr, decision, reasons[], subject, body, mergedSha?}` (exit 0 merged or would merge, 1 refused). After every push to `main`, the `Closing keywords` workflow (`closes.yml`) fails when a squash commit closes an issue its pull request does not link, and says so on the pull request. Why: a typed `Closes #503` in the squash of #509, which links #501 and #504, closed the wrong issue.
+
 CI runs on every pull request on macOS, Linux and Windows and on pushes to `main` and `release/**`. What Stable, Beta and Alpha mean is in [docs/versioning.md](docs/versioning.md).
 
 ### Release branches
@@ -90,7 +92,26 @@ git rebase --signoff main                          # sign every commit of a bran
 git commit --amend -s --no-edit                    # sign the last one
 ```
 
-The name and email must match your git identity (a real name, not a handle you want to hide). The `DCO` check on pull requests fails when a commit lacks the trailer.
+The name and email must match your git identity (a real name, not a handle you want to hide). The `DCO` check on pull requests fails when a commit lacks the trailer, and when its author or committer is a placeholder: an email on a domain reserved for examples (`example.com`, `.test`, `.invalid`), a machine's own host name (`you@MacBook.local`, `localhost`, what git guesses when `user.email` is unset), or a template name ("Your Name", "First User"). Nobody can credit or reach such a commit. This applies to commits made by an agent in your checkout too: set `git config user.name` and `user.email` where it runs.
+
+## Signed commits
+
+Every commit that reaches `main` or a `release/*` branch must be **cryptographically signed** (the ruleset "main and release branches" requires it). This is separate from the DCO trailer above: `-s` says *you may contribute this*, a signature proves *the commit came from you*. Pull requests are squash-merged on GitHub, and GitHub signs that commit itself; your own commits should be signed too, so the history you push is verifiable end to end.
+
+Sign with an SSH key (the simplest; any ed25519 key works, a dedicated one is cleaner):
+
+```bash
+ssh-keygen -t ed25519 -C "you@example.com (git signing)" -f ~/.ssh/id_ed25519_signing
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519_signing.pub
+git config --global commit.gpgsign true && git config --global tag.gpgsign true
+```
+
+Then add the **public** key on GitHub as a *signing* key (Settings › SSH and GPG keys › New SSH key › Key type: Signing key), or `gh auth refresh -s admin:ssh_signing_key && gh ssh-key add ~/.ssh/id_ed25519_signing.pub --type signing`. The email on your commits must be a verified email of your GitHub account.
+
+Check locally: put `you@example.com <the public key line>` in `~/.ssh/allowed_signers`, set `git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers`, and `git log --show-signature -1` prints `Good "git" signature`. On GitHub the commit shows **Verified**. GPG keys work the same way (`gpg.format openpgp`).
+
+A branch you already made: `git rebase --exec 'git commit --amend --no-edit -S -s' main` signs (and signs off) every commit, then push with `--force-with-lease` to **your own branch** only.
 
 ## License of contributions
 

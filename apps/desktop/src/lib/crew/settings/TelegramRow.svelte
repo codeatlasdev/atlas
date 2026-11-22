@@ -10,6 +10,7 @@
 		startTelegramLink,
 		type TelegramStatus,
 	} from "#lib/crew/settings/telegram.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { hostKey }: { hostKey: string } = $props();
 
@@ -46,7 +47,7 @@
 		});
 	const remove = () =>
 		run(async () => {
-			if (!confirm("Remove the Telegram bot? Linked chats stop receiving results and approvals.")) return;
+			if (!confirm(m.crew_settings_telegram_row_remove_confirm())) return;
 			await setTelegramToken(hostKey, null);
 			code = "";
 		});
@@ -58,36 +59,40 @@
 
 <Row
 	id="crew-telegram-{hostKey}"
-	label="Telegram"
-	description="Task results and Allow / Deny prompts in a Telegram chat, and /task to start work. Create a bot with @BotFather and paste its token."
+	label={m.crew_settings_telegram_row_telegram()}
+	description={m.crew_settings_telegram_row_task_results_and_allow_deny()}
 	stack
 >
 	{#if status?.configured}
-		<span class="state">
-			Connected · {status.chats === 1 ? "1 chat linked" : `${status.chats} chats linked`}
-		</span>
+		<span class="state">{m.crew_settings_telegram_row_connected({ count: status.chats })}</span>
 	{:else}
-		<span class="state muted">{status ? "Not set up" : "Checking…"}</span>
+		<span class="state muted"
+			>{status ? m.crew_settings_telegram_row_not_set_up() : m.crew_settings_browsers_row_checking()}</span
+		>
 	{/if}
 	{#snippet below()}
 		<div class="tg-form">
 			<TextField
 				type="password"
 				autocomplete="off"
-				placeholder={status?.configured ? "Replace token" : "Bot token from @BotFather"}
+				placeholder={status?.configured
+					? m.crew_settings_telegram_row_replace_token()
+					: m.crew_settings_telegram_row_bot_token_hint()}
 				bind:value={token}
 				onkeydown={(e) => e.key === "Enter" && token.trim() && void save()}
-				aria-label="Telegram bot token"
+				aria-label={m.crew_settings_telegram_row_telegram_bot_token()}
 			/>
-			<Button size="sm" onclick={save} disabled={busy || !token.trim()}>Save</Button>
+			<Button size="sm" onclick={save} disabled={busy || !token.trim()}>{m.common_action_save()}</Button>
 			{#if status?.configured}
-				<Button size="sm" variant="outlined" onclick={link} disabled={busy}>Link chat</Button>
-				<Button size="sm" variant="ghost" onclick={remove} disabled={busy}>Remove</Button>
+				<Button size="sm" variant="outlined" onclick={link} disabled={busy}
+					>{m.crew_settings_telegram_row_link_chat()}</Button
+				>
+				<Button size="sm" variant="ghost" onclick={remove} disabled={busy}>{m.common_action_remove()}</Button>
 			{/if}
 		</div>
 		{#if code}
 			<p class="tg-code" role="status">
-				Send <code>/start {code}</code> to your bot in Telegram within 10 minutes.
+				{m.crew_settings_telegram_row_send_start_code()} <code>/start {code}</code>
 			</p>
 		{/if}
 	{/snippet}

@@ -1,0 +1,502 @@
+# i18n/style/flagged-terms.yaml
+#
+# Input for the writing lint (to be added as scripts/writing-lint.ts and run by
+# `bun run i18n:check`). Rules are data; the lint is small.
+#
+# What the lint reads
+#   ui:   translatable message values in every catalog (Fluent .ftl values,
+#         Flutter .arb values, desktop catalog values). Keys, ids, comments and
+#         placeholders like {name} or { $name } are not text.
+#   docs: Markdown prose in docs/, site content, README.md, skills/, and new
+#         CHANGELOG.md entries.
+#   In Markdown, fenced code blocks, inline code spans, URLs, link targets and
+#   HTML comments are skipped. This file is never linted.
+#
+# Matching
+#   pattern: JavaScript RegExp source. Compiled with `flags` (default "iu") plus "g".
+#   word:    default true. The lint wraps the pattern as
+#              (?<![\p{L}\p{N}_])(?:PATTERN)(?![\p{L}\p{N}_])
+#            so word boundaries work with accented letters (JS \b is ASCII-only).
+#            Rules for punctuation set word: false.
+#   lang:    en | pt-BR | any. "en" rules run on English text and source strings,
+#            "pt-BR" rules on pt-BR catalogs and docs/pt-BR/**.
+#   scope:   ui | docs | any (default any).
+#   except:  optional list of RegExp sources. A hit is dropped when one of them
+#            matches the sentence that contains it.
+#
+# Severity
+#   error: fails the check.
+#   warn:  printed for the reviewer; does not fail. These words have honest uses.
+#
+# Opting out of one hit (rare, needs a reason a reviewer accepts):
+#   Markdown:  <!-- writing-lint: allow RULE_ID: reason -->  on the line before
+#   Fluent:    # writing-lint: allow RULE_ID: reason          above the message
+#   ARB:       "writing-lint: allow RULE_ID: reason" in the @key description
+
+version: 1
+
+rules:
+
+  # ---------------------------------------------------------------- punctuation
+
+  - id: em-dash
+    lang: any
+    severity: error
+    word: false
+    pattern: '[\u2014\u2015]'
+    why: House rule. Models overuse it (Wikipedia, Signs of AI writing; The Economist 2026 found Claude still above human rates), and it hides which relation is meant.
+    suggest: Pick the real relation. Colon for a list or explanation, parentheses or commas for an aside, a new sentence for a contrast.
+
+  - id: en-dash
+    lang: any
+    severity: error
+    word: false
+    pattern: '\u2013'
+    why: Same family as the em dash and often used in its place.
+    suggest: Ranges as "2 to 5" (or "2 a 5"); a hyphen in tables ("2-5 min").
+
+  - id: ascii-dash-as-em-dash
+    lang: any
+    severity: warn
+    word: false
+    pattern: '(?<=[\p{L}\p{N})"''.,])[ \t]+--?[ \t]+(?=[\p{L}\p{N}("''])'
+    why: A spaced hyphen or double hyphen in prose is an em dash in disguise. Same line only, a list bullet or a table row starts a line and is not a dash.
+    suggest: Restructure as for em-dash.
+
+  - id: emoji
+    lang: any
+    severity: error
+    word: false
+    pattern: '(?![\u00a9\u00ae\u2122])\p{Extended_Pictographic}'
+    why: Screen readers read emoji names, rendering differs per OS, emoji bullets are a machine-text tell. Text symbols (✓ ✗ ▸ ◆ ·) are allowed.
+    suggest: Use words, or an existing text symbol for status.
+
+  - id: exclamation-in-ui
+    lang: any
+    scope: ui
+    severity: warn
+    word: false
+    pattern: '!\s*$'
+    flags: 'u'
+    why: Google and Apple advise against exclamation marks; in errors they read as alarm or fake cheer.
+    suggest: End with a period, or nothing for a fragment.
+
+  # ------------------------------------------------------------- English: hype
+
+  - id: en-seamless
+    lang: en
+    severity: error
+    pattern: 'seamless(?:ly)?'
+    why: Marketing filler; says nothing a user can check.
+    suggest: Say what does not happen ("no restart needed", "keeps your terminals open").
+
+  - id: en-robust
+    lang: en
+    severity: error
+    pattern: 'robust(?:ly|ness)?'
+    why: GOV.UK words to avoid; AI vocabulary (Wikipedia). Vague.
+    suggest: Name the property ("retries 3 times", "survives a hostd restart").
+
+  - id: en-unlock-unleash
+    lang: en
+    severity: error
+    pattern: 'unlock(?:s|ed|ing)?|unleash(?:es|ed|ing)?'
+    except: ['unlock(?:s|ed|ing)? (?:the )?(?:keychain|screen|door|file|vault|lock)']
+    why: Hype verb. Literal unlocking (keychain, screen) is fine.
+    suggest: Name the capability ("lets you run 4 agents at once").
+
+  - id: en-elevate
+    lang: en
+    severity: error
+    pattern: 'elevat(?:e|es|ed|ing)'
+    except: ['privilege', 'sudo', 'permission', 'root']
+    why: Hype verb. Privilege elevation is fine.
+    suggest: Say what improves and by how much.
+
+  - id: en-leverage
+    lang: en
+    severity: error
+    pattern: 'leverag(?:e|es|ed|ing)'
+    why: GOV.UK words to avoid; AI vocabulary in mid-2026 models (Wikipedia).
+    suggest: use
+
+  - id: en-empower
+    lang: en
+    severity: error
+    pattern: 'empower(?:s|ed|ing|ment)?'
+    why: GOV.UK words to avoid.
+    suggest: let, allow
+
+  - id: en-effortless
+    lang: en
+    severity: error
+    pattern: 'effortless(?:ly)?|hassle-free|frictionless'
+    why: A promise, not a fact.
+    suggest: Name the steps that disappear ("one command", "no config file").
+
+  - id: en-game-changer
+    lang: en
+    severity: error
+    pattern: 'game[- ]chang(?:er|ers|ing)|revolutioni[sz](?:e|es|ed|ing)|transformative|next-level|cutting[- ]edge|state[- ]of[- ]the[- ]art|best[- ]in[- ]class|world[- ]class|blazing(?:ly)?[- ]fast|lightning[- ]fast|supercharg(?:e|es|ed|ing)|superpowers?'
+    why: Hype. Readers discount it and it dates fast.
+    suggest: Give the number or the concrete effect.
+
+  - id: en-ai-vocab-strong
+    lang: en
+    severity: error
+    pattern: 'delv(?:e|es|ed|ing)|tapestry|testament to|pivotal|intricac(?:y|ies)|intricate|meticulous(?:ly)?|showcas(?:e|es|ed|ing)|boast(?:s|ed|ing)?|bolster(?:s|ed|ing)?|garner(?:s|ed|ing)?|vibrant|interplay|realm|embark(?:s|ed|ing)?|harness(?:es|ed|ing)?|holistic(?:ally)?|synerg(?:y|ies|istic)|paradigm shift|ever[- ]evolving|multifaceted|nestled|plethora|myriad'
+    why: Words with measured excess frequency in LLM text (Kobak et al. 2025; Juzek and Ward 2025; Wikipedia AI vocabulary lists 2023 to 2026).
+    suggest: Use the plain word ("has", "shows", "complex", "careful") or cut.
+
+  - id: en-underscore-verb
+    lang: en
+    severity: warn
+    pattern: 'underscor(?:es|ed|ing)|underscore (?:the|that|how|its|our)'
+    why: Figurative "underscore" is AI vocabulary. The character name is fine.
+    suggest: show, mean, or cut.
+
+  - id: en-ai-vocab-weak
+    lang: en
+    severity: warn
+    pattern: 'crucial|vital|comprehensive|powerful|foster(?:s|ed|ing)?|streamlin(?:e|es|ed|ing)|landscape|journey|navigat(?:e|es|ing) (?:the )?(?:complexit|challeng|world|landscape)|enhanc(?:e|es|ed|ing|ement)|quietly|dependable|magic(?:al|ally)?|align(?:s|ed)? with|key (?:feature|benefit|takeaway)s?'
+    except: ['landscape (?:mode|orientation)', 'magic (?:link|number|byte)s?']
+    why: Overused by LLMs or vague; each has rare honest uses.
+    suggest: Replace with the specific fact, or cut the sentence.
+
+  # ------------------------------------------------- English: structure, filler
+
+  - id: en-not-just-but
+    lang: en
+    severity: error
+    word: false
+    pattern: '\bnot (?:just|only|merely|simply)\b[^.!?\n]{1,80}\bbut\b'
+    why: Negative parallelism, a top AI tell (Wikipedia; The Economist 2026).
+    suggest: State the positive claim alone.
+
+  - id: en-its-not-its
+    lang: en
+    severity: warn
+    word: false
+    pattern: '\b(?:it''s|it is|this is|that''s|this isn''t|it isn''t) (?:not )?(?:just |only )?[^.!?\n]{1,50}[,;] (?:it''s|it is)\b'
+    why: 'Framing as "It''s not X, it''s Y".'
+    suggest: Say what it is.
+
+  - id: en-whether-youre
+    lang: en
+    severity: error
+    pattern: 'whether you(?:''re| are)'
+    why: Audience-widening opener typical of generated marketing copy.
+    suggest: Write for one reader doing one task.
+
+  - id: en-chat-residue
+    lang: en
+    severity: error
+    pattern: 'great question|i hope this helps|certainly!|absolutely!|let''s dive|dive (?:deep )?into|deep dive|look no further|say goodbye to|here''s the thing|the best part\?|as an ai|in today''s (?:\p{L}+[- ])?(?:world|landscape|age)|fast-paced world'
+    why: Chatbot conversation leaking into product text.
+    suggest: Delete; start with the fact.
+
+  - id: en-important-to-note
+    lang: en
+    severity: error
+    pattern: 'it''s (?:important|worth|crucial|essential) (?:to (?:note|remember|mention)|noting)|please note|it should be noted'
+    why: Throat-clearing; 2023-era AI tell (Wikipedia) and Google "placeholder phrases".
+    suggest: State the fact.
+
+  - id: en-transition-openers
+    lang: en
+    severity: warn
+    word: false
+    pattern: '(?:^|[.!?:]\s+)(?:additionally|moreover|furthermore|in conclusion|in summary|to summarize|ultimately|overall|notably),'
+    flags: 'imu'
+    why: Stacked transition words are an LLM habit (Wikipedia, "Additionally").
+    suggest: Usually delete; the next sentence carries itself.
+
+  - id: en-oops
+    lang: en
+    severity: error
+    pattern: 'oops|whoops|uh-oh|yikes|oh no'
+    why: 'Apple HIG and NN/g: interjections in errors sound insincere and get stale.'
+    suggest: Say what happened.
+
+  - id: en-sorry-please
+    lang: en
+    scope: ui
+    severity: warn
+    pattern: 'sorry|please'
+    why: Atlassian and Google advise against both; "please" makes a required step sound optional.
+    suggest: Imperative without "please"; apologize only for real data loss.
+
+  - id: en-easy
+    lang: en
+    severity: warn
+    pattern: 'simply|easily|it''s (?:that )?(?:easy|simple)|just (?:run|click|type|add|use)'
+    why: 'Google style guide: avoid "simply" and "easy" in procedures. They insult the reader who is stuck.'
+    suggest: Cut the word.
+
+  - id: en-click-here
+    lang: en
+    severity: error
+    pattern: 'click here|here(?= to )'
+    why: Link text must make sense alone (Apple HIG, Primer).
+    suggest: Link the destination name ("Read the crew docs").
+
+  - id: en-utilize
+    lang: en
+    severity: error
+    pattern: 'utili[sz](?:e|es|ed|ing|ation)'
+    why: GOV.UK words to avoid.
+    suggest: use
+
+  - id: en-in-order-to
+    lang: en
+    severity: warn
+    pattern: 'in order to|at this (?:time|point in time)|due to the fact that'
+    why: Wordy; Google lists "at this time" as a placeholder phrase.
+    suggest: to / now / because
+
+  - id: en-blame
+    lang: en
+    scope: ui
+    severity: warn
+    pattern: 'invalid|illegal|you (?:entered|typed|did) (?:an? )?(?:wrong|incorrect|invalid)'
+    why: 'NN/g: don''t use words that blame the user.'
+    suggest: Say what is expected ("Use X.Y.Z, for example 1.5.0").
+
+  - id: en-generic-error
+    lang: en
+    scope: ui
+    severity: error
+    pattern: 'an (?:unknown |unexpected )?error (?:has )?occurred|something went wrong'
+    why: 'NN/g: generic messages lack context. Every Atlas error knows at least which action failed.'
+    suggest: "Couldn't <action>: <cause>. <next step>."
+
+  # ------------------------------------------------------ pt-BR: marcas de IA
+
+  - id: pt-vale-ressaltar
+    lang: pt-BR
+    severity: error
+    pattern: '(?:vale|cabe) (?:a pena )?(?:ressaltar|destacar|lembrar|mencionar|notar|salientar|frisar)|é (?:importante|fundamental|crucial|essencial) (?:ressaltar|destacar|notar|lembrar|mencionar|observar|salientar)'
+    why: Pigarro antes do fato; equivale a "it's important to note".
+    suggest: Diga o fato direto.
+
+  - id: pt-cenario-atual
+    lang: pt-BR
+    severity: error
+    pattern: 'no cenário atual|no mundo (?:atual|de hoje|moderno|digital)|nos dias (?:de hoje|atuais)|em um mundo (?:cada vez mais|onde|em que)|na era (?:digital|da ia|da inteligência artificial)'
+    why: Abertura genérica típica de texto gerado.
+    suggest: Comece pelo que o produto faz.
+
+  - id: pt-em-suma
+    lang: pt-BR
+    severity: error
+    pattern: 'em suma|em resumo|em última análise|em conclusão|concluindo,'
+    why: Fecho que repete o que já foi dito.
+    suggest: Apague a frase.
+
+  - id: pt-hype-verbos
+    lang: pt-BR
+    severity: error
+    pattern: 'potencializ\p{L}*|alavanc\p{L}*|desbloque\p{L}*|empoder\p{L}*|revolucion\p{L}*|turbin\p{L}*'
+    why: Verbos de marketing sem conteúdo verificável.
+    suggest: Diga a capacidade concreta ("roda 4 agentes ao mesmo tempo").
+
+  - id: pt-mergulhar
+    lang: pt-BR
+    severity: error
+    pattern: 'mergulh(?:ar|e|em|amos|ando|ou) (?:fundo|de cabeça|em)|mergulho profundo|aprofundar-se'
+    why: 'Tradução de "delve" e "deep dive"; citados pela Economist/Folha 2026.'
+    suggest: Use "ver", "explicar", ou corte.
+
+  - id: pt-hype-adjetivos
+    lang: pt-BR
+    severity: error
+    pattern: 'robust[oa]s?|tapeçaria|transformador(?:a|es|as)?|de ponta|de última geração|sem esforço|sem complicaç(?:ão|ões)|sem atrito|perfeitamente integrad[oa]s?|holístic[oa]s?|sinergia|disruptiv[oa]s?|inovador(?:a|es|as)?'
+    why: Elogio ao próprio produto; ninguém consegue verificar.
+    suggest: Dê o número ou o efeito ("abre em menos de 1 s").
+
+  - id: pt-fluido
+    lang: pt-BR
+    severity: error
+    pattern: 'de (?:forma|maneira) (?:fluida|integrada|perfeita|transparente|simples e (?:rápida|eficiente|intuitiva))|experiência (?:fluida|perfeita|única|incrível)|otimiz\p{L}* (?:a |sua )?experiência'
+    why: Tradução de "seamless" e "optimize your experience".
+    suggest: Diga o que deixa de acontecer.
+
+  - id: pt-proximo-nivel
+    lang: pt-BR
+    severity: error
+    pattern: 'lev(?:ar|e|a|amos) [^.!?\n]{0,30}(?:ao|a um) (?:próximo|outro) nível|elev(?:ar|e|a) (?:o seu|seu|sua|a sua) \p{L}+ (?:ao|a um)'
+    why: Clichê de marketing.
+    suggest: Diga o ganho concreto.
+
+  - id: pt-jornada
+    lang: pt-BR
+    severity: warn
+    pattern: 'jornada|ecossistema|crucial|fundamental|essencial|abrangente|poderos[oa]s?|incríve(?:l|is)|mágic[oa]s?|magicamente|intuitiv[oa]s?'
+    why: Palavras gastas por texto gerado e marketing; às vezes têm uso honesto.
+    suggest: Troque pelo fato específico ou corte.
+
+  - id: pt-nao-apenas-mas
+    lang: pt-BR
+    severity: error
+    word: false
+    pattern: '(?<![\p{L}])não (?:apenas|só|somente|é só|é apenas)(?![\p{L}])[^.!?\n]{1,80}(?<![\p{L}])mas(?: também)?(?![\p{L}])'
+    why: Paralelismo negativo; marca forte de LLM (Wikipedia; Economist/Folha 2026).
+    suggest: Afirme só o que é.
+
+  - id: pt-nao-e-e
+    lang: pt-BR
+    severity: warn
+    word: false
+    pattern: '(?<![\p{L}])não é (?:só |apenas )?[^.!?\n]{1,50}[,;] é(?![\p{L}])'
+    why: 'Construção "Não é X, é Y".'
+    suggest: Diga o que é.
+
+  - id: pt-seja-voce
+    lang: pt-BR
+    severity: error
+    pattern: 'seja (?:você|para quem) [^.!?\n]{1,60} ou'
+    why: Tradução de "Whether you're...".
+    suggest: Escreva para uma pessoa fazendo uma tarefa.
+
+  - id: pt-conversa-de-chat
+    lang: pt-BR
+    severity: error
+    pattern: 'ótima pergunta|espero (?:que )?(?:isso|isto) (?:ajude|tenha ajudado)|sinta-se à vontade|vamos (?:lá|mergulhar)!?|e o melhor(?: de tudo)?[:?]|prepare-se para|diga adeus a'
+    why: Resíduo de conversa com chatbot.
+    suggest: Apague; comece pelo fato.
+
+  - id: pt-conectivos
+    lang: pt-BR
+    severity: warn
+    word: false
+    pattern: '(?:^|[.!?:]\s+)(?:além disso|dessa forma|desta forma|nesse sentido|neste sentido|por fim|ademais|outrossim),'
+    flags: 'imu'
+    why: Conectivos empilhados; hábito de texto gerado.
+    suggest: Normalmente dá para apagar.
+
+  - id: pt-ops
+    lang: pt-BR
+    severity: error
+    pattern: 'ops|opa|eita|ixi|poxa|que pena'
+    why: Interjeição em erro soa falsa (Apple, NN/g).
+    suggest: Diga o que aconteceu.
+
+  - id: pt-por-favor
+    lang: pt-BR
+    scope: ui
+    severity: warn
+    pattern: 'por favor|desculpe|lamentamos'
+    why: Em instrução, "por favor" deixa o passo parecer opcional (Atlassian).
+    suggest: Imperativo direto ("Insira o token.").
+
+  - id: pt-facilmente
+    lang: pt-BR
+    severity: warn
+    pattern: 'facilmente|simplesmente|é (?:muito )?(?:fácil|simples)|com apenas um clique'
+    why: Equivale a "simply"/"easy" (Google).
+    suggest: Corte a palavra.
+
+  - id: pt-clique-aqui
+    lang: pt-BR
+    severity: error
+    pattern: 'clique aqui|toque aqui|aqui(?= para )'
+    why: O texto do link precisa fazer sentido sozinho.
+    suggest: Use o nome do destino ("Ler a documentação do Crew").
+
+  - id: pt-erro-generico
+    lang: pt-BR
+    scope: ui
+    severity: error
+    pattern: 'ocorreu um erro(?: inesperado| desconhecido)?|algo deu errado'
+    why: Mensagem sem contexto (NN/g).
+    suggest: "Não foi possível <ação>: <causa>. <próximo passo>."
+
+  - id: pt-culpa
+    lang: pt-BR
+    scope: ui
+    severity: warn
+    pattern: 'inválid[oa]s?|ilegal|você (?:digitou|inseriu|informou) (?:\p{L}+ )?(?:errad|incorret|inválid)\p{L}*'
+    why: Não culpe quem usa (NN/g, gov.br).
+    suggest: Diga o formato esperado.
+
+  # --------------------------------------------- pt-BR: gramática e decalques
+
+  - id: pt-gerundismo
+    lang: pt-BR
+    severity: error
+    pattern: '(?:vou|vai|vamos|vão|irei|irá|iremos|irão|pode|podemos|posso|deve|devemos) estar \p{L}+ndo'
+    why: Gerundismo (Microsoft pt-BR, "Avoid gerundism").
+    suggest: '"Vamos estar enviando" vira "Enviamos" ou "O Atlas envia".'
+
+  - id: pt-gerundismo-futuro
+    lang: pt-BR
+    severity: warn
+    pattern: 'estar(?:ei|á|emos|ão) \p{L}+ndo'
+    why: Futuro progressivo; às vezes correto ("estará rodando quando você voltar"), quase sempre gerundismo.
+    suggest: Use o presente ou o futuro simples.
+
+  - id: pt-pt-progressivo
+    lang: pt-BR
+    severity: error
+    pattern: '(?:estou|está|estás|estamos|estão|estava|estavam|continua|continuam|fica|ficam) a (?!par\b)\p{L}+(?:ar|er|ir)'
+    why: '"Estar a + infinitivo" é português de Portugal.'
+    suggest: 'Gerúndio: "está executando".'
+
+  - id: pt-pt-vocabulario
+    lang: pt-BR
+    severity: error
+    pattern: 'ecrã|ficheiros?|utilizador(?:es|a|as)?|palavras?-passe|telemóve(?:l|is)|equipas?|registos?|contactos?|factos?|projectos?|secç(?:ão|ões)|acede(?:r|m)?|partilh\p{L}*|definições|hiperligaç(?:ão|ões)|actualiz\p{L}*|carregue (?:em|no|na)'
+    why: Formas de Portugal escapam em modelos e em traduções automáticas.
+    suggest: tela, arquivo, usuário, senha, celular, equipe, registro, contato, fato, projeto, seção, acessar, compartilhar, configurações, link, atualizar, clique em.
+
+  - id: pt-enderecar
+    lang: pt-BR
+    severity: error
+    pattern: 'endereç(?:ar|a|ou|ado|ando) (?:o |a |os |as |esse |este |essa |esta )?(?:problema|questão|questões|ponto|bug|issue)s?'
+    why: Decalque de "address".
+    suggest: resolver, tratar, corrigir.
+
+  - id: pt-a-nivel-de
+    lang: pt-BR
+    severity: error
+    pattern: 'a nível de'
+    why: Construção condenada pelas gramáticas normativas; quase sempre sobra.
+    suggest: '"no nível de", "em", ou corte.'
+
+  - id: pt-no-final-do-dia
+    lang: pt-BR
+    severity: error
+    pattern: 'no final do dia|isso dito|dito isso'
+    except: ['às \d']
+    why: Decalques de "at the end of the day" e "that said".
+    suggest: '"no fim", "ainda assim".'
+
+  - id: pt-decalques-fracos
+    lang: pt-BR
+    severity: warn
+    pattern: 'suport(?:a|am|ar|ado|ada) (?:o |a |os |as )?\p{L}+|eventualmente|assum(?:ir|imos|e) que|ao invés de|através d[eoa]s?|baseado em|deletar|delet(?:e|ado|ada)|customiz\p{L}*|randômic[oa]|performar|printar|setar|startar|logar'
+    except: ['através d[aoe]s? (?:janela|parede|túnel|ssh|firewall)']
+    why: Decalques do inglês. A Microsoft lista "ser compatível, permitir" no lugar de "suportar"; "eventualmente" e "ao invés de" mudam de sentido.
+    suggest: é compatível com, às vezes/depois, supor que, em vez de, por meio de, com base em, excluir, personalizar, aleatório, definir, iniciar, entrar.
+
+  - id: pt-nominalizacao
+    lang: pt-BR
+    severity: warn
+    pattern: '(?:realiz|efetu|promov)(?:ar|e|a|amos|ou) (?:a |o |uma |um )?\p{L}+(?:ção|ções|mento|mentos|agem)'
+    why: Substantivo no lugar do verbo (Lei 15.263, art. 5º, XIV; Reinhart et al. 2025).
+    suggest: '"Realizar a instalação" vira "instalar".'
+
+  - id: pt-subjuntivo-duro
+    lang: pt-BR
+    severity: warn
+    pattern: 'certifique-se (?:de )?que|assegure-se (?:de )?que|garanta que'
+    why: Tradução literal de "Make sure"/"Ensure" (Microsoft, seção 4.1.14).
+    suggest: '"Verifique se ..." ou "Não deixe de ...".'
+
+  - id: pt-genero-marcado
+    lang: pt-BR
+    severity: error
+    word: false
+    pattern: '\p{L}+\((?:a|as|o|os|e|es)\)(?![\p{L}])|\p{L}+@s?(?=[\s.,;:!?)]|$)'
+    why: '"Bem-vindo(a)", "tod@s" e formas com x atrapalham leitores de tela; a Lei 15.263 veda na comunicação pública. Reescreva.'
+    suggest: Use "você", plural, coletivo ou "pessoa" (Microsoft pt-BR, seção 3.1).

@@ -2,16 +2,34 @@
 	import AgentLogo from "#lib/components/AgentLogo.svelte";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
 	import { invoke } from "@tauri-apps/api/core";
-	import { Select, Skeleton, toast } from "@codeatlasdev/ui";
-	import { Play, Copy, FolderSearch, Globe, RefreshCw, PanelRightClose, Pin } from "@lucide/svelte";
+	import { EmptyState, Select, Skeleton, toast } from "@codeatlasdev/ui";
+	import {
+		Play,
+		Copy,
+		FolderSearch,
+		Globe,
+		RefreshCw,
+		PanelRightClose,
+		Pin,
+		Bot,
+		ExternalLink,
+	} from "@lucide/svelte";
+	import AgentGlyph from "#lib/components/AgentGlyph.svelte";
 	import Tip from "#lib/components/Tip.svelte";
-	import { docks, toggleDock } from "#lib/stores/docks.svelte.ts";
+	import { ago } from "#lib/components/sidebar/discovery.ts";
+	import { useNow } from "#lib/clock.svelte.ts";
+	import { runCommand, shortcutFor } from "#lib/keymap.svelte.ts";
+	import { revealLabel } from "#lib/keys.ts";
+	import { docks, peek, toggleDock } from "#lib/stores/docks.svelte.ts";
+	import { liveAgents, portRows, STATE_LABEL } from "#lib/shell/rightPanel.ts";
 	import { api, errText } from "#lib/api.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
+	import { resumeCommand } from "#lib/agentRegistry.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { openPreview } from "#lib/stores/browser.svelte.ts";
 	import { host } from "#lib/host.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Session {
 		agent: string;
@@ -73,15 +91,20 @@
 				.sort((a, b) => a.port - b.port);
 			return;
 		}
+		// Refresh the terminal list first: a terminal opened since the last sync is not in `ws.ptys` yet.
+		await ws.syncPtys();
 		const pids = Object.values(ws.ptys)
 			.filter((p) => p.scope.worktree_id === w.id && p.pid)
 			.map((p) => p.pid!);
-		await ws.syncPtys();
 		ports = pids.length ? await invoke<Port[]>("listening_ports", { pids }) : [];
 	}
 
+	/** On screen: pinned as a dock, or peeking from the edge. A hidden panel reads nothing until it is shown. */
+	let shown = $derived(docks.right || peek.right);
+
 	$effect(() => {
 		void [scope, w?.id, tab];
+		if (!shown) return;
 		if (tab === "agents") void loadSessions();
 		else void loadPorts();
 	});
@@ -105,8 +128,8 @@
 
 	let forwards = $state<Record<number, number>>({});
 
-	/** Local ports open directly; remote ones through an ssh -L forward first. */
-	async function openPort(port: number) {
+	/** In the app's browser, or in the system browser (`external`); remote ports go through an ssh -L forward first. */
+	async function openPort(port: number, external = false) {
 		if (!w) return;
 		let local = port;
 		if (w.hostId) {
@@ -120,36 +143,37 @@
 				return;
 			}
 		}
-		void openPreview(w.id, `http://localhost:${local}`);
+		void openPreview(w.id, `http://localhost:${local}`, external);
 	}
 
-	const when = (ts: number) => new Date(ts * 1000).toLocaleString();
-	const resumeCommand = (s: Session) =>
-		s.agent === "codex" ? `codex resume ${s.resume}` : `${s.agent} --resume ${s.resume}`;
+	// Reading `clk.now` re-renders the labels on each tick; the age itself comes from the real clock (the stamp is only
+	// refreshed on a tick, so it can be older than the render).
+	const clk = useNow(30_000);
+	const age = (ms: number | null) => (void clk.now, ms ? ago(ms / 1000) : "");
+	const when = (ts: number) => (void clk.now, ago(ts));
+	const resumeCommandOf = (s: Session) => resumeCommand(s.agent, s.resume);
+
+	let live = $derived(w ? liveAgents(ws.doc.tabs, agents.status, w.id) : []);
+	let rows = $derived(
+		w ? portRows(ports, store.configs[w.id]?.services ?? [], store.live[w.id]?.services ?? []) : [],
+	);
+	let dockLabel = $derived(docks.right ? m.shell_chrome_right_toggle_hide() : m.sidebar_right_pin());
 </script>
 
 <aside class="right">
 	<div class="tabs" data-tauri-drag-region>
-		<button class:on={tab === "agents"} onclick={() => (tab = "agents")}>Agents</button>
-		<button class:on={tab === "ports"} onclick={() => (tab = "ports")}>Ports</button>
+		<button class:on={tab === "agents"} onclick={() => (tab = "agents")}>{m.shell_commands_agents()}</button>
+		<button class:on={tab === "ports"} onclick={() => (tab = "ports")}>{m.sidebar_right_ports()}</button>
 		<button
 			class="icon"
-			aria-label="Refresh"
+			aria-label={m.sidebar_refresh()}
 			onclick={() => (tab === "agents" ? loadSessions() : loadPorts())}
 		>
 			<RefreshCw size={12} />
 		</button>
-		<Tip
-			label={docks.right ? "Hide right sidebar" : "Pin right sidebar"}
-			command="workspace::ToggleRightDock"
-		>
+		<Tip label={dockLabel} command="workspace::ToggleRightDock">
 			{#snippet child(props)}
-				<button
-					{...props}
-					class="hide"
-					aria-label={docks.right ? "Hide right sidebar" : "Pin right sidebar"}
-					onclick={() => toggleDock("right")}
-				>
+				<button {...props} class="hide" aria-label={dockLabel} onclick={() => toggleDock("right")}>
 					{#if docks.right}<PanelRightClose size={13} />{:else}<Pin size={12} />{/if}
 				</button>
 			{/snippet}
@@ -158,8 +182,8 @@
 	{#if tab === "agents"}
 		<div class="controls">
 			<input
-				placeholder="Search sessions"
-				aria-label="Search sessions"
+				placeholder={m.sidebar_right_search_sessions()}
+				aria-label={m.sidebar_right_search_sessions()}
 				bind:value={query}
 				oninput={onSearch}
 				onkeydown={(e) => e.key === "Enter" && (clearTimeout(typing), loadSessions())}
@@ -167,17 +191,32 @@
 			<Select
 				class="scope"
 				size="sm"
-				aria-label="Show sessions of"
+				aria-label={m.sidebar_right_show_sessions_of()}
 				value={scope}
 				options={[
-					{ value: "workspace", label: "Workspace" },
-					{ value: "project", label: "Project" },
-					{ value: "all", label: "All" },
+					{ value: "workspace", label: m.sidebar_right_scope_workspace() },
+					{ value: "project", label: m.sidebar_right_scope_project() },
+					{ value: "all", label: m.sidebar_right_scope_all() },
 				]}
 				onchange={(v) => (scope = v as typeof scope)}
 			/>
 		</div>
 		<div class="list">
+			{#if live.length}
+				<h3 class="head">{m.sidebar_right_running_here()}</h3>
+				{#each live as a (a.tabId)}
+					<button class="row live" data-live-agent={a.tabId} onclick={() => ws.activate(a.tabId)}>
+						<span class="l1">
+							<AgentGlyph state={a.state} />
+							<span class="agent"><AgentLogo agent={a.agent} size={10} />{a.agent}</span>
+							<span class="state {a.state}">{STATE_LABEL[a.state]}</span>
+							<span class="dim">{age(a.since)}</span>
+						</span>
+						{#if a.detail}<span class="dim detail-line">{a.detail}</span>{/if}
+					</button>
+				{/each}
+				{#if sessions.length}<h3 class="head">{m.sidebar_right_history()}</h3>{/if}
+			{/if}
 			{#each sessions as s (s.file)}
 				<button
 					class="row"
@@ -193,19 +232,19 @@
 						<div class="dim mono">{s.cwd}</div>
 						{#if s.first_prompt}<p>{s.first_prompt}</p>{/if}
 						<div class="acts">
-							<button onclick={() => resume(s)}><Play size={12} /> Resume</button>
+							<button onclick={() => resume(s)}><Play size={12} /> {m.sidebar_right_resume()}</button>
 							{#if s.agent === "omp"}<button onclick={() => resume(s, true)}
-									><Play size={12} /> Resume in native chat</button
+									><Play size={12} /> {m.sidebar_right_resume_in_native_chat()}</button
 								>{/if}
 							<button
 								onclick={() =>
-									navigator.clipboard.writeText(`omp --resume ${s.file}`).then(
-										() => toast.success("Copied"),
+									navigator.clipboard.writeText(resumeCommandOf(s)).then(
+										() => toast.success(m.sidebar_right_copied()),
 										(e) => toast.error(errText(e)),
-									)}><Copy size={12} /> Copy command</button
+									)}><Copy size={12} /> {m.sidebar_right_copy_command()}</button
 							>
 							<button onclick={() => api.revealPath(s.file).catch((e) => toast.error(errText(e)))}
-								><FolderSearch size={12} /> Reveal</button
+								><FolderSearch size={12} /> {revealLabel()}</button
 							>
 						</div>
 					</div>
@@ -215,20 +254,54 @@
 					<div class="skel" aria-busy="true">
 						{#each [0, 1, 2, 3] as i (i)}<Skeleton variant="rounded" height={26} />{/each}
 					</div>
+				{:else if query}
+					<p class="empty">{m.sidebar_right_no_match({ query })}</p>
+				{:else if live.length}
+					<p class="empty">
+						{scope === "workspace"
+							? m.sidebar_right_no_earlier_worktree()
+							: m.sidebar_right_no_earlier_here()}
+					</p>
 				{:else}
-					<p class="empty">No sessions{query ? ` match “${query}”` : " yet"}.</p>
+					<EmptyState
+						icon={Bot}
+						title={m.sidebar_right_empty_title()}
+						description={scope === "workspace"
+							? m.sidebar_right_empty_body_hint()
+							: m.sidebar_right_empty_body()}
+					>
+						{#snippet actions()}
+							<button class="start" onclick={() => runCommand("atlas::NewAgentSession")}>
+								{m.shell_commands_new_agent_session()}
+								<kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
+							</button>
+						{/snippet}
+					</EmptyState>
 				{/if}
 			{/each}
 		</div>
 	{:else}
 		<div class="list">
-			{#each ports as p (p.port)}
-				<button class="row" onclick={() => w && openPreview(w.id, `http://localhost:${p.port}`)}>
-					<Globe size={12} /><span class="title">:{p.port}</span><span class="dim">{p.command} ({p.pid})</span
+			{#each rows as r (r.port)}
+				<div class="port" data-port={r.port}>
+					<button class="row" onclick={() => openPort(r.port)}>
+						<Globe size={12} /><span class="title">:{r.port}</span>
+						{#if r.service}<span class="agent">{r.service}</span>{/if}
+						{#if r.process}<span class="dim">{r.process}</span>{/if}
+					</button>
+					<button
+						class="ext"
+						aria-label={m.sidebar_right_open_port_external({ port: r.port })}
+						title={m.sidebar_right_open_external()}
+						onclick={() => openPort(r.port, true)}><ExternalLink size={12} /></button
 					>
-				</button>
+				</div>
 			{:else}
-				<p class="empty">No listening ports in this worktree's terminals.</p>
+				<EmptyState
+					icon={Globe}
+					title={m.sidebar_right_no_ports_title()}
+					description={m.sidebar_right_no_ports_body()}
+				/>
 			{/each}
 		</div>
 	{/if}
@@ -290,10 +363,18 @@
 		gap: 6px;
 		padding: 8px 10px;
 	}
-	/* The kit select is `width: 100%`, which in this row left the search field a few pixels: an empty square. */
+	/* The kit select is `width: 100%`, which in this row left the search field a few pixels: an empty square. It sizes to
+	   its label (a translated "Workspace" is longer than 104px) but never takes more than half the row. */
 	.controls :global(.scope) {
 		flex: none;
-		width: 104px;
+		width: auto;
+		min-width: 104px;
+		max-width: 50%;
+	}
+	/* A long word in a translated empty state breaks instead of overflowing the panel. */
+	.list :global(.ca-empty__description),
+	.list :global(.ca-empty__title) {
+		overflow-wrap: anywhere;
 	}
 	.controls input {
 		flex: 1;
@@ -390,6 +471,82 @@
 		border: 0.5px solid var(--ca-outline-subtle);
 		background: none;
 		color: inherit;
+	}
+	.head {
+		margin: 8px 8px 2px;
+		font-size: 10.5px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--ca-text-secondary);
+	}
+	.row.live {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 2px;
+	}
+	.l1 {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+	.state {
+		flex: 1;
+		min-width: 0;
+		font-size: 11.5px;
+		font-weight: 600;
+	}
+	.state.waiting,
+	.state.blocked {
+		color: var(--ca-warning-main, var(--ca-brand-main));
+	}
+	.detail-line {
+		padding-left: 20px;
+	}
+	.port {
+		display: flex;
+		align-items: center;
+	}
+	.port .row {
+		flex: 1;
+		min-width: 0;
+	}
+	.ext {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		border: 0;
+		border-radius: 6px;
+		background: none;
+		color: var(--ca-text-secondary);
+	}
+	.ext:hover {
+		color: var(--ca-text-primary);
+		background: var(--ca-action-hover);
+	}
+	.start {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font: inherit;
+		font-size: 12px;
+		padding: 4px 10px;
+		border-radius: 6px;
+		border: 0.5px solid var(--ca-outline-subtle);
+		background: none;
+		color: inherit;
+	}
+	.start:hover {
+		background: var(--ca-action-hover);
+	}
+	.start kbd {
+		font: inherit;
+		font-size: 11px;
+		color: var(--ca-text-secondary);
 	}
 	.empty {
 		padding: 16px;

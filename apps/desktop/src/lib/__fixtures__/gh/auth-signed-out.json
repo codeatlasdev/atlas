@@ -1,0 +1,9 @@
+{
+	"_recorded": "gh version 2.103.3 (2026-10-26), 2026-11-16: GH_CONFIG_DIR empty",
+	"argv": ["gh", "auth", "status"],
+	"result": {
+		"code": 1,
+		"stdout": "",
+		"stderr": "You are not logged into any GitHub hosts. To log in, run: gh auth login\n"
+	}
+}

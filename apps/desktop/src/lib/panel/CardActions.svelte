@@ -3,6 +3,8 @@
 	import { Play, RotateCw, ScrollText, Square, SquareTerminal } from "@lucide/svelte";
 	import type { Component } from "svelte";
 	import { guarded } from "#lib/components/tooltipGuard.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { kbd } from "#lib/keys.ts";
 
 	type Cmd = "start_service" | "stop_service" | "restart_service";
 	type Btn = {
@@ -40,16 +42,16 @@
 			: up
 				? [
 						{
-							label: "Restart",
-							tip: "Restart (R)",
+							label: m.panel_service_grid_restart(),
+							tip: m.panel_card_actions_restart_tip({ key: kbd("r") }),
 							icon: RotateCw,
 							size: 13,
 							run: () => onaction("restart_service"),
 							off: busy,
 						},
 						{
-							label: "Stop",
-							tip: "Stop",
+							label: m.panel_card_actions_stop(),
+							tip: m.panel_card_actions_stop(),
 							icon: Square,
 							size: 12,
 							run: () => onaction("stop_service"),
@@ -58,8 +60,8 @@
 					]
 				: [
 						{
-							label: "Start",
-							tip: "Start",
+							label: m.panel_start_invite_start(),
+							tip: m.panel_start_invite_start(),
 							icon: Play,
 							size: 13,
 							run: () => onaction("start_service"),
@@ -68,10 +70,16 @@
 					];
 		return [
 			...life,
-			{ label: "Logs", tip: "Logs (Enter)", icon: ScrollText, size: 13, run: onlogs },
 			{
-				label: "Terminal",
-				tip: `Terminal in ${dir ?? "project root"}`,
+				label: m.panel_tab_logs(),
+				tip: m.panel_card_actions_logs_tip({ key: m.common_keys_enter() }),
+				icon: ScrollText,
+				size: 13,
+				run: onlogs,
+			},
+			{
+				label: m.panel_service_grid_terminal(),
+				tip: dir ? m.panel_card_actions_terminal_in({ dir }) : m.panel_card_actions_terminal_in_root(),
 				icon: SquareTerminal,
 				size: 13,
 				run: onterminal,

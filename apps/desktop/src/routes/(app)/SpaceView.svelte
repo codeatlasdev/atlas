@@ -15,6 +15,7 @@
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { dismissedKey, promptFor } from "#lib/stores/agentIntegration.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const space = useSpace();
 	let p = $derived(space.project);
@@ -34,11 +35,11 @@
 	<MissingProject {p} />
 {:else if p}
 	<ProjectHeader {p} />
-	{#if space.current}<ActivityDrawer projectId={p.id} /><MachineDrawer />{/if}
+	{#if space.current && p.kind !== "folder"}<ActivityDrawer projectId={p.id} /><MachineDrawer />{/if}
 
 	{#if p.error}
 		<div class="banner">
-			<Alert severity="error" title="atlas.yaml has problems"
+			<Alert severity="error" title={m.shell_space_view_config_problems()}
 				><pre class="mono ca-selectable">{p.error}</pre></Alert
 			>
 		</div>
@@ -51,25 +52,25 @@
 	{#if offer && space.current}
 		{@const o = offer}
 		{#snippet act()}
-			<Button size="sm" onclick={() => agents.enableIntegration(o.id)}>Enable</Button>
-			<Button size="sm" variant="ghost" onclick={() => dismiss(o.id)}>Not now</Button>
+			<Button size="sm" onclick={() => agents.enableIntegration(o.id)}
+				>{m.shell_space_view_integration_enable()}</Button
+			>
+			<Button size="sm" variant="ghost" onclick={() => dismiss(o.id)}
+				>{m.shell_space_view_integration_not_now()}</Button
+			>
 		{/snippet}
 		<CornerNotice
 			id="integration:{o.id}"
 			kind="suggestion"
 			tone="info"
-			title="Enable {o.label} integration"
-			body="Atlas and Atlas Mobile show {o.label}'s state (working, needs you, done) through its hooks."
+			title={m.shell_space_view_integration_title({ label: o.label })}
+			body={m.shell_space_view_integration_body({ label: o.label })}
 			actions={act}
 			ondismiss={() => dismiss(o.id)}
 		/>
 	{/if}
 
-	<Contain
-		where="Workbench"
-		title="The workspace hit an error"
-		hint="The sidebar and project header still work."
-	>
+	<Contain where="Workbench" title={m.shell_space_view_title()} hint={m.shell_space_view_hint()}>
 		<Workbench />
 	</Contain>
 {/if}

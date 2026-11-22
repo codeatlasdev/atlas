@@ -128,12 +128,13 @@ Common causes (Google, *Flaky Tests at Google and How We Mitigate Them*):
 The policy:
 1. A flaky test is a bug. **Quarantine it immediately**: skip it with an issue link and an owner. Never "just retry".
 2. Fix the root cause:
-   - inject a clock;
+   - inject a clock (Rust: a timer takes an `atlas_core::clock::Clock`, a test gives it a `ManualClock` and `advance`s it; `armed_past`/`fired_past` wait for the timer itself instead of a duration: hostd's idle exit, the LSP idle grace, the control socket's queue wait);
    - seed the RNG;
    - use port 0 or a temp dir per test;
    - await a condition instead of sleeping.
 3. Don't leave the test quarantined for long: fix it or delete it, because it has stopped protecting anything.
 4. Never make a test pass by loosening an assertion or adding a long sleep.
+5. Performance guards never assert a wall-clock budget (`< 500 ms` fails on a loaded machine with nothing regressed). Count operations (spies, proxies, matcher calls, rows rendered), use a virtual clock, await the real event instead of a timer, or bound how the cost grows with the input in the same process (apps/desktop `test/scaling.ts`: CPU time at 8x the size over the cost at 1x). A wall-clock ceiling is only a hang detector (60 s).
 
 ## 9. Reviewer checklist
 - [ ] Bug fix: a test was shown RED before the fix and GREEN after.

@@ -12,10 +12,12 @@ mod services;
 mod sessions;
 mod shell;
 
+use atlas_i18n::t;
 use std::time::Instant;
 
 use super::messages::Effect;
 use super::{App, Layer, Message, ToastVariant};
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 use crate::tui::widgets::events::{EventKind, SideEvent};
 
@@ -86,27 +88,33 @@ impl App {
                 let why = self
                     .manager
                     .exit_code(name)
-                    .map(|c| format!("crashed (exit {c})"))
-                    .unwrap_or_else(|| "failed".to_string());
+                    .map(|c| t!("tui_runtime_app_event_crashed", code = c))
+                    .unwrap_or_else(|| t!("tui_runtime_app_event_failed"));
                 Some((EventKind::Crash, why))
             }
             ServiceState::Unhealthy => Some((
                 EventKind::Crash,
                 self.manager
-                    .service_note(name)
-                    .unwrap_or_else(|| "unhealthy".to_string()),
+                    .service_note_coded(name)
+                    .map(|n| n.render_line())
+                    .unwrap_or_else(|| t!("tui_runtime_app_event_unhealthy")),
             )),
             ServiceState::Degraded => Some((
                 EventKind::Alert,
                 self.manager
-                    .service_note(name)
-                    .unwrap_or_else(|| "degraded".to_string()),
+                    .service_note_coded(name)
+                    .map(|n| n.render_line())
+                    .unwrap_or_else(|| t!("tui_runtime_app_event_degraded")),
             )),
-            ServiceState::Running => Some((EventKind::Started, "running".into())),
-            ServiceState::Stopped if done => Some((EventKind::Done, "done".into())),
+            ServiceState::Running => {
+                Some((EventKind::Started, t!("tui_runtime_app_event_running")))
+            }
+            ServiceState::Stopped if done => {
+                Some((EventKind::Done, t!("tui_runtime_app_event_done")))
+            }
             ServiceState::Stopped | ServiceState::Suspended => match paused_by {
                 Some(by) => Some((EventKind::Paused(by), String::new())),
-                None => Some((EventKind::Stopped, "stopped".into())),
+                None => Some((EventKind::Stopped, t!("tui_runtime_app_event_stopped"))),
             },
             _ => None,
         };
@@ -144,14 +152,16 @@ impl App {
             return;
         }
         let body = if self.remote.is_some() {
-            format!(
-                "Atlas v{version} is available — update when you quit? The runner keeps the old version until `atlas down && atlas dev --detach`."
+            t!(
+                "tui_runtime_app_update_offer_runner",
+                version = version.as_str(),
+                command = "atlas down && atlas dev --detach"
             )
         } else {
-            format!("Atlas v{version} is available — update when you quit?")
+            t!("tui_runtime_app_update_offer", version = version.as_str())
         };
         self.layer = Layer::Confirm {
-            title: "Update available".to_string(),
+            title: t!("tui_runtime_app_update_title"),
             body,
             on_confirm: Box::new(Message::UpdateOnExit(version.clone())),
         };
@@ -173,18 +183,23 @@ impl App {
     }
 }
 
-/// Map a scheduler note to a sidebar event kind.
-pub(in crate::tui::app) fn classify_note(message: &str) -> EventKind {
-    let m = message.to_lowercase();
-    if m.starts_with("waiting") {
-        EventKind::Waiting
-    } else if m.contains("gave up") || m.contains("crashed") || m.contains("timeout") {
-        EventKind::Crash
-    } else if m.contains("completed") || m.contains("exited cleanly") {
-        EventKind::Done
-    } else if m.contains("restart") {
-        EventKind::Restart
-    } else {
-        EventKind::Info
+/// Map an engine note to a sidebar event kind, by its code, never by its words (the words are in the display
+/// language). The kinds are the ones the English words used to pick: a wait is `Waiting`, a crash, a hang and a
+/// spent restart budget are `Crash`, a service that finished is `Done`, everything about restarting is `Restart`,
+/// the rest is `Info`. A note without a code (an older runner) is `Info`.
+pub(in crate::tui::app) fn classify_note(note: &Note) -> EventKind {
+    match note.code.as_str() {
+        "sched.waiting_dep" => EventKind::Waiting,
+        "sched.gave_up" | "sched.crashed_restart" | "health.hang" | "health.hang_restarting" => {
+            EventKind::Crash
+        }
+        "sched.completed" | "sched.exited_cleanly" => EventKind::Done,
+        "sched.stable"
+        | "sched.restarting"
+        | "sched.exited_restart"
+        | "health.hang_spent"
+        | "memory.restarting"
+        | "memory.stopped" => EventKind::Restart,
+        _ => EventKind::Info,
     }
 }

@@ -94,20 +94,42 @@
 		type View,
 	} from "#lib/shots/render.ts";
 	import type { EditorDoc, Entry } from "#lib/shots/types.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { kbd } from "#lib/keys.ts";
 
 	const PADDING = 32;
-	const TOOLS: { tool: Tool; label: string; key: string; icon: typeof Square }[] = [
-		{ tool: "select", label: "Select", key: "V", icon: MousePointer2 },
-		{ tool: "arrow", label: "Arrow", key: "A", icon: MoveUpRight },
-		{ tool: "rect", label: "Rectangle", key: "R", icon: Square },
-		{ tool: "text", label: "Text", key: "T", icon: Type },
-		{ tool: "highlight", label: "Highlight", key: "H", icon: Highlighter },
-		{ tool: "marker", label: "Highlighter", key: "M", icon: Brush },
-		{ tool: "counter", label: "Counter", key: "N", icon: Hash },
-		{ tool: "spotlight", label: "Spotlight", key: "S", icon: Spotlight },
-		{ tool: "blur", label: "Blur", key: "B", icon: Blend },
-		{ tool: "crop", label: "Crop", key: "C", icon: Crop },
-	];
+	const TOOLS = $derived<{ tool: Tool; label: string; key: string; icon: typeof Square }[]>([
+		{ tool: "select", label: m.capture_editor_page_tool_select(), key: "V", icon: MousePointer2 },
+		{ tool: "arrow", label: m.capture_editor_page_tool_arrow(), key: "A", icon: MoveUpRight },
+		{ tool: "rect", label: m.capture_editor_page_rectangle(), key: "R", icon: Square },
+		{ tool: "text", label: m.capture_editor_page_tool_text(), key: "T", icon: Type },
+		{ tool: "highlight", label: m.capture_editor_page_tool_highlight(), key: "H", icon: Highlighter },
+		{ tool: "marker", label: m.capture_editor_page_tool_highlighter(), key: "M", icon: Brush },
+		{ tool: "counter", label: m.capture_editor_page_tool_counter(), key: "N", icon: Hash },
+		{ tool: "spotlight", label: m.capture_editor_page_tool_spotlight(), key: "S", icon: Spotlight },
+		{ tool: "blur", label: m.capture_editor_page_blur(), key: "B", icon: Blend },
+		{ tool: "crop", label: m.capture_editor_page_tool_crop(), key: "C", icon: Crop },
+	]);
+	const TEXT_BGS = $derived([
+		{ value: "none", label: m.capture_editor_page_text_bg_none() },
+		{ value: "solid", label: m.capture_editor_page_text_bg_solid() },
+		{ value: "pill", label: m.capture_editor_page_text_bg_pill() },
+	] as const);
+	/** The Beautify gradients are named in `render.ts` (English ids); the name a person reads is the catalog's. */
+	function gradientName(name: string): string {
+		switch (name) {
+			case "Sunset":
+				return m.capture_editor_page_gradient_sunset();
+			case "Ocean":
+				return m.capture_editor_page_gradient_ocean();
+			case "Aurora":
+				return m.capture_editor_page_gradient_aurora();
+			case "Midnight":
+				return m.capture_editor_page_gradient_midnight();
+			default:
+				return name;
+		}
+	}
 	/** Tool letters (lower case) to tools. */
 	const KEYS: Record<string, Tool> = {
 		v: "select",
@@ -230,7 +252,7 @@
 		try {
 			source = ctx?.getImageData(0, 0, image.naturalWidth, image.naturalHeight);
 		} catch (e) {
-			error = `The image cannot be read for blurring: ${errText(e)}`;
+			error = m.capture_editor_page_error_blur_read({ reason: errText(e) });
 		}
 	}
 
@@ -499,12 +521,12 @@
 
 	/** The edited image as base64 PNG at image resolution: crop applied, blur/pixelate applied to the pixels. */
 	function exportPng(): string {
-		if (!image || !source) throw new Error("The image is not loaded");
+		if (!image || !source) throw new Error(m.capture_editor_page_error_image_not_loaded());
 		const full = document.createElement("canvas");
 		full.width = doc.width;
 		full.height = doc.height;
 		const ctx = full.getContext("2d");
-		if (!ctx) throw new Error("No 2D canvas available");
+		if (!ctx) throw new Error(m.capture_editor_page_error_no_canvas());
 		ctx.drawImage(image, 0, 0);
 		paintItems(ctx, doc.items, {
 			base: source,
@@ -523,7 +545,7 @@
 		result.width = l.out.w;
 		result.height = l.out.h;
 		const rctx = result.getContext("2d");
-		if (!rctx) throw new Error("No 2D canvas available");
+		if (!rctx) throw new Error(m.capture_editor_page_error_no_canvas());
 		paintBeautified(rctx, cropped, size, beautify);
 		return result.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
 	}
@@ -605,15 +627,15 @@
 <svelte:window onkeydown={onKeyDown} onkeyup={onKeyUp} />
 
 <main class="editor">
-	<header class="bar" aria-label="Editor tools">
-		<div class="group" role="toolbar" aria-label="Tools">
+	<header class="bar" aria-label={m.capture_editor_page_editor_tools()}>
+		<div class="group" role="toolbar" aria-label={m.capture_editor_page_tools()}>
 			{#each TOOLS as t (t.tool)}
 				<button
 					class="tool"
 					class:on={tool === t.tool}
 					aria-label={t.label}
 					aria-pressed={tool === t.tool}
-					title="{t.label} ({t.key})"
+					title={m.capture_editor_page_tool_tip({ tool: t.label, key: t.key })}
 					onclick={() => pickTool(t.tool)}
 				>
 					<t.icon size={16} />
@@ -622,7 +644,7 @@
 		</div>
 
 		{#if tool === "blur"}
-			<div class="group" role="radiogroup" aria-label="Blur style">
+			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_blur_style()}>
 				<button
 					class="chip"
 					class:on={blurMode === "pixelate"}
@@ -630,7 +652,8 @@
 					aria-checked={blurMode === "pixelate"}
 					onclick={() => setMode("pixelate")}
 				>
-					<Grid3x3 size={14} /> Pixelate
+					<Grid3x3 size={14} />
+					{m.capture_editor_page_pixelate()}
 				</button>
 				<button
 					class="chip"
@@ -639,11 +662,12 @@
 					aria-checked={blurMode === "blur"}
 					onclick={() => setMode("blur")}
 				>
-					<Blend size={14} /> Blur
+					<Blend size={14} />
+					{m.capture_editor_page_blur()}
 				</button>
 			</div>
 		{:else if tool === "spotlight" || selectedItem?.type === "spotlight"}
-			<div class="group" role="radiogroup" aria-label="Spotlight shape">
+			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_spotlight_shape()}>
 				<button
 					class="chip"
 					class:on={shape === "rect"}
@@ -651,7 +675,8 @@
 					aria-checked={shape === "rect"}
 					onclick={() => pickShape("rect")}
 				>
-					<Square size={14} /> Rectangle
+					<Square size={14} />
+					{m.capture_editor_page_rectangle()}
 				</button>
 				<button
 					class="chip"
@@ -660,28 +685,30 @@
 					aria-checked={shape === "ellipse"}
 					onclick={() => pickShape("ellipse")}
 				>
-					<Circle size={14} /> Ellipse
+					<Circle size={14} />
+					{m.capture_editor_page_ellipse()}
 				</button>
 			</div>
 		{/if}
 
 		{#if !NO_COLOR.includes(tool) && selectedItem?.type !== "blur" && selectedItem?.type !== "spotlight"}
-			<div class="group palette" role="radiogroup" aria-label="Colour">
+			<div class="group palette" role="radiogroup" aria-label={m.capture_editor_page_color()}>
 				{#each COLORS as c (c)}
 					<button
 						class="swatch"
 						class:on={color === c}
 						role="radio"
 						aria-checked={color === c}
-						aria-label="Colour {c}"
+						aria-label={m.capture_editor_page_color_c({ c })}
 						style:--c={c}
 						onclick={() => pickColor(c)}
 					></button>
 				{/each}
+				<!-- i18n-ignore: hex color notation, not prose -->
 				<input
 					class="hex"
 					class:bad={hexBad}
-					aria-label="Custom colour, hex"
+					aria-label={m.capture_editor_page_custom_color_hex()}
 					aria-invalid={hexBad}
 					placeholder="#hex"
 					maxlength="7"
@@ -696,14 +723,14 @@
 				/>
 			</div>
 			{#if tool !== "text" && selectedItem?.type !== "text"}
-				<div class="group" role="radiogroup" aria-label="Stroke width">
+				<div class="group" role="radiogroup" aria-label={m.capture_editor_page_stroke_width()}>
 					{#each WIDTHS as w (w)}
 						<button
 							class="chip"
 							class:on={width === w}
 							role="radio"
 							aria-checked={width === w}
-							aria-label="Stroke {w} pixels"
+							aria-label={m.capture_editor_page_stroke_w_pixels({ w })}
 							onclick={() => pickWidth(w)}
 						>
 							<span class="stroke" style:height="{w}px"></span>
@@ -714,14 +741,14 @@
 		{/if}
 
 		{#if textControls}
-			<div class="group" role="radiogroup" aria-label="Text size">
+			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_text_size()}>
 				{#each TEXT_SIZES as t (t.label)}
 					<button
 						class="chip"
 						class:on={textSize === t.size}
 						role="radio"
 						aria-checked={textSize === t.size}
-						aria-label="Text size {t.label}"
+						aria-label={m.capture_editor_page_text_size_label({ label: t.label })}
 						onclick={() => pickTextSize(t.size)}>{t.label}</button
 					>
 				{/each}
@@ -730,19 +757,19 @@
 				<button
 					class="chip"
 					class:on={weight === "bold"}
-					aria-label="Bold"
+					aria-label={m.capture_editor_page_bold()}
 					aria-pressed={weight === "bold"}
 					onclick={() => pickWeight(weight === "bold" ? "regular" : "bold")}><Bold size={14} /></button
 				>
 			</div>
-			<div class="group" role="radiogroup" aria-label="Text background">
-				{#each [["none", "None"], ["solid", "Solid"], ["pill", "Pill"]] as const as [b, label] (b)}
+			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_text_background()}>
+				{#each TEXT_BGS as { value: b, label } (b)}
 					<button
 						class="chip"
 						class:on={bg === b}
 						role="radio"
 						aria-checked={bg === b}
-						aria-label="Text background {label}"
+						aria-label={m.capture_editor_page_text_background_label({ label })}
 						onclick={() => pickBg(b)}>{label}</button
 					>
 				{/each}
@@ -752,21 +779,24 @@
 		<div class="group">
 			<button
 				class="tool"
-				aria-label="Undo"
-				title="Undo (Cmd+Z)"
+				aria-label={m.common_action_undo()}
+				title={m.capture_editor_page_undo_tip({ key: kbd("cmd-z") })}
 				disabled={!canUndo(doc)}
 				onclick={() => (doc = undo(doc))}><Undo2 size={16} /></button
 			>
 			<button
 				class="tool"
-				aria-label="Redo"
-				title="Redo (Shift+Cmd+Z)"
+				aria-label={m.capture_editor_page_redo()}
+				title={m.capture_editor_page_redo_tip({ key: kbd("cmd-shift-z") })}
 				disabled={!canRedo(doc)}
 				onclick={() => (doc = redo(doc))}><Redo2 size={16} /></button
 			>
 			{#if doc.crop}
-				<button class="chip" aria-label="Remove crop" onclick={() => (doc = setCrop(doc, null))}
-					><Crop size={14} /> Reset crop</button
+				<button
+					class="chip"
+					aria-label={m.capture_editor_page_remove_crop()}
+					onclick={() => (doc = setCrop(doc, null))}
+					><Crop size={14} /> {m.capture_editor_page_reset_crop()}</button
 				>
 			{/if}
 		</div>
@@ -775,29 +805,33 @@
 			<button
 				class="chip"
 				class:on={beautify.on}
-				aria-label="Beautify"
+				aria-label={m.capture_editor_page_beautify()}
 				aria-pressed={beautify.on}
 				aria-expanded={beautifyOpen}
-				title="Beautify: background, padding, rounded corners, shadow"
-				onclick={toggleBeautify}><Sparkles size={14} /> Beautify</button
+				title={m.capture_editor_page_beautify_background_padding_rounded_corners()}
+				onclick={toggleBeautify}><Sparkles size={14} /> {m.capture_editor_page_beautify()}</button
 			>
-			<button class="chip" aria-label="Fit to window" onclick={fit}><Maximize size={14} /> Fit</button>
-			<button class="chip" aria-label="Actual size, 100%" onclick={actualSize}>100%</button>
+			<button class="chip" aria-label={m.capture_editor_page_fit_to_window()} onclick={fit}
+				><Maximize size={14} /> {m.capture_editor_page_fit()}</button
+			>
+			<button class="chip" aria-label={m.capture_editor_page_actual_size_100()} onclick={actualSize}
+				>100%</button
+			>
 			<span class="dim" aria-live="polite">{Math.round(view.zoom * 100)}%</span>
 		</div>
 	</header>
 
 	{#if beautifyOpen}
-		<section class="bar beautify" aria-label="Beautify">
-			<div class="group" role="radiogroup" aria-label="Background">
+		<section class="bar beautify" aria-label={m.capture_editor_page_beautify()}>
+			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_background()}>
 				{#each BEAUTIFY_GRADIENTS as g, i (g.name)}
 					<button
 						class="swatch"
 						class:on={beautify.background.kind === "gradient" && beautify.background.index === i}
 						role="radio"
 						aria-checked={beautify.background.kind === "gradient" && beautify.background.index === i}
-						aria-label="Background {g.name}"
-						title={g.name}
+						aria-label={m.capture_editor_page_background_name({ name: gradientName(g.name) })}
+						title={gradientName(g.name)}
 						style:--c="linear-gradient(135deg, {g.stops.join(', ')})"
 						onclick={() => setBeautify({ background: { kind: "gradient", index: i } })}
 					></button>
@@ -808,34 +842,34 @@
 						class:on={beautify.background.kind === "solid" && beautify.background.color === c}
 						role="radio"
 						aria-checked={beautify.background.kind === "solid" && beautify.background.color === c}
-						aria-label="Background colour {c}"
+						aria-label={m.capture_editor_page_background_color_c({ c })}
 						style:--c={c}
 						onclick={() => setBeautify({ background: { kind: "solid", color: c } })}
 					></button>
 				{/each}
 			</div>
-			<div class="group" role="radiogroup" aria-label="Padding">
-				<span class="dim">Padding</span>
+			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_padding()}>
+				<span class="dim">{m.capture_editor_page_padding()}</span>
 				{#each BEAUTIFY_PADDINGS as v (v)}
 					<button
 						class="chip"
 						class:on={beautify.padding === v}
 						role="radio"
 						aria-checked={beautify.padding === v}
-						aria-label="Padding {v} pixels"
+						aria-label={m.capture_editor_page_padding_v_pixels({ v })}
 						onclick={() => setBeautify({ padding: v })}>{v}</button
 					>
 				{/each}
 			</div>
-			<div class="group" role="radiogroup" aria-label="Corner radius">
-				<span class="dim">Corners</span>
+			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_corner_radius()}>
+				<span class="dim">{m.capture_editor_page_corners()}</span>
 				{#each BEAUTIFY_RADII as v (v)}
 					<button
 						class="chip"
 						class:on={beautify.radius === v}
 						role="radio"
 						aria-checked={beautify.radius === v}
-						aria-label="Corner radius {v} pixels"
+						aria-label={m.capture_editor_page_corner_radius_v_pixels({ v })}
 						onclick={() => setBeautify({ radius: v })}>{v}</button
 					>
 				{/each}
@@ -844,9 +878,9 @@
 				<button
 					class="chip"
 					class:on={beautify.shadow}
-					aria-label="Shadow"
+					aria-label={m.capture_editor_page_shadow()}
 					aria-pressed={beautify.shadow}
-					onclick={() => setBeautify({ shadow: !beautify.shadow })}>Shadow</button
+					onclick={() => setBeautify({ shadow: !beautify.shadow })}>{m.capture_editor_page_shadow()}</button
 				>
 			</div>
 		</section>
@@ -855,7 +889,7 @@
 	<div
 		class="stage"
 		role="application"
-		aria-label="Image canvas"
+		aria-label={m.capture_editor_page_image_canvas()}
 		style:cursor
 		bind:this={stage}
 		bind:clientWidth={viewport.w}
@@ -885,7 +919,7 @@
 				></canvas>
 			{/if}
 			<div class="pic" style:clip-path={picClip}>
-				<canvas class="base" bind:this={baseCanvas} aria-label="Screenshot"></canvas>
+				<canvas class="base" bind:this={baseCanvas} aria-label={m.capture_editor_page_screenshot()}></canvas>
 				<canvas class="over" bind:this={overlay} aria-hidden="true"></canvas>
 			</div>
 		</div>
@@ -894,7 +928,7 @@
 			<input
 				class="text-edit"
 				bind:this={textInput}
-				aria-label="Annotation text"
+				aria-label={m.capture_editor_page_annotation_text()}
 				value={editingItem.text}
 				oninput={(e) => (doc = setText(doc, e.currentTarget.value))}
 				onkeydown={onTextKey}
@@ -913,7 +947,7 @@
 			/>
 		{/if}
 
-		{#if !loaded && !error}<p class="dim center">Loading…</p>{/if}
+		{#if !loaded && !error}<p class="dim center">{m.common_state_loading()}</p>{/if}
 	</div>
 
 	{#if error}
@@ -921,36 +955,44 @@
 	{/if}
 
 	<footer class="foot">
-		<span class="dim">{layout.out.w} × {layout.out.h} px{dirty ? " · edited" : ""}</span>
+		<span class="dim"
+			>{dirty
+				? m.capture_editor_page_size_px_edited({ w: layout.out.w, h: layout.out.h })
+				: m.capture_editor_page_size_px({ w: layout.out.w, h: layout.out.h })}</span
+		>
 		{#if confirmClose}
-			<div class="group" role="alertdialog" aria-label="Discard edits">
-				<span>Discard your edits?</span>
-				<button class="chip danger" onclick={closeWindow}>Discard</button>
-				<button class="chip" onclick={() => (confirmClose = false)}>Keep editing</button>
+			<div class="group" role="alertdialog" aria-label={m.capture_editor_page_discard_edits()}>
+				<span>{m.capture_editor_page_discard_your_edits()}</span>
+				<button class="chip danger" onclick={closeWindow}>{m.capture_discard()}</button>
+				<button class="chip" onclick={() => (confirmClose = false)}
+					>{m.capture_editor_page_keep_editing()}</button
+				>
 			</div>
 		{:else}
 			<div class="group">
-				<button class="chip" aria-label="Cancel" onclick={requestClose}><X size={14} /> Cancel</button>
-				<button
-					class="chip"
-					aria-label="Copy to clipboard"
-					title="Copy the image (Cmd+C)"
-					disabled={!loaded || busy}
-					onclick={() => done("copy")}><Copy size={14} /> Copy</button
+				<button class="chip" aria-label={m.common_action_cancel()} onclick={requestClose}
+					><X size={14} /> {m.common_action_cancel()}</button
 				>
 				<button
 					class="chip"
-					aria-label="Save a copy"
-					title="Save a copy (Cmd+S)"
+					aria-label={m.capture_editor_page_copy_to_clipboard()}
+					title={m.capture_editor_page_copy_tip({ key: kbd("cmd-c") })}
 					disabled={!loaded || busy}
-					onclick={() => done("file")}><Save size={14} /> Save</button
+					onclick={() => done("copy")}><Copy size={14} /> {m.common_action_copy()}</button
+				>
+				<button
+					class="chip"
+					aria-label={m.capture_editor_page_save_a_copy()}
+					title={m.capture_editor_page_save_copy_tip({ key: kbd("cmd-s") })}
+					disabled={!loaded || busy}
+					onclick={() => done("file")}><Save size={14} /> {m.common_action_save()}</button
 				>
 				<button
 					class="chip primary"
-					aria-label="Save and copy"
-					title="Save and copy (Cmd+Enter)"
+					aria-label={m.capture_editor_page_save_and_copy()}
+					title={m.capture_editor_page_save_and_copy_tip({ key: kbd("cmd-enter") })}
 					disabled={!loaded || busy}
-					onclick={() => done("both")}><Check size={14} /> Save & Copy</button
+					onclick={() => done("both")}><Check size={14} /> {m.capture_editor_page_save_and_copy()}</button
 				>
 			</div>
 		{/if}

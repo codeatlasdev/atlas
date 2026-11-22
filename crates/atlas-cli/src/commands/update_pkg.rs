@@ -8,6 +8,7 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 use atlas_core::pkgowner::PackageManager;
+use atlas_i18n::t;
 
 /// This process runs as root (no escalation needed). Package installs only exist on Linux.
 pub fn is_root() -> bool {
@@ -53,7 +54,7 @@ pub fn plan(is_root: bool, tty: bool, yes: bool, has: impl Fn(&str) -> bool) -> 
             (true, _, _) => Ok(Plan::Install(Escalation::None)),
             (false, true, _) => Ok(Plan::Install(Escalation::Sudo)),
             (false, false, true) => Ok(Plan::Install(Escalation::Pkexec)),
-            _ => bail!("neither sudo nor pkexec is available to install the package as root"),
+            _ => bail!("{}", t!("cmd_update_pkg_no_escalation")),
         };
     }
     let escalation = if is_root {
@@ -71,27 +72,36 @@ pub fn plan(is_root: bool, tty: bool, yes: bool, has: impl Fn(&str) -> bool) -> 
 
 /// The full command line: escalation prefix + package manager + file.
 pub fn command_line(esc: Escalation, pm: PackageManager, file: &Path) -> Vec<String> {
-    let mut argv = match esc {
-        Escalation::None => Vec::new(),
-        Escalation::Sudo => vec!["sudo".to_string()],
-        Escalation::Pkexec => vec!["pkexec".to_string()],
+    escalated(esc, pm.install_argv(file))
+}
+
+/// `argv` behind the escalation prefix (`sudo`, `pkexec`, or nothing for root).
+pub fn escalated(esc: Escalation, mut argv: Vec<String>) -> Vec<String> {
+    let prefix = match esc {
+        Escalation::None => None,
+        Escalation::Sudo => Some("sudo"),
+        Escalation::Pkexec => Some("pkexec"),
     };
-    argv.extend(pm.install_argv(file));
+    if let Some(p) = prefix {
+        argv.insert(0, p.to_string());
+    }
     argv
 }
 
 /// Run `argv` attached to this terminal (sudo must be able to prompt) and fail on a non-zero
 /// exit. Nothing has been escalated before this point: the checksum is already verified.
 pub fn run_install(argv: &[String]) -> Result<()> {
-    let (program, args) = argv.split_first().context("empty install command")?;
+    let (program, args) = argv
+        .split_first()
+        .with_context(|| t!("cmd_update_pkg_empty_command"))?;
     let st = Command::new(program)
         .args(args)
         .status()
-        .with_context(|| format!("cannot run {program}"))?;
+        .with_context(|| t!("cmd_update_pkg_run_failed", program = program.as_str()))?;
     if st.success() {
         Ok(())
     } else {
-        bail!(failure(argv, st.code()))
+        bail!("{}", failure(argv, st.code()))
     }
 }
 
@@ -100,14 +110,14 @@ pub fn run_install(argv: &[String]) -> Result<()> {
 fn failure(argv: &[String], code: Option<i32>) -> String {
     let line = argv.join(" ");
     match (argv.first().map(String::as_str), code) {
-        (Some("pkexec"), Some(126)) => {
-            "Authentication was cancelled; nothing was installed".to_string()
-        }
-        (Some("pkexec"), Some(127)) => {
-            "pkexec could not authenticate (is a polkit authentication agent running?); nothing was installed".to_string()
-        }
-        (_, Some(c)) => format!("`{line}` failed (exit status: {c})"),
-        (_, None) => format!("`{line}` was killed by a signal"),
+        (Some("pkexec"), Some(126)) => t!("cmd_update_pkg_auth_cancelled"),
+        (Some("pkexec"), Some(127)) => t!("cmd_update_pkg_auth_unavailable"),
+        (_, Some(c)) => t!(
+            "cmd_update_pkg_failed",
+            command = line,
+            status = t!("cli_chrome_exit_code", code = c)
+        ),
+        (_, None) => t!("cmd_update_pkg_killed", command = line),
     }
 }
 

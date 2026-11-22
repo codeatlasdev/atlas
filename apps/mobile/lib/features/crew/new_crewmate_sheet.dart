@@ -2,9 +2,16 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/require_mux.dart';
+import 'package:atlas_mobile/core/protocol/agent_registry.dart';
+import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/permission_mode.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
+import 'package:atlas_mobile/features/crew/permissions/mode_picker.dart';
+import 'package:atlas_mobile/features/crew/permissions/mode_text.dart';
 
 /// Opens the recruit sheet for a crewmate on one of [devices] (the crew servers).
 Future<void> showNewCrewmateSheet(
@@ -13,6 +20,7 @@ Future<void> showNewCrewmateSheet(
 ) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
+  useSafeArea: true,
   showDragHandle: true,
   builder: (_) => NewCrewmateSheet(devices: devices),
 );
@@ -30,12 +38,12 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
   final _nameCtrl = TextEditingController();
   final _roleCtrl = TextEditingController();
   String _agent = 'claude';
-  String _approval = 'ask';
+
+  /// What the person picked; until they pick, the crew's default mode.
+  PermissionMode? _picked;
   late MacDevice _device;
   bool _submitting = false;
   String? _error;
-
-  static const _agents = ['claude', 'codex', 'opencode', 'omp'];
 
   @override
   void initState() {
@@ -50,12 +58,20 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
     super.dispose();
   }
 
-  void _onAgentChanged(String agent) {
-    setState(() {
-      _agent = agent;
-      // opencode forces auto-approval (server rejects ask).
-      if (agent == 'opencode') _approval = 'auto';
-    });
+  void _onAgentChanged(String agent) => setState(() => _agent = agent);
+
+  /// An engine with no approval channel (codex, opencode) always runs unattended: Bypass, fixed.
+  bool get _canAsk => builtinAgents.any((a) => a.id == _agent && a.canAsk);
+
+  /// The mode the crewmate will start in: the picked one, else the crew's default, else Ask; Bypass only while
+  /// the crew allows it, and always Bypass for an engine that cannot ask.
+  PermissionMode _mode(CrewSettings? crew) {
+    if (!_canAsk) return PermissionMode.bypass;
+    final allowBypass = crew?.allowBypass ?? true;
+    final mode = _picked ?? crew?.defaultMode ?? PermissionMode.ask;
+    return mode == PermissionMode.bypass && !allowBypass
+        ? PermissionMode.ask
+        : mode;
   }
 
   Future<void> _submit() async {
@@ -64,6 +80,7 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
       setState(() => _error = 'Name is required.');
       return;
     }
+    final mode = _mode(ref.read(crewSettingsProvider(_device)).value);
     setState(() {
       _submitting = true;
       _error = null;
@@ -74,15 +91,21 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
         'name': name,
         'role': _roleCtrl.text.trim(),
         'agent': _agent,
-        'approval': _approval,
+        'mode': mode.wire,
       });
       if (resp['ok'] != true) {
-        throw Exception(resp['error'] ?? 'Failed to create crewmate');
+        throw HostRefusal.fromReply(resp);
       }
       ref.invalidate(crewProvider(_device));
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      setState(() => _error = '$e');
+      if (mounted) {
+        setState(
+          () => _error = e is HostRefusal && e.code != null
+              ? modeFailureText(context.l10n, e)
+              : errorText(e),
+        );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -91,9 +114,12 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final isOpencode = _agent == 'opencode';
+    final l = context.l10n;
+    final crew = ref.watch(crewSettingsProvider(_device)).value;
+    final canAsk = _canAsk;
 
-    return Padding(
+    // Scrolls: the three modes make it taller than a small phone at a large text size.
+    return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: Space.xl,
         right: Space.xl,
@@ -119,6 +145,7 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
             ),
             const SizedBox(height: Space.sm),
             DropdownButtonFormField<MacDevice>(
+              isExpanded: true,
               initialValue: _device,
               decoration: const InputDecoration(isDense: true),
               items: [
@@ -164,11 +191,12 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
           ),
           const SizedBox(height: Space.sm),
           DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: _agent,
             decoration: const InputDecoration(isDense: true),
             items: [
-              for (final a in _agents)
-                DropdownMenuItem(value: a, child: Text(a)),
+              for (final a in builtinAgents)
+                DropdownMenuItem(value: a.id, child: Text(a.label)),
             ],
             onChanged: (a) {
               if (a != null) _onAgentChanged(a);
@@ -176,31 +204,19 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
           ),
           const SizedBox(height: Space.lg),
 
-          // Approval mode.
+          // Permission mode: starts at the crew's default; Bypass is not offered when the crew does not allow it.
           Text(
-            'Approval',
+            l.mobile_crew_mode_label,
             style: Theme.of(context).textTheme.bodyMedium!
                 .copyWith(color: c.muted),
           ),
           const SizedBox(height: Space.sm),
-          SegmentedButton<String>(
-            selected: {_approval},
-            onSelectionChanged: isOpencode
-                ? null
-                : (s) => setState(() => _approval = s.first),
-            segments: const [
-              ButtonSegment(value: 'ask', label: Text('Ask me')),
-              ButtonSegment(value: 'auto', label: Text('Auto')),
-            ],
+          ModePicker(
+            value: _mode(crew),
+            allowBypass: crew?.allowBypass ?? true,
+            onChanged: canAsk ? (m) => setState(() => _picked = m) : null,
+            reason: canAsk ? null : l.mobile_crew_mode_no_channel,
           ),
-          if (isOpencode) ...[
-            const SizedBox(height: Space.sm),
-            Text(
-              'OpenCode crewmates run without approval prompts.',
-              style: Theme.of(context).textTheme.bodySmall!
-                  .copyWith(color: c.muted),
-            ),
-          ],
 
           if (_error != null) ...[
             const SizedBox(height: Space.md),

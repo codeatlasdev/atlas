@@ -9,6 +9,7 @@
 //! * effects that would act on services (restart, stop, run action) become
 //!   control requests instead of manager calls.
 
+use atlas_i18n::t;
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
@@ -18,6 +19,7 @@ use crate::control::{self, Subscription};
 use crate::runner::parse_state;
 use crate::runtime::logs::LogStream;
 use crate::runtime::manager::{ManagerEvent, MemoryFacts, MirrorFacts, UnhealthyReport};
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 use crate::runtime::tunnel::TunnelStatus;
 use crate::tui::widgets::events::EventKind;
@@ -65,7 +67,10 @@ impl Remote {
             match control::call(&root, cmd, args).await {
                 Ok(r) if r.ok => {}
                 Ok(r) => {
-                    let _ = errors.send(r.error.unwrap_or_else(|| format!("{cmd} refused")));
+                    let _ = errors
+                        .send(r.error.unwrap_or_else(|| {
+                            t!("tui_runtime_app_remote_refused", command = cmd)
+                        }));
                 }
                 Err(e) => {
                     let _ = errors.send(e);
@@ -80,13 +85,13 @@ fn facts(v: &Value) -> MirrorFacts {
     MirrorFacts {
         exit_code: v["exit_code"].as_i64().map(|c| c as i32),
         restarts: v["restarts"].as_u64().unwrap_or(0) as u32,
-        note: v["note"].as_str().map(str::to_string),
+        note: Note::from_flat(v, "note"),
         completed_ok: v["completed_ok"].as_bool().unwrap_or(false),
         paused_by: v["paused_by"].as_str().map(str::to_string),
         deselected: v["deselected"].as_bool().unwrap_or(false),
         port_conflict: serde_json::from_value(v["port_conflict"].clone()).ok(),
         ready: v["ready"].as_bool(),
-        probe_error: v["probe_error"].as_str().map(str::to_string),
+        probe_error: Note::from_flat(v, "probe_error"),
         unhealthy: v["unhealthy_since"]
             .as_u64()
             .map(|since_epoch| UnhealthyReport {
@@ -207,26 +212,24 @@ impl App {
                 }
             }
             Some("note") => {
-                let (name, msg) = (
-                    ev["name"].as_str().unwrap_or_default(),
-                    ev["message"].as_str().unwrap_or_default(),
-                );
+                let note = Note::from_wire(ev);
                 self.push_event(
-                    super::update::classify_note(msg),
-                    name.to_string(),
-                    msg.to_string(),
+                    super::update::classify_note(&note),
+                    ev["name"].as_str().unwrap_or_default().to_string(),
+                    note.render(),
                 );
             }
             Some("alert") => self.push_event(
                 EventKind::Alert,
                 ev["service"].as_str().unwrap_or_default().to_string(),
-                ev["message"].as_str().unwrap_or_default().to_string(),
+                Note::from_wire(ev).render(),
             ),
-            Some("tunnel") => self.push_event(
-                EventKind::Tunnel,
-                "tunnel".into(),
-                ev["state"].as_str().unwrap_or_default().to_string(),
-            ),
+            Some("tunnel") => self.push_event(EventKind::Tunnel, "tunnel".into(), {
+                // The wire carries the state's machine name; show it in words, and an unknown one as it came.
+                let raw = ev["state"].as_str().unwrap_or_default();
+                raw.parse::<crate::runtime::service::ServiceState>()
+                    .map_or_else(|_| raw.to_string(), |s| s.label().to_lowercase())
+            }),
             _ => {}
         }
     }
@@ -271,11 +274,11 @@ impl App {
             }
             Some("note") => ManagerEvent::ServiceNote {
                 name: ev["name"].as_str().unwrap_or_default().to_string(),
-                message: ev["message"].as_str().unwrap_or_default().to_string(),
+                note: Note::from_wire(ev),
             },
             Some("alert") => ManagerEvent::CriticalAlert {
                 service: ev["service"].as_str().unwrap_or_default().to_string(),
-                message: ev["message"].as_str().unwrap_or_default().to_string(),
+                note: Note::from_wire(ev),
             },
             Some("tunnel") => {
                 self.manager.mirror_set_tunnel(tunnel_status(&ev["tunnel"]));
@@ -314,29 +317,36 @@ impl App {
         match effect {
             Effect::RestartService(name) => {
                 remote.request("restart_service", json!({ "service": name }));
-                self.set_toast(format!("Restarting {name}"), ToastVariant::Progress);
+                self.set_toast(
+                    t!("tui_runtime_app_toast_restarting", name = name.as_str()),
+                    ToastVariant::Progress,
+                );
             }
             Effect::RestartServices(names) => {
                 for name in names {
                     remote.request("restart_service", json!({ "service": name }));
                 }
                 self.set_toast(
-                    format!("Restarted {} services", names.len()),
+                    t!("tui_runtime_app_toast_restarted_n", count = names.len()),
                     ToastVariant::Success,
                 );
             }
             Effect::StopService(name) => {
                 remote.request("stop_service", json!({ "service": name }));
-                self.set_toast(format!("Stopped {name}"), ToastVariant::Success);
+                self.set_toast(
+                    t!("tui_runtime_app_toast_stopped", name = name.as_str()),
+                    ToastVariant::Success,
+                );
             }
             Effect::RunAction(key) => {
                 let action = self.manager.find_action(*key);
                 match action {
                     Some(a) if a.session || a.platform.is_some() => {
                         self.set_toast(
-                            format!(
-                                "{} is an interactive session: owner-only. atlas down, then atlas dev",
-                                a.label
+                            t!(
+                                "tui_runtime_app_remote_owner_only",
+                                label = a.label.as_str(),
+                                command = "atlas down"
                             ),
                             ToastVariant::Warning,
                         );
@@ -348,7 +358,10 @@ impl App {
                             json!({ "action": key.to_string(), "confirmed": true }),
                         );
                         self.operation = Some(Operation::start(a.label.clone()));
-                        self.set_toast(format!("Running {}", a.label), ToastVariant::Progress);
+                        self.set_toast(
+                            t!("tui_runtime_app_toast_running", label = a.label.as_str()),
+                            ToastVariant::Progress,
+                        );
                     }
                     None => {}
                 }
@@ -445,7 +458,10 @@ impl App {
     pub(super) fn detach_or_hint(&mut self, stop: bool) {
         if self.remote.is_none() {
             self.set_toast(
-                "run `atlas dev --detach` to keep services running in the background",
+                t!(
+                    "tui_runtime_app_toast_detach_hint",
+                    command = "atlas dev --detach"
+                ),
                 ToastVariant::Info,
             );
             return;

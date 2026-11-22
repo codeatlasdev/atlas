@@ -12,7 +12,7 @@ Atlas has one small label set, kept in [`.github/labels.yml`](https://github.com
 | Family | Values | Applied by | Rule |
 |---|---|---|---|
 | `type:` | `bug`, `feature`, `docs`, `chore`, `security`, `question` | the issue form sets it; a maintainer fixes it | exactly one |
-| `area:` | `cli`, `runtime`, `tui`, `desktop`, `terminal`, `editor`, `mcp`, `deploy`, `installer`, `site`, `ci` | a maintainer during triage | one or more |
+| `area:` | `cli`, `runtime`, `tui`, `desktop`, `terminal`, `editor`, `mcp`, `deploy`, `installer`, `site`, `ci`, `crew` | a maintainer during triage | one or more |
 | `priority:` | `0 data loss or security`, `1 high`, `2 normal`, `3 low` | a maintainer during triage | at most one; contributors do not set it |
 | `status:` | `needs-triage`, `needs-repro`, `confirmed`, `blocked`, `upstream`, `stale`, `wontfix`, `duplicate` | issue forms set `needs-triage`; a maintainer moves it | one at a time |
 | `channel:` | `stable`, `beta`, `alpha` | a maintainer, from the **Release channel** answer in the bug form | the channel the problem was seen on, see [Versioning](versioning.md) |
@@ -26,6 +26,7 @@ Labels without a family:
 | `breaking change` | The change affects `atlas.yaml`, the CLI, MCP tools or settings files. It needs a **Changed** or **Removed** changelog entry that says what to do instead, and follows the [deprecation policy](deprecation.md). |
 | `skip-changelog` | A pull request with no user-visible change, so no `CHANGELOG.md` line is expected. |
 | `dependencies` | Dependency updates, applied by Dependabot. |
+| `ci: rerun-after-stall` | Set by `ci-rerun-lost.yml` when CI reran a job after a lost or stalled runner. A rerun that passes could hide a real hang: read the comment (job, kind, tests running at the last sample) and #520, which collects one line per occurrence, before trusting the green. |
 
 ### Priorities
 

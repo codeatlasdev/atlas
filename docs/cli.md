@@ -20,7 +20,7 @@ atlas -- <cmd...>       # run a command as a service of this folder's stack
 
 ### `atlas <path>`
 
-`atlas .`, `atlas ~/code/api`, `atlas src/main.rs`. The path opens in Atlas Desktop: a folder is opened as a project, a file opens **its** project (the nearest folder with an `atlas.yaml`, else the nearest with `.git` or a `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`, else the file's own folder) and then the file in the editor. No `atlas.yaml` is needed. If Atlas Desktop is running the path goes to it; otherwise the app is started with the path and opens it on launch (install it first with `atlas desktop`).
+`atlas .`, `atlas ~/code/api`, `atlas src/main.rs`. The path opens in Atlas Desktop: a folder is opened as a project, a file opens **its** project (the nearest folder with an `atlas.yaml`, else the nearest with `.git` or a `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`, else the file's own folder) and then the file in the editor. A folder with no `.git`, `atlas.yaml` or manifest opens as a [plain folder](desktop.md#plain-folders) (explorer and editor, no services). A text file with no project above it, such as `atlas ~/Downloads/notes.md`, opens in the desktop's [light editor](desktop.md#opening-a-single-file) and adds no project. No `atlas.yaml` is needed. If Atlas Desktop is running the path goes to it; otherwise the app is started with the path and opens it on launch (install it first with `atlas desktop`).
 
 **A subcommand always wins.** `atlas dev` runs the subcommand even when a folder named `dev` exists; open that folder as `atlas ./dev`. Any other first word is a path only if it is `.`, `..`, contains a path separator, or exists on disk; otherwise it is a typo and fails as it always did (`atlas devv` → `error: unrecognized subcommand 'devv'` + `tip: a similar subcommand exists: 'dev'`, exit `2`). `atlas` alone prints the help.
 
@@ -159,7 +159,7 @@ Starts all selected services (everything unless narrowed by `SERVICE…` / `--pr
 
 ### One instance per project
 
-`--ci`, `--headless` and `--detach` take the same singleton lock as the TUI. If another `atlas dev` already runs for that directory `--ci` and `--headless` print `atlas dev is already running (pid N); use 'atlas dev --status'` and exit `1`, without touching any process. The plain TUI **attaches** to a runner, and only when the lock holder is another TUI (which cannot be attached to) does it ask `Kill it and restart? [y/N]`; see [Runtime › Singleton](runtime.md#singleton-and-the-control-socket).
+`--ci`, `--headless` and `--detach` take the same singleton lock as the TUI. If another `atlas dev` already runs for that directory `--ci` and `--headless` print `` `atlas dev` is already running (pid N). Check it with `atlas dev --status`. `` and exit `1`, without touching any process. The plain TUI **attaches** to a runner, and only when the lock holder is another TUI (which cannot be attached to) does it ask `Kill it and restart? [y/N]`; see [Runtime › Singleton](runtime.md#singleton-and-the-control-socket).
 
 ### Update prompt (`atlas dev`)
 
@@ -281,7 +281,7 @@ atlas config schema
 ## `atlas crew`
 
 ```text
-atlas crew install <ssh-target> [-y|--yes] [--port <N>] [--binary <PATH>]
+atlas crew install <ssh-target> [-y|--yes] [--port <N>] [--identity <KEY>] [--binary <PATH>]
 atlas crew update <ssh-target> [--version <X.Y.Z>] [--rollback] [--port <N>] [--binary <PATH>]
 atlas crew uninstall <ssh-target> [-y|--yes]
 atlas crew export <ssh-target> [-o <FILE>] [--crewmate <ID>]... [--with-secrets]
@@ -330,6 +330,8 @@ Looks up the newest release of your [release channel](versioning.md#channels) (w
 
   `action` is `update` (a newer build is offered), `downgrade` (only an older build is offered) or `none`; `offered` and `tag` are `null` when the channel has nothing published. `atlas update channel --json` prints `{ "selected", "installed", "channels": [...] }`, one entry per channel with the same copy the command prints plus `selected`, `tag`, `offered` and `action`.
 
+**Withdrawn releases.** A version listed in `data/yanked.json` (how to add one: `docs/release.md`, "Yanking a bad release") is never offered by any channel. When the version *you run* is withdrawn, `atlas update` prints why and what replaces it, `--check --json` carries it as `"yanked": { "version", "reason", "replacement" }` (`null` otherwise), and an older safe release is installed without `--downgrade` (the downgrade confirmation still applies). An unreadable list is logged and ignored.
+
 **Downgrades are never automatic.** When the channel offers something *older* than the build you run (for example you run an alpha and switch to Stable), `atlas update` installs nothing: it says which version you run, which one the channel offers, that you get updates again once the channel passes your build, and how to go back. `atlas update --downgrade` installs that older release anyway, after a data-compatibility warning and a `[y/N]` confirmation (default No; `--yes` skips it, and outside a terminal it is required). The download goes through the same checksum verification, backup and rollback as any update. It is not available for Homebrew or system-package installs (their package manager owns the version).
 
 **Installs another tool owns.** A binary installed by Homebrew, or by a Linux system package, is never overwritten by `atlas update` itself.
@@ -350,9 +352,12 @@ atlas desktop --install [--latest]     # (re)install: this CLI's version, or the
 atlas desktop --from <PATH> [--no-open]  # install a local Atlas.app or Atlas-*.app.tar.gz
 atlas desktop --status                 # installed path, version, linked or not
 atlas desktop --dev                    # inside the atlas repo: bun run desktop:dev (hot reload)
+atlas desktop [-y|--yes] [--appimage]  # Linux: install the distro package without asking / the AppImage instead
 ```
 
 Installs into `/Applications/Atlas.app` (or `~/Applications` when `/Applications` is not writable). Downloads `Atlas-<version>-<platform>.app.tar.gz` and its `.sha256` from the public GitHub release (with `curl`, no login) and verifies the checksum. The new bundle is copied next to the old one and swapped in only once complete, so a failed download never breaks the installed app. Refuses while the app is linked (`atlas link --desktop`). Full guide: [Desktop app](desktop.md).
+
+On Linux, a distro that has a release package (Arch, Debian, Ubuntu, Fedora, RHEL, openSUSE; read from `/etc/os-release`, x86_64 only) gets that package instead of the AppImage: `atlas desktop` downloads it, verifies its checksum, shows the root command and asks `[Y/n]` (`sudo` in a terminal, `pkexec` without one), then opens `/usr/bin/atlas-desktop`. `--yes` / `-y` skips the question; `--appimage` installs the AppImage anyway. When nobody can confirm (no terminal, no `--yes`), the answer is no or the package manager fails, the AppImage is installed as before. Details: [Installation › Install Atlas Desktop](installation.md#install-atlas-desktop).
 
 ### `atlas desktop --agent`
 
@@ -458,9 +463,18 @@ Skills are agent instructions compiled into the `atlas` binary, so they always m
 
 ## `atlas version`
 
-Prints `atlas <version>`, OS and architecture.
+Prints `atlas <version>`, the **channel** the build was cut for (`alpha`, `beta`, `stable`), the **commit** it was built from (`unknown` outside git), the **build id** (the linker's identity of the executable: the ELF GNU build id on Linux, the Mach-O UUID on macOS, the PDB signature on Windows, `none` where the executable has none) and the OS and architecture. Put the whole block in a bug report: the build id is what finds the symbols published for that release ([Symbols](release.md#symbols)).
 
-If the CLI panics it writes a crash report (`crash-<unix_ms>-<pid>.toml`, newest 20 kept) to its data directory and prints the issue tracker URL. Reports stay on your machine; tokens in the command line and message are redacted and your home directory is written as `~`, but review one before attaching it to an issue.
+```
+atlas 1.5.0-alpha.25
+  channel: alpha
+  commit:  0123456789ab
+  build:   56d6b439423186b782f314e535b5c103d49f3d15
+  os:      linux
+  arch:    x86_64
+```
+
+If the CLI panics it writes a crash report (`crash-<unix_ms>-<pid>.toml`, newest 20 kept) to its data directory and prints the issue tracker URL. A fault in the process itself (a segmentation fault, bus error, illegal instruction, arithmetic exception or abort; an access violation on Windows) leaves `crash-native-<unix_ms>-<pid>.toml` there too, in the same directory and with the same retention: the signal, the faulting address, the build (version, channel, commit, build id) and the raw stack addresses, and nothing else (no command line, environment or paths, since the handler cannot redact). Both kinds carry the build id and `load_bias`/`frames`, which `scripts/symbols.sh resolve` turns into functions and lines. Reports stay on your machine; tokens in the command line and message are redacted and your home directory is written as `~`, but review one before attaching it to an issue.
 
 ## `atlas uninstall`
 
@@ -468,7 +482,7 @@ If the CLI panics it writes a crash report (`crash-<unix_ms>-<pid>.toml`, newest
 atlas uninstall [-y, --yes] [--purge] [--dry-run]
 ```
 
-Lists what it will remove, then removes it after confirmation (skip with `--yes`; without a terminal and without `--yes` it refuses). By default that is what Atlas installed: the `atlas` command, the desktop app (a linked dev app loses only its link), the `# Atlas CLI` PATH lines it added to your shell startup files (never a line of your own), the update cache and the terminal host's sockets. Settings, the project list, worktrees, the update channel and the omp plugin in `~/.atlas` are **kept** and listed; `--purge` deletes all of `~/.atlas`. `--dry-run` lists and exits. A step that fails is reported and the others still run. It does not touch the skills in `~/.agents/skills`, or a distro package (use its package manager). Details: [Installation › Uninstall](installation.md#uninstall).
+Lists what it will remove, then removes it after confirmation (skip with `--yes`; without a terminal and without `--yes` it refuses). By default that is what Atlas installed: the `atlas` command, the desktop app (a linked dev app loses only its link; on Linux also its launcher entry and icon and the leftovers of an interrupted update), the `# Atlas CLI` PATH lines it added to your shell startup files (never a line of your own), the update cache and the terminal host's sockets. Settings, the project list, worktrees, the update channel and the omp plugin in `~/.atlas` are **kept** and listed (on Linux also the app's WebKit store, crash reports and window state); `--purge` deletes all of `~/.atlas` and those too. `--dry-run` lists and exits. A step that fails is reported and the others still run. When a distro package owns `atlas`, the list names the package and its removal command (`sudo pacman -R …`, `sudo apt remove …`, `sudo dnf remove …`) and, after your confirmation, runs it as root; it never deletes a package's files itself. It does not touch the skills in `~/.agents/skills`. Details: [Installation › Uninstall](installation.md#uninstall).
 
 ## `atlas link` / `unlink`
 

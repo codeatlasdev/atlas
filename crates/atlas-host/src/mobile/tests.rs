@@ -10,6 +10,23 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::HostClient;
 
+/// A path the way a daemon names it, symlinks resolved: macOS keeps `/var` as a link to `/private/var`, so a temp dir
+/// and the same folder read back from hostd (a `pwd`, a `cwd`, an audit line) differ without it. Both sides of every
+/// comparison of a temp path go through this (#597), never `assert_eq!(tmp_path, daemon_path)`.
+fn canon(p: impl AsRef<Path>) -> std::path::PathBuf {
+    atlas_core::paths::canonical(p.as_ref()).unwrap()
+}
+
+/// Tests listen on loopback only: any other bound address makes the macOS firewall ask, for every new
+/// test binary, "Do you want the application to accept incoming network connections?".
+fn assert_all_loopback(socks: &[std::net::SocketAddr]) {
+    assert!(!socks.is_empty(), "endpoint bound nothing");
+    assert!(
+        socks.iter().all(|s| s.ip().is_loopback()),
+        "a test endpoint listens beyond loopback: {socks:?}"
+    );
+}
+
 async fn daemon(dir: &Path) -> HostClient {
     // No desktop, whatever runs on the machine: a socket that is never there (`agent_launch` tries it first).
     daemon_with(dir, dir.join("no-desktop.sock")).await
@@ -29,6 +46,7 @@ async fn daemon_as(dir: &Path, socket: std::path::PathBuf, crew_host: bool) -> H
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         crew_host,
         desktop: Some(atlas_core::desktop_ctl::Endpoint {
             token: socket.with_extension("token"),
@@ -37,7 +55,7 @@ async fn daemon_as(dir: &Path, socket: std::path::PathBuf, crew_host: bool) -> H
         ..Default::default()
     };
     tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
         }
@@ -48,9 +66,15 @@ async fn daemon_as(dir: &Path, socket: std::path::PathBuf, crew_host: bool) -> H
 
 /// `mobile_pair_start` once the endpoint has bound (it binds in the background).
 pub(crate) async fn pair_start(c: &HostClient) -> Value {
-    for _ in 0..100 {
+    for _ in 0..1200 {
         let v = c.call("mobile_pair_start", json!({})).await.unwrap();
         if v["addrs"].as_array().is_some_and(|a| !a.is_empty()) {
+            // The gateway listens on loopback only, so nothing else can be published: a LAN
+            // address here means the daemon bound every interface (macOS asks about that).
+            for a in v["addrs"].as_array().unwrap() {
+                let a: std::net::SocketAddr = a.as_str().unwrap().parse().unwrap();
+                assert!(a.ip().is_loopback(), "the test gateway published {a}");
+            }
             return v;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -109,11 +133,9 @@ impl Phone {
 
     /// Dial as a given identity (the same phone reconnecting).
     async fn dial_as(info: &Value, key: iroh::SecretKey) -> Self {
-        let ep = Endpoint::builder(iroh::endpoint::presets::Minimal)
-            .secret_key(key)
-            .bind()
-            .await
-            .unwrap();
+        let builder = Endpoint::builder(iroh::endpoint::presets::Minimal).secret_key(key);
+        let ep = super::loopback_only(builder).unwrap().bind().await.unwrap();
+        assert_all_loopback(&ep.bound_sockets());
         let id: PublicKey = info["node_id"].as_str().unwrap().parse().unwrap();
         let mut addr = EndpointAddr::new(id);
         for a in loopback_addrs(info) {
@@ -136,7 +158,7 @@ impl Phone {
         self.next += 1;
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string() + "\n";
         self.send.write_all(line.as_bytes()).await.ok()?;
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(atlas_core::scaling::HANG, async {
             let mut buf = String::new();
             loop {
                 buf.clear();
@@ -170,7 +192,7 @@ impl Phone {
         self.next += 1;
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string() + "\n";
         self.send.write_all(line.as_bytes()).await.ok()?;
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(atlas_core::scaling::HANG, async {
             let (mut buf, mut pushes) = (String::new(), Vec::new());
             loop {
                 buf.clear();
@@ -354,6 +376,29 @@ async fn paired_on(c: HostClient) -> (HostClient, Phone, String) {
     (c, phone, node)
 }
 
+// A phone that has read "paired" is a connected phone: a permission prompt that arrives right after its pairing is
+// held for it. Incident (CI, 2026-11-19, #617): `lab::tests::the_lab_mirrors_main_s_approvals_and_answers_them_through_main`
+// hung 190 s on macOS. The session replied to `pair` before it counted the connection as live, so a prompt in that
+// window was answered `null` at once, no `agent_approval` was ever pushed, and the test waited for one forever.
+#[tokio::test]
+async fn a_phone_that_reads_paired_is_already_connected() {
+    use std::sync::atomic::Ordering;
+    let tmp = tempfile::tempdir().unwrap();
+    let c = daemon(tmp.path()).await;
+    let info = pair_start(&c).await;
+    let mut phone = Phone::dial(&info).await;
+    // Widen whatever window follows the reply, so the test does not depend on the scheduler to find it.
+    super::session::TEST_PAUSE_AFTER_PAIR_REPLY.store(800, Ordering::SeqCst);
+    let r = phone
+        .call("pair", json!({"code": info["code"], "name": "iPhone"}))
+        .await
+        .unwrap();
+    let devices = c.call("mobile_devices", json!({})).await.unwrap();
+    super::session::TEST_PAUSE_AFTER_PAIR_REPLY.store(0, Ordering::SeqCst);
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(devices["devices"][0]["connected"], true, "{devices}");
+}
+
 // Guards scopes on pushes: they were checked on requests only, so every phone got
 // every broadcast (approval prompts with their command, editor diagnostics), and
 // taking `term_read` away left an attached terminal streaming.
@@ -446,7 +491,7 @@ async fn an_unpaired_peer_sending_an_endless_line_is_cut_off() {
     let mut p = Phone::dial(&info).await;
     let chunk = vec![b'x'; 256 * 1024];
     let mut sent = 0;
-    let cut = tokio::time::timeout(Duration::from_secs(20), async {
+    let cut = tokio::time::timeout(atlas_core::scaling::HANG, async {
         // No newline, ever: hostd must close the stream past the limit.
         while p.send.write_all(&chunk).await.is_ok() {
             sent += chunk.len();
@@ -546,16 +591,14 @@ async fn only_a_phone_that_may_approve_holds_a_prompt() {
     .await
     .unwrap();
     let dir = tmp.path().to_path_buf();
-    let t = std::time::Instant::now();
-    let body = tokio::task::spawn_blocking(move || ask_decision(&dir))
-        .await
-        .unwrap();
+    // A held prompt would announce itself on the daemon's events and wait 55 s for the phone: the helper fails
+    // on that event, whatever the machine's speed.
+    let mut events = c.events();
+    let body = crate::agents::hook_server::answered_without_holding(&mut events, move || {
+        ask_decision(&dir)
+    })
+    .await;
     assert_eq!(parse_decision(&body), None, "{body}");
-    assert!(
-        t.elapsed() < Duration::from_secs(3),
-        "waited {:?}",
-        t.elapsed()
-    );
 
     c.call(
         "mobile_set_scopes",
@@ -616,7 +659,7 @@ async fn agent_send_types_only_into_an_idle_or_done_agent() {
         .to_string();
     send("hello-agent").await.unwrap();
     let mut text = String::new();
-    for _ in 0..50 {
+    for _ in 0..1200 {
         text = c
             .call("pty_read", json!({"pty": pty, "lines": 10}))
             .await
@@ -640,8 +683,13 @@ async fn agent_send_types_only_into_an_idle_or_done_agent() {
 #[tokio::test]
 async fn settings_fixtures_are_the_real_payloads() {
     let tmp = tempfile::tempdir().unwrap();
-    let m = std::sync::Arc::new(super::Mobile::load(tmp.path(), false).unwrap());
+    let m = std::sync::Arc::new(
+        super::Mobile::load(tmp.path(), false)
+            .unwrap()
+            .loopback_only(true),
+    );
     m.ensure_endpoint().await.unwrap();
+    assert_all_loopback(&m.endpoint_sockets());
     let mut start = m.pair_start().unwrap();
     let code = start["code"].as_str().unwrap().to_string();
     // The name the real app sends (`pair_screen.dart`): the same for every phone.
@@ -884,7 +932,7 @@ async fn agent_interrupt_sends_escape_only_while_the_agent_works() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     stop().await.unwrap();
     let mut text = String::new();
-    for _ in 0..50 {
+    for _ in 0..1200 {
         text = c
             .call("pty_read", json!({"pty": pty, "lines": 10}))
             .await
@@ -1236,7 +1284,7 @@ async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop
     let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     use std::process::Command;
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     let repo = root.join("shop");
     let git = |dir: &Path, args: &[&str]| {
@@ -1367,15 +1415,15 @@ async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop
     assert_eq!(launched["ok"], true, "{launched}");
     let pane = launched["data"]["pane"].as_str().unwrap().to_string();
     assert!(launched["data"]["pty"].as_str().is_some());
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if record.exists() {
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(
-        std::fs::read_to_string(&record).unwrap().trim(),
-        wt_path.canonicalize().unwrap().to_string_lossy()
+        canon(std::fs::read_to_string(&record).unwrap().trim()),
+        canon(&wt_path)
     );
     let ptys = c.call("pty_list", json!({})).await.unwrap();
     assert!(
@@ -1519,7 +1567,7 @@ async fn project_with_worktree(hostd: &Path, repo: &Path) -> (String, String, st
 async fn with_the_desktop_running_agent_launch_opens_its_tab_and_hostd_spawns_nothing() {
     let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
     let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
@@ -1561,8 +1609,8 @@ async fn with_the_desktop_running_agent_launch_opens_its_tab_and_hostd_spawns_no
     assert_eq!(reqs[0]["args"]["agent"], "claude");
     assert_eq!(reqs[0]["args"]["prompt"], "hi");
     assert_eq!(
-        reqs[0]["args"]["worktree"].as_str().unwrap(),
-        wt_path.to_string_lossy(),
+        canon(reqs[0]["args"]["worktree"].as_str().unwrap()),
+        canon(&wt_path),
         "the resolved worktree folder, not the project root"
     );
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1584,7 +1632,7 @@ async fn with_the_desktop_running_agent_launch_opens_its_tab_and_hostd_spawns_no
 async fn a_desktop_error_is_returned_and_never_falls_back_to_a_hostd_spawn() {
     let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
     let (id, wt_id, _) = project_with_worktree(&hostd, &root.join("shop")).await;
@@ -1631,7 +1679,7 @@ async fn a_desktop_error_is_returned_and_never_falls_back_to_a_hostd_spawn() {
 async fn a_stale_desktop_socket_file_still_means_not_running() {
     let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
     let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
@@ -1665,15 +1713,15 @@ async fn a_stale_desktop_socket_file_still_means_not_running() {
         .await
         .unwrap();
     assert_eq!(r["ok"], true, "{r}");
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if record.exists() {
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(
-        std::fs::read_to_string(&record).unwrap().trim(),
-        wt_path.canonicalize().unwrap().to_string_lossy()
+        canon(std::fs::read_to_string(&record).unwrap().trim()),
+        canon(&wt_path)
     );
     for p in c.call("pty_list", json!({})).await.unwrap()["ptys"]
         .as_array()
@@ -2185,7 +2233,7 @@ fn audit_lines(hostd: &Path) -> Vec<Value> {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
     let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
@@ -2269,11 +2317,7 @@ async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
         reply["pty"] = json!("pty-fixture");
         fixture("pty_open.json", &reply);
         let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
-        assert_eq!(
-            std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
-            want,
-            "{info}"
-        );
+        assert_eq!(canon(info["cwd"].as_str().unwrap()), canon(&want), "{info}");
         assert_eq!(
             info["scope"]["pane_key"],
             Value::Null,
@@ -2300,12 +2344,12 @@ async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
     assert_eq!(created[0]["node_id"], node.as_str());
     assert_eq!(created[0]["args"]["project"], id.as_str());
     assert_eq!(
-        created[0]["args"]["cwd"],
-        root.join("shop").to_string_lossy().as_ref()
+        canon(created[0]["args"]["cwd"].as_str().unwrap()),
+        canon(root.join("shop"))
     );
     assert_eq!(
-        created[1]["args"]["cwd"],
-        wt_path.to_string_lossy().as_ref()
+        canon(created[1]["args"]["cwd"].as_str().unwrap()),
+        canon(&wt_path)
     );
     c.call("shutdown", json!({})).await.ok();
 }
@@ -2315,9 +2359,10 @@ async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_work_tree() {
     let tmp = tempfile::tempdir().unwrap();
-    let hostd = tmp.path().canonicalize().unwrap().join("hostd");
+    let hostd = canon(tmp.path()).join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
-    // The crew user's own home, the folder hostd's sign-in terminal already starts in.
+    // The crew user's own home, the folder hostd's sign-in terminal already starts in. `$HOME` can name it through a
+    // symlink (a sandbox's home under `/tmp`, a temp dir): the daemon canonicalizes the folder, so both sides do (#597).
     let home = atlas_core::paths::home_dir();
     let (c, mut phone, node) = paired(&hostd).await;
     let made = c
@@ -2341,11 +2386,7 @@ async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_w
     assert_eq!(r["ok"], true, "{r}");
     let pty = r["data"]["pty"].as_str().unwrap().to_string();
     let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
-    assert_eq!(
-        std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
-        home,
-        "{info}"
-    );
+    assert_eq!(canon(info["cwd"].as_str().unwrap()), canon(&home), "{info}");
     c.call("pty_kill", json!({"pty": pty})).await.unwrap();
 
     // A crewmate that has not run a task has no work tree yet: refused, with the reason.
@@ -2364,11 +2405,7 @@ async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_w
     assert_eq!(r["ok"], true, "{r}");
     let pty = r["data"]["pty"].as_str().unwrap().to_string();
     let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
-    assert_eq!(
-        std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
-        work,
-        "{info}"
-    );
+    assert_eq!(canon(info["cwd"].as_str().unwrap()), canon(&work), "{info}");
     c.call("pty_kill", json!({"pty": pty})).await.unwrap();
 
     // Never another folder, never an id that escapes the crew store, never a project id here.
@@ -2469,7 +2506,7 @@ async fn paired_phones_report_connection_activity_and_take_a_name() {
 
     phone.conn.close(0u32.into(), b"bye");
     let mut gone = false;
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if device_of(&c, &node).await["connected"] == false {
             gone = true;
             break;

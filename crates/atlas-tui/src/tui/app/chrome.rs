@@ -2,6 +2,7 @@
 //! and the narrow status strip's "worst issue" pick.
 
 use crate::runtime::service::ServiceState;
+use atlas_i18n::t;
 
 use super::{App, LevelFilter, Message};
 
@@ -80,13 +81,15 @@ impl App {
     pub(super) fn ask_restart_all(&mut self) {
         let n = self.restart_all_targets().len();
         if n == 0 {
-            self.set_toast("Nothing to restart", super::ToastVariant::Info);
+            self.set_toast(
+                t!("tui_runtime_app_toast_nothing_to_restart"),
+                super::ToastVariant::Info,
+            );
             return;
         }
-        let noun = if n == 1 { "service" } else { "services" };
         self.layer = super::Layer::Confirm {
-            title: "Restart all".to_string(),
-            body: format!("Restart {n} {noun}? Completed oneshots will not re-run."),
+            title: t!("tui_runtime_app_restart_all_title"),
+            body: t!("tui_runtime_app_restart_all_body", count = n),
             on_confirm: Box::new(Message::RestartAllConfirmed),
         };
     }
@@ -108,9 +111,14 @@ impl App {
         if let Some(s) = failed.first() {
             let why = self
                 .manager
-                .service_note(&s.name)
-                .or_else(|| self.manager.exit_code(&s.name).map(|c| format!("exit {c}")))
-                .unwrap_or_else(|| "failed".to_string());
+                .service_note_coded(&s.name)
+                .map(|n| n.render_line())
+                .or_else(|| {
+                    self.manager
+                        .exit_code(&s.name)
+                        .map(|c| t!("tui_runtime_widgets_sidebar_exit", code = c))
+                })
+                .unwrap_or_else(|| t!("tui_runtime_app_event_failed"));
             let extra = failed.len() - 1;
             let more = if extra > 0 {
                 format!(" (+{extra})")
@@ -131,9 +139,11 @@ impl App {
                 icon: "⠋",
                 text: self
                     .manager
-                    .service_note(&s.name)
-                    .map(|n| format!("{} {n}", s.name))
-                    .unwrap_or_else(|| format!("{} starting", s.name)),
+                    .service_note_coded(&s.name)
+                    .map(|n| format!("{} {}", s.name, n.render_line()))
+                    .unwrap_or_else(|| {
+                        t!("tui_runtime_app_strip_starting", name = s.name.as_str())
+                    }),
                 tab: s.name.clone(),
                 failed: false,
             })

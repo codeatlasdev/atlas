@@ -1,0 +1,9 @@
+{
+	"common_os_alt_key": "Name of the Alt key as printed on the keyboard, in prose (\"hold Option\"). Shortcuts use a placeholder, not this.",
+	"common_os_enter_key": "Name of the confirm key as printed on the keyboard, in prose (\"press Return\"). Shortcuts use a placeholder, not this.",
+	"common_os_file_manager": "The OS app that shows files and folders, mid-sentence: \"Reveal in {@common_os_file_manager}\".",
+	"common_os_menu_bar": "Where the app's icon lives while it runs in the background: \"Atlas stays in {@common_os_menu_bar}\".",
+	"common_os_system_settings": "The OS settings app: \"Open {@common_os_system_settings}\".",
+	"common_os_trash": "Where deleted files go: \"Moved to {@common_os_trash}\".",
+	"common_os_your_computer": "The user's machine, as a possessive noun phrase mid-sentence: \"Atlas runs on {@common_os_your_computer}\"."
+}

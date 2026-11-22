@@ -370,20 +370,21 @@ impl Host for System {
     }
 
     fn run(&self, argv: &[&str]) -> io::Result<()> {
-        let st = std::process::Command::new(self.bin(argv[0])?)
-            .args(&argv[1..])
-            .env_clear()
-            .stdin(std::process::Stdio::null())
-            .output()?;
-        if st.status.success() {
-            Ok(())
-        } else {
-            Err(io::Error::other(format!(
-                "{} failed: {}",
-                argv[0],
-                String::from_utf8_lossy(&st.stderr).trim()
-            )))
-        }
+        let bin = self.bin(argv[0])?;
+        retry_locked(LOCK_TRIES, std::thread::sleep, || {
+            let st = std::process::Command::new(&bin)
+                .args(&argv[1..])
+                .env_clear()
+                .stdin(std::process::Stdio::null())
+                .output()
+                .map_err(|e| format!("{}: {e}", argv[0]))?;
+            if st.status.success() {
+                Ok(())
+            } else {
+                Err(String::from_utf8_lossy(&st.stderr).trim().to_owned())
+            }
+        })
+        .map_err(|why| io::Error::other(format!("{} failed: {why}", argv[0])))
     }
 
     fn dir(&self, path: &Path, mode: u32, owner: &Who, crewmate: &str) -> io::Result<()> {
@@ -639,6 +640,7 @@ impl Service {
             let me = self.clone();
             std::thread::spawn(move || {
                 if let Err(e) = me.connection(conn) {
+                    // i18n-ignore: log
                     eprintln!("atlas crew-spawn --provision: connection ended: {e}");
                 }
             });
@@ -726,12 +728,93 @@ impl ProvClient {
     }
 }
 
+/// Tries of a `useradd`/`userdel` whose lock on `/etc/passwd` or `/etc/group` is busy (~3 s in all).
+const LOCK_TRIES: u32 = 5;
+
+/// Run `attempt` again while it fails because another process holds the shadow-utils lock ("cannot lock
+/// /etc/passwd; try again later.": an apt run, another `useradd`), waiting 200 ms, 400 ms, 800 ms, …; any other
+/// failure, or the last busy one, is returned as the tool reported it.
+fn retry_locked(
+    tries: u32,
+    mut sleep: impl FnMut(std::time::Duration),
+    mut attempt: impl FnMut() -> Result<(), String>,
+) -> Result<(), String> {
+    let mut wait = std::time::Duration::from_millis(200);
+    for n in 1..=tries {
+        match attempt() {
+            Err(why)
+                if n < tries && why.contains("cannot lock") && why.contains("try again later") =>
+            {
+                sleep(wait);
+                wait *= 2;
+            }
+            r => return r,
+        }
+    }
+    unreachable!("the last try returns")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
     const USER: &str = "atlas-cm-3f2a9c1e5b7d";
+
+    // CI (Rust Linux, root tests, 2026-11-17): `userdel` failed with "cannot lock /etc/passwd; try again later."
+    // while another test held the lock. Another process holding it (an apt run, a second useradd) is ordinary
+    // on a real server too, and shadow-utils itself says to try again: a busy lock is retried, anything else is not.
+    #[test]
+    fn a_busy_passwd_lock_is_retried_and_any_other_failure_is_not() {
+        let busy = "userdel: cannot lock /etc/passwd; try again later.";
+        let mut tries = 0;
+        let r = retry_locked(
+            5,
+            |_| {},
+            || {
+                tries += 1;
+                if tries < 3 {
+                    Err(busy.to_owned())
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert!(r.is_ok() && tries == 3, "{r:?} after {tries}");
+
+        let mut tries = 0;
+        let r = retry_locked(
+            5,
+            |_| {},
+            || {
+                tries += 1;
+                Err("userdel: user 'x' does not exist".to_owned())
+            },
+        );
+        assert_eq!(
+            (r.unwrap_err(), tries),
+            ("userdel: user 'x' does not exist".to_owned(), 1)
+        );
+
+        // Bounded: a lock that never frees fails with the tool's own message after the last try.
+        let mut tries = 0;
+        let mut waited = std::time::Duration::ZERO;
+        let r = retry_locked(
+            5,
+            |d| waited += d,
+            || {
+                tries += 1;
+                Err("useradd: cannot lock /etc/group; try again later.".to_owned())
+            },
+        );
+        assert_eq!(tries, 5);
+        assert!(r.unwrap_err().contains("cannot lock /etc/group"));
+        assert!(
+            waited >= std::time::Duration::from_secs(1)
+                && waited <= std::time::Duration::from_secs(10),
+            "{waited:?}"
+        );
+    }
 
     fn cfg() -> PlanCfg {
         PlanCfg {

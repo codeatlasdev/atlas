@@ -3,9 +3,9 @@
 	import { onMount } from "svelte";
 	import { Button } from "@codeatlasdev/ui";
 	import type { Crewmate, Trigger, TriggerKind } from "#lib/crew.ts";
-	import AutomationDialog from "#lib/crew/automation/AutomationDialog.svelte";
 	import { describeNext, describeTrigger } from "#lib/crew/automations.ts";
 	import { optionIn } from "#lib/crew/motion.ts";
+	import { m } from "#lib/i18n/m.ts";
 	import type { CrewmateSettings } from "#lib/crew/settings/settings.svelte.ts";
 	import { triggerIcon } from "#lib/crew/settings/triggerIcons.ts";
 
@@ -48,7 +48,7 @@
 				class="row automation-row"
 				role="button"
 				tabindex="0"
-				aria-label="Edit automation"
+				aria-label={m.crew_settings_automations_section_edit_automation()}
 				onclick={() => openDialog(trig)}
 				onkeydown={(e) => e.key === "Enter" && openDialog(trig)}
 				in:optionIn={{ index: i }}
@@ -57,8 +57,14 @@
 				<div class="row-text auto-text">
 					<span class="row-label">{describeTrigger(trig.kind, trig.tz)}</span>
 					{#if trig.prompt}<span class="row-hint auto-prompt">{trig.prompt}</span>{/if}
-					{#if trig.next_fire && trig.enabled}
-						<span class="row-hint">Next: {describeNext(trig.next_fire, now)}</span>
+					{#if trig.invalid}
+						<span class="row-hint auto-invalid"
+							>{m.settings_automation_invalid({ reason: trig.invalid })}</span
+						>
+					{:else if trig.next_fire && trig.enabled}
+						<span class="row-hint"
+							>{m.crew_settings_automations_section_next({ when: describeNext(trig.next_fire, now) })}</span
+						>
 					{/if}
 				</div>
 				<!-- A switch, not a checkbox: on/off is the one thing to do from the row. -->
@@ -68,7 +74,7 @@
 					type="checkbox"
 					role="switch"
 					checked={trig.enabled}
-					aria-label="Automation on"
+					aria-label={m.crew_settings_automations_section_automation_on()}
 					onclick={(e) => e.stopPropagation()}
 					onchange={(e) =>
 						void settings.toggleTrigger(triggers, trig.id, (e.currentTarget as HTMLInputElement).checked)}
@@ -78,24 +84,29 @@
 	</section>
 {:else}
 	<section class="card empty-card">
-		<span class="row-label">No automations yet</span>
+		<span class="row-label">{m.crew_settings_automations_section_no_automations_yet()}</span>
 		<p class="row-hint">
-			Add one below, or just ask {crewmate.name} in the chat: “every weekday at 9, review the open PRs”.
+			{m.crew_settings_automations_section_add_one_below_or_just({ name: crewmate.name })}
 		</p>
 	</section>
 {/if}
 <div class="pane-actions">
-	<Button size="sm" variant="outlined" onclick={() => openDialog(null)}>Add automation</Button>
+	<Button size="sm" variant="outlined" onclick={() => openDialog(null)}
+		>{m.crew_settings_automations_section_add_automation()}</Button
+	>
 </div>
 
-<AutomationDialog
-	bind:open={dialogOpen}
-	trigger={editing}
-	crewmateName={crewmate.name}
-	tz={Intl.DateTimeFormat().resolvedOptions().timeZone}
-	onsave={save}
-	ondelete={remove}
-/>
+<!-- A chunk of its own: the dialog and its fields carry their messages, which must not grow the startup bundle. -->
+{#await import("#lib/crew/automation/AutomationDialog.svelte") then { default: AutomationDialog }}
+	<AutomationDialog
+		bind:open={dialogOpen}
+		trigger={editing}
+		crewmateName={crewmate.name}
+		tz={Intl.DateTimeFormat().resolvedOptions().timeZone}
+		onsave={save}
+		ondelete={remove}
+	/>
+{/await}
 
 <style>
 	.automation-row {
@@ -120,6 +131,9 @@
 	.card.rows .automation-row:last-child {
 		border-bottom-left-radius: 12px;
 		border-bottom-right-radius: 12px;
+	}
+	.auto-invalid {
+		color: var(--ca-semantic-error);
 	}
 	.empty-card {
 		align-items: flex-start;

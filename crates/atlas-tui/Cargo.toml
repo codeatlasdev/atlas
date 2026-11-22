@@ -1,6 +1,6 @@
 [package]
 name = "atlas-tui"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.27"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -24,7 +24,6 @@ serde_norway = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-chrono = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 
@@ -33,6 +32,7 @@ unicode-width = "0.2"
 crossterm = { workspace = true, features = ["event-stream", "bracketed-paste"] }
 futures-util = "0.3"
 atlas-core = { path = "../atlas-core" }
+atlas-i18n = { path = "../atlas-i18n" }
 dirs = { workspace = true }
 regex = "1"
 schemars = "1"

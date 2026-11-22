@@ -6,6 +6,7 @@ library;
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
+import 'package:atlas_mobile/core/protocol/permission_mode.dart';
 
 /// Pending approval on a crewmate (from crewmate_list pending_approval field).
 class CrewmatePendingApproval {
@@ -14,12 +15,23 @@ class CrewmatePendingApproval {
   final dynamic toolInput;
   final String paneKey;
 
+  /// Set when a rail forced the question (protected path, a task that never auto-runs): no mode removes it, and
+  /// "Allow for this task" does not apply to it.
+  final ApprovalRail? rail;
+
   const CrewmatePendingApproval({
     required this.req,
     this.toolName,
     this.toolInput,
     required this.paneKey,
+    this.rail,
   });
+
+  /// The task the question belongs to: the last part of `crew:<crewmate>:<task>`, null for another shape.
+  String? get taskId {
+    final parts = paneKey.split(':');
+    return parts.length >= 3 ? parts[2] : null;
+  }
 
   factory CrewmatePendingApproval.fromJson(Map<String, dynamic> j) =>
       CrewmatePendingApproval(
@@ -27,6 +39,7 @@ class CrewmatePendingApproval {
         toolName: j['tool_name'] as String?,
         toolInput: j['tool_input'],
         paneKey: j['pane_key'] as String? ?? '',
+        rail: ApprovalRail.tryParse(j['rail']),
       );
 }
 
@@ -112,7 +125,7 @@ class CrewmateEntry {
     required this.name,
     required this.role,
     required this.agent,
-    required this.approval,
+    required this.mode,
     required this.state,
     this.approvalSupported = true,
     this.runningTask,
@@ -123,6 +136,7 @@ class CrewmateEntry {
     this.triggers = const [],
     this.routines = const [],
     this.shortReplies,
+    this.spokenReplies = false,
     this.look,
   });
   final String id;
@@ -133,8 +147,13 @@ class CrewmateEntry {
   /// `CrewLook.from` keeps each valid field and falls back per field.
   final Map<String, dynamic>? look;
   final String agent;
-  final String approval; // ask | auto
+
+  /// What it may run without asking. Changes with `crewmate_set_approval`; every client sees it live.
+  final PermissionMode mode;
   final String state; // idle | working | needs_you
+
+  /// False for an engine with no approval channel (codex, opencode): it always runs unattended, `mode` is Bypass and
+  /// cannot change.
   final bool approvalSupported;
   final CrewmateRunningTask? runningTask;
   final int queued;
@@ -148,12 +167,15 @@ class CrewmateEntry {
   /// Cron routines (`crewmate_list.routines`); `crewmate_routine_set` replaces the whole list.
   final List<Routine> routines;
   final bool? shortReplies;
+
+  /// hostd asks this crewmate's agent to end each reply with a short line for listening (`spoken_replies`).
+  final bool spokenReplies;
   factory CrewmateEntry.fromJson(Map<String, dynamic> j) => CrewmateEntry(
     id: j['id'] as String? ?? '',
     name: j['name'] as String? ?? '',
     role: j['role'] as String? ?? '',
     agent: j['agent'] as String? ?? '',
-    approval: j['approval'] as String? ?? 'ask',
+    mode: PermissionMode.ofEntry(j),
     state: j['state'] as String? ?? 'idle',
     approvalSupported: j['approval_supported'] as bool? ?? true,
     runningTask: j['running_task'] == null
@@ -180,6 +202,7 @@ class CrewmateEntry {
         Routine.fromJson((r as Map).cast()),
     ],
     shortReplies: j['short_replies'] as bool?,
+    spokenReplies: j['spoken_replies'] == true,
     look: (j['look'] as Map?)?.cast<String, dynamic>(),
   );
 }

@@ -1,0 +1,7 @@
+{
+	"settings_registry_capture_capture_key_region_description": "Drag to pick an area, or press Space to switch to picking a window.",
+	"settings_registry_capture_capture_on_release_description": "Take the shot as soon as you let go of the selection; turn off to adjust it first and confirm with Return.",
+	"settings_registry_capture_description": "Screenshots and screen recordings from a hotkey: where they go, the keys, and your history.",
+	"settings_registry_capture_group_history": "History",
+	"settings_registry_capture_label": "Capture"
+}

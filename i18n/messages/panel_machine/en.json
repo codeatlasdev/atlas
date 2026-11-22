@@ -1,0 +1,119 @@
+{
+	"panel_machine_agent_blocked": "blocked",
+	"panel_machine_agent_done": "done",
+	"panel_machine_agent_idle": "idle",
+	"panel_machine_agent_waiting": "waiting",
+	"panel_machine_agent_working": "working",
+	"panel_machine_cache_cleared": "Cache cleared · freed {size}",
+	"panel_machine_cache_nearly_full": "Nearly full: the least recently used entries are evicted",
+	"panel_machine_cache_no_runs": "No runs yet",
+	"panel_machine_cache_size": "{used} of {max}",
+	"panel_machine_clear_cache_description": "Every cached result, output and counter is deleted. The next runs execute for real.",
+	"panel_machine_clear_cache_title": "Clear the task cache?",
+	"panel_machine_drawer_agents_and_terminals": "Agents and terminals",
+	"panel_machine_drawer_clear_cache": "Clear cache",
+	"panel_machine_drawer_heavy_run_history": "Heavy run history",
+	"panel_machine_drawer_hit_rate": "Hit rate {rate}",
+	"panel_machine_drawer_load_and_memory": "Load and memory",
+	"panel_machine_drawer_machine": "Machine",
+	"panel_machine_drawer_no_heavy_run_recorded_yet": "No heavy run recorded yet.",
+	"panel_machine_drawer_no_service_is_running": "No service is running.",
+	"panel_machine_drawer_no_terminals_running": "No terminals running.",
+	"panel_machine_drawer_not_available_in_this_version": "Not available in this version.",
+	"panel_machine_drawer_nothing_running_or_waiting": "Nothing running or waiting.",
+	"panel_machine_drawer_orphans_and_disk": "Orphans and disk",
+	"panel_machine_drawer_saved_week": "{savedWeek} in the last 7 days",
+	"panel_machine_drawer_services_by_memory": "Services by memory",
+	"panel_machine_drawer_size": "Size",
+	"panel_machine_drawer_task_cache": "Task cache",
+	"panel_machine_drawer_time_saved": "Time saved {saved}",
+	"panel_machine_history_stats": "{runs} · avg {avg} · max {max}",
+	"panel_machine_hits": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No hits",
+				"countExact=*, countPlural=one": "{count} hit",
+				"countExact=*, countPlural=*": "{count} hits"
+			}
+		}
+	],
+	"panel_machine_hygiene_detail": "{live} live · {size} to free",
+	"panel_machine_load": "Load",
+	"panel_machine_load_and_memory_holding_load": "Load and memory · heavy jobs wait on load",
+	"panel_machine_load_and_memory_holding_memory": "Load and memory · heavy jobs wait on memory",
+	"panel_machine_load_cores": "{load} of {cores} cores",
+	"panel_machine_memory_free": "{free}% free",
+	"panel_machine_memory_free_total": "{free}% free · {total}",
+	"panel_machine_misses": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No misses",
+				"countExact=*, countPlural=one": "{count} miss",
+				"countExact=*, countPlural=*": "{count} misses"
+			}
+		}
+	],
+	"panel_machine_no_reading": "no reading",
+	"panel_machine_orphans": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No orphaned processes",
+				"countExact=*, countPlural=one": "{count} orphaned process",
+				"countExact=*, countPlural=*": "{count} orphaned processes"
+			}
+		}
+	],
+	"panel_machine_over_max_rising": "Over max_memory · rising {rate}",
+	"panel_machine_over_warn_rising": "Over memory_warn · rising {rate}",
+	"panel_machine_past_heavy_gate": "Past the heavy gate: new heavy jobs wait",
+	"panel_machine_reading": "Reading the machine…",
+	"panel_machine_report_retry_hint": "Atlas could not read the load, queue or terminals. It retries every few seconds.",
+	"panel_machine_report_unavailable": "Machine report unavailable",
+	"panel_machine_runs": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No runs",
+				"countExact=*, countPlural=one": "{count} run",
+				"countExact=*, countPlural=*": "{count} runs"
+			}
+		}
+	],
+	"panel_machine_trend_faster": "{pct}% faster",
+	"panel_machine_trend_slower": "{pct}% slower"
+}

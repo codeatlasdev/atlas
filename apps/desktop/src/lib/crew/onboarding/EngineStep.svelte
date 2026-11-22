@@ -1,9 +1,9 @@
 <!-- Engine step list: one card per engine with its status badge; a click installs, signs in or selects it. -->
 <script lang="ts">
 	import { agentLogo } from "#lib/agentLogos.ts";
-	import { AGENT_KEY_LABEL } from "#lib/crew/remoteAgent.ts";
-	import { engineBadge, engineBusy, engineStatusLabel } from "./engines.ts";
+	import { agentKeyLabel, engineBadge, engineBusy, engineStatusLabel } from "./engines.ts";
 	import type { Onboarding } from "./onboarding.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ob }: { ob: Onboarding } = $props();
 </script>
@@ -19,7 +19,10 @@
 			class:selected={isSel || isActive}
 			onclick={() => ob.handleEngineCardClick(agent.id)}
 			aria-pressed={isSel}
-			aria-label="{agent.label} – {engineStatusLabel(status.phase)}"
+			aria-label={m.crew_onboarding_engine_step_card({
+				engine: agent.label,
+				status: engineStatusLabel(status.phase),
+			})}
 		>
 			<div class="engine-logo">
 				{#if logo}
@@ -33,7 +36,7 @@
 				{#if status.phase === "install_error"}
 					<span class="engine-auth err-text">{status.error?.slice(0, 60)}</span>
 				{:else}
-					<span class="engine-auth">{AGENT_KEY_LABEL[agent.id] ?? ""}</span>
+					<span class="engine-auth">{agentKeyLabel(agent.id)}</span>
 				{/if}
 			</div>
 			<span class="engine-status badge-{engineBadge(status.phase)}" aria-hidden="true">

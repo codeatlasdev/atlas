@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { Button, toast } from "@codeatlasdev/ui";
+	import { Button, Switch, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import Group from "#lib/settings/Group.svelte";
@@ -9,6 +9,12 @@
 	import PairQr from "#lib/components/PairQr.svelte";
 	import BrowsersRow from "#lib/crew/settings/BrowsersRow.svelte";
 	import TelegramRow from "#lib/crew/settings/TelegramRow.svelte";
+	import VoiceRows from "#lib/crew/settings/VoiceRows.svelte";
+	import { DICTATION_STROKE } from "#lib/crew/voice/key.ts";
+	import { dictationKey, setMode } from "#lib/crew/voice/mode.svelte.ts";
+	import type { KeyMode } from "#lib/crew/voice/dictation.svelte.ts";
+	import { IS_MAC, label as keyLabel } from "#lib/keys.ts";
+	import GithubAppCard from "#lib/crew/settings/GithubAppCard.svelte";
 	import { secondsLeft, type PairStart } from "#lib/settings/mobile.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import {
@@ -16,9 +22,12 @@
 		saveCrewSettings,
 		type CrewServerSettings,
 	} from "#lib/crew/settings/crewSettings.ts";
+	import { modeLabel, selectableModes } from "#lib/crew/permissionMode.ts";
+	import type { CrewPolicy } from "#lib/crew/permissionMode.ts";
 	import { replayCrewOnboarding } from "#lib/crew/crewOnboarding.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	type Device = { node_id: string; name: string; revoked: boolean };
 
@@ -88,7 +97,7 @@
 			await loadHost(key).catch(() => {});
 			addServer = "";
 			addName = "";
-			toast.success(`Added ${name}`);
+			toast.success(m.settings_agents_crew_added({ name }));
 		} catch (e) {
 			toast.error(errText(e));
 		} finally {
@@ -97,10 +106,10 @@
 	}
 
 	async function doRemoveServer(key: string, name: string) {
-		if (!confirm(`Remove "${name}"? Crewmates on this server will stop being managed from here.`)) return;
+		if (!confirm(m.settings_agents_crew_remove_confirm({ name }))) return;
 		try {
 			await crew.removeServer(key);
-			toast.success(`Removed ${name}`);
+			toast.success(m.settings_agents_crew_removed({ name }));
 		} catch (e) {
 			toast.error(errText(e));
 		}
@@ -117,6 +126,14 @@
 		}
 	}
 
+	async function savePolicy(key: string, patch: Partial<CrewPolicy>) {
+		try {
+			await crew.setPolicy(key, patch);
+		} catch (e) {
+			toast.error(errText(e));
+		}
+	}
+
 	async function saveServerSettings(key: string, short_replies: boolean, short_replies_model: string) {
 		crewSettingsSaving = { ...crewSettingsSaving, [key]: true };
 		try {
@@ -130,10 +147,7 @@
 	}
 </script>
 
-<PageHead
-	title="Atlas Crew"
-	description="Crew servers run crewmates 24/7 on your own server. Add a crew server after running `atlas crew install user@host`."
-/>
+<PageHead title={m.settings_agents_crew_title()} description={m.settings_agents_crew_description()} />
 
 {#each remoteServers as h (h.key)}
 	{@const online = crew.serverOk(h.key)}
@@ -143,18 +157,18 @@
 	{@const left = pairing ? secondsLeft(pairing.p, pairing.at, now) : 0}
 
 	<Group title={h.name}>
-		<Row id="crew-status-{h.key}" label="Status">
+		<Row id="crew-status-{h.key}" label={m.settings_agents_crew_status()}>
 			<span class="status" class:online>
-				{online ? "Online" : "Offline"}
+				{online ? m.settings_agents_crew_status_online() : m.settings_agents_crew_status_offline()}
 			</span>
 		</Row>
 
 		<Row
 			id="crew-paused-{h.key}"
-			label={h.paused ? "Paused" : "Pause crew"}
+			label={h.paused ? m.crew_workspace_sidebar_footer_paused() : m.settings_agents_crew_pause_label()}
 			description={h.paused
-				? "Nothing runs on this server: queued tasks wait and automations are skipped."
-				: "Cancels every running task and holds the queues until you resume."}
+				? m.settings_agents_crew_pause_hint_paused()
+				: m.settings_agents_crew_pause_hint_running()}
 		>
 			<Button
 				size="sm"
@@ -162,23 +176,25 @@
 				disabled={!online || pausing[h.key]}
 				onclick={() => void togglePause(h.key, !h.paused)}
 			>
-				{h.paused ? "Resume" : "Pause all"}
+				{h.paused ? m.crew_workspace_pause_banner_resume() : m.crew_workspace_sidebar_footer_pause_all()}
 			</Button>
 		</Row>
 
 		{#if integrations.length > 0}
-			<Row id="crew-integrations-{h.key}" label="Agents" stack>
+			<Row id="crew-integrations-{h.key}" label={m.settings_agents_crew_agents()} stack>
 				<div class="integrations">
 					{#each integrations as a (a.id)}
 						<span class="integration" class:ok={a.state === "ok"}>
-							{a.label}{a.state === "ok" ? ": logged in" : ": not logged in"}
+							{a.state === "ok"
+								? m.settings_agents_crew_agent_signed_in({ label: a.label })
+								: m.settings_agents_crew_agent_signed_out({ label: a.label })}
 						</span>
 					{/each}
 				</div>
 			</Row>
 		{/if}
 
-		<Row id="crew-phones-{h.key}" label="Paired phones" stack>
+		<Row id="crew-phones-{h.key}" label={m.settings_agents_paired_phones()} stack>
 			{#if devices.length > 0}
 				<div class="devices">
 					{#each devices as d (d.node_id)}
@@ -186,12 +202,12 @@
 					{/each}
 				</div>
 			{:else}
-				<span class="empty">None yet</span>
+				<span class="empty">{m.settings_agents_crew_phones_empty()}</span>
 			{/if}
 			{#snippet below()}
 				<div class="pair-row">
 					<Button size="sm" onclick={() => startPair(h.key)}>
-						{pairing && left > 0 ? "New code" : "Pair another phone"}
+						{pairing && left > 0 ? m.mobile_pair_card_new_code() : m.mobile_pair_card_pair_another()}
 					</Button>
 				</div>
 				{#if pairing}
@@ -204,8 +220,8 @@
 		{#if cs}
 			<Row
 				id="short-replies"
-				label="Short replies"
-				description="Summarize long crewmate replies with a cheap model."
+				label={m.crew_settings_behaviour_card_short_replies()}
+				description={m.crew_settings_behaviour_card_summarize_long_replies_with_a()}
 			>
 				<div class="short-replies-form">
 					<label class="sr-label">
@@ -219,16 +235,16 @@
 									cs.short_replies_model,
 								)}
 						/>
-						Enabled
+						{m.settings_agents_crew_enabled()}
 					</label>
 					{#if cs.short_replies}
 						<input
 							class="input"
 							type="text"
-							placeholder="Model id (e.g. cc/claude-haiku-5-5)"
+							placeholder={m.settings_agents_crew_model_placeholder()}
 							bind:value={cs.short_replies_model}
 							onblur={() => void saveServerSettings(h.key, cs.short_replies, cs.short_replies_model)}
-							aria-label="Summary model"
+							aria-label={m.settings_agents_crew_summary_model()}
 						/>
 					{/if}
 				</div>
@@ -236,72 +252,131 @@
 		{/if}
 
 		{#if online}
+			{@const policy = crew.policyOf(h.key)}
+			<Row
+				id="crew-default-mode-{h.key}"
+				label={m.crew_permission_default_label()}
+				description={m.crew_permission_default_hint()}
+			>
+				<select
+					class="input mode-select"
+					value={policy.default_approval}
+					aria-label={m.crew_permission_default_label()}
+					onchange={(e) =>
+						void savePolicy(h.key, {
+							default_approval: (e.currentTarget as HTMLSelectElement)
+								.value as CrewPolicy["default_approval"],
+						})}
+				>
+					{#each selectableModes(policy) as mode (mode)}
+						<option value={mode}>{modeLabel(mode)}</option>
+					{/each}
+				</select>
+			</Row>
+			<Row
+				id="crew-allow-bypass-{h.key}"
+				label={m.crew_permission_allow_bypass_label()}
+				description={m.crew_permission_allow_bypass_hint()}
+			>
+				<Switch
+					aria-label={m.crew_permission_allow_bypass_label()}
+					checked={policy.allow_bypass}
+					onchange={(v) => void savePolicy(h.key, { allow_bypass: v })}
+				/>
+			</Row>
 			<BrowsersRow hostKey={h.key} />
 			<TelegramRow hostKey={h.key} />
+			<VoiceRows hostKey={h.key} />
 		{/if}
 
 		<Row
 			id="crew-remove-{h.key}"
-			label="Remove server"
-			description="Stops managing crewmates on this server."
+			label={m.settings_agents_crew_remove_server()}
+			description={m.settings_agents_crew_remove_hint()}
 		>
-			<Button size="sm" variant="ghost" onclick={() => doRemoveServer(h.key, h.name)}>Remove</Button>
+			<Button size="sm" variant="ghost" onclick={() => doRemoveServer(h.key, h.name)}
+				>{m.common_action_remove()}</Button
+			>
 		</Row>
 	</Group>
+
+	{#if online}
+		<GithubAppCard hostKey={h.key} serverName={h.name} />
+	{/if}
 {/each}
 
-<Group title="Add server">
+<Group title={m.settings_agents_crew_add_server()}>
 	<Row
 		id="crew-add"
-		label="SSH target"
-		description="Run `atlas crew install user@host` first, then add the server here."
+		label={m.settings_agents_crew_target()}
+		description={m.settings_agents_crew_target_description()}
 		stack
 	>
 		<div class="add-form">
+			<!-- i18n-ignore: an example user@host, not prose -->
 			<input
 				class="input"
 				type="text"
 				placeholder="atlas-crew@server"
 				bind:value={addServer}
 				onkeydown={(e) => e.key === "Enter" && void doAddServer()}
-				aria-label="SSH target"
+				aria-label={m.settings_agents_crew_target()}
 			/>
 			<input
 				class="input"
 				type="text"
-				placeholder="Display name (optional)"
+				placeholder={m.settings_agents_crew_display_name_optional()}
 				bind:value={addName}
 				onkeydown={(e) => e.key === "Enter" && void doAddServer()}
-				aria-label="Display name"
+				aria-label={m.settings_agents_crew_display_name()}
 			/>
 			<Button size="sm" onclick={doAddServer} disabled={adding || !addServer.trim()}>
-				{adding ? "Adding…" : "Add"}
+				{adding ? m.settings_agents_crew_adding() : m.common_action_add()}
 			</Button>
 		</div>
 	</Row>
 </Group>
 
+<!-- i18n-ignore: a product name -->
 <Group title="GitHub">
 	<Row
 		id="crew-github"
-		label="GitHub"
-		description="Connect GitHub so the crew can clone private repositories. Configure in the crew workspace footer."
+		label={m.crew_github_app_simple_title()}
+		description={m.crew_github_app_simple_description()}
 	>
 		<Button
 			size="sm"
 			variant="ghost"
 			onclick={() => {
 				updates.open = false;
-			}}>Open crew workspace</Button
+			}}>{m.settings_agents_crew_open_workspace()}</Button
 		>
 	</Row>
 </Group>
 
-<Group title="Onboarding">
+<Group title={m.crew_voice_settings_title()}>
+	<Row
+		id="crew-dictation-key"
+		label={m.crew_voice_key()}
+		description={m.crew_voice_key_hint({ shortcut: keyLabel(DICTATION_STROKE, IS_MAC) })}
+	>
+		<select
+			class="input mode-select"
+			value={dictationKey.mode}
+			aria-label={m.crew_voice_key()}
+			onchange={(e) => setMode((e.currentTarget as HTMLSelectElement).value as KeyMode)}
+		>
+			<option value="hold">{m.crew_voice_key_hold()}</option>
+			<option value="tap">{m.crew_voice_key_tap()}</option>
+		</select>
+	</Row>
+</Group>
+
+<Group title={m.settings_agents_crew_onboarding()}>
 	<Row
 		id="crew-onboarding"
-		label="Replay onboarding"
-		description="Shows the Atlas Crew introduction again from the first step."
+		label={m.settings_agents_crew_replay_onboarding()}
+		description={m.settings_agents_crew_replay_description()}
 	>
 		<Button
 			size="sm"
@@ -309,7 +384,7 @@
 			onclick={() => {
 				updates.open = false;
 				replayCrewOnboarding();
-			}}>Replay</Button
+			}}>{m.settings_agents_crew_replay()}</Button
 		>
 	</Row>
 </Group>
@@ -373,6 +448,10 @@
 	}
 	.input::placeholder {
 		color: var(--ca-text-tertiary, var(--ca-text-secondary));
+	}
+	.mode-select {
+		flex: none;
+		min-width: 0;
 	}
 	.short-replies-form {
 		display: flex;

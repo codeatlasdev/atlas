@@ -1,6 +1,6 @@
 [package]
 name = "atlas-desktop"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.27"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -27,7 +27,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png", "unstable"] }
 tauri-plugin-dialog = "2"
-tauri-plugin-shell = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-global-shortcut = "2"
@@ -38,11 +37,11 @@ window-vibrancy = "0.8"
 atlas-tui = { path = "../atlas-tui" }
 atlas-core = { path = "../atlas-core" }
 atlas-host = { path = "../atlas-host" }
+atlas-i18n = { path = "../atlas-i18n" }
 base64 = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-chrono = { workspace = true }
 dirs = { workspace = true }
 sha1_smol = "1"
 notify = { workspace = true }
@@ -50,8 +49,11 @@ parking_lot = { workspace = true }
 libc = { workspace = true }
 semver = { workspace = true }
 tempfile = { workspace = true }
+futures-util = "0.3"
+url = "2"
 
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+cpal = "0.17"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -68,6 +70,8 @@ objc2-web-kit = { version = "0.3", default-features = false, features = ["std", 
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CADisplayLink", "CALayer", "CATransaction", "CAAnimation", "CAMediaTiming", "CAShapeLayer", "objc2-core-graphics"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFData"] }
 dispatch2 = "0.3"
+# Reading replies aloud (speech/mac.rs); already in the graph through cpal, same version.
+objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVSpeechSynthesis"] }
 atlas-term = { path = "../atlas-term" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -87,12 +91,15 @@ tauri-plugin-single-instance = "2"
 # browser_keys_win.rs (accelerator keys of the embedded browser, modifier state through GetKeyState).
 webview2-com = "0.39"
 windows-core = "0.62"
-windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Media_Speech", "Win32_System_Com"] }
 
 [dev-dependencies]
 # `tauri::test`: the pin wall is tested through the real IPC pipeline on the mock runtime (shots/pin.rs).
 tauri = { version = "2", features = ["test"] }
 serde_norway = { workspace = true }
+# Test processes resolve English unless a test asks otherwise (`atlas_core::lang::TEST_ENV`).
+# `scaling::HANG`, the ceiling for tests that wait on a real event, comes from the same feature.
+atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
 
 [lints]
 workspace = true

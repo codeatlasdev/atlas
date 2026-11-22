@@ -1,0 +1,293 @@
+{
+	"cmd_crew_add_key_failed": "Adding the SSH key failed: {reason}",
+	"cmd_crew_apt_empty": "`playwright install-deps --dry-run` printed nothing",
+	"cmd_crew_apt_extra": "Unexpected output after \"All system dependencies are installed.\": {text}",
+	"cmd_crew_apt_implausible": "playwright reports {count} missing system dependencies, which is not plausible; nothing was run as root",
+	"cmd_crew_apt_mismatch": "playwright announced {count} missing system dependencies but listed {listed}; nothing was run as root",
+	"cmd_crew_apt_not_package": "Atlas does not run anything as root: {text} in the dependency list is not a package name",
+	"cmd_crew_apt_package_count": "Atlas does not run anything as root: {count} packages to install is not plausible",
+	"cmd_crew_apt_unreadable": "`playwright install-deps --dry-run` said something this atlas cannot read, so nothing was run as root: {text}",
+	"cmd_crew_ask_export": "Export a copy first? [Y/n]",
+	"cmd_crew_ask_secrets": "Include secrets (API keys, webhook tokens)? [y/N]",
+	"cmd_crew_asset_no_binary": "{asset} has no `atlas` binary inside",
+	"cmd_crew_bad_crewmate_id": "\"{id}\" is not a crewmate id (see `atlas crew status`: 36 lowercase characters), or \"{agent}\" is not an agent",
+	"cmd_crew_bad_version": "`{version}` is not a version. Use X.Y.Z, for example {example}.",
+	"cmd_crew_browsers_capture_ready": "capture is ready on {target} (playwright {version}: chromium, webkit).",
+	"cmd_crew_browsers_ready": "Browsers ready on {target}: crewmates can use the capture tool.",
+	"cmd_crew_browsers_step_apt": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No system libraries to install with apt-get",
+				"countExact=*, countPlural=one": "Installing {count} system library with apt-get (sudo; the only step that runs as root)",
+				"countExact=*, countPlural=*": "Installing {count} system libraries with apt-get (sudo; the only step that runs as root)"
+			}
+		}
+	],
+	"cmd_crew_browsers_step_deps": "Checking the system libraries the browsers need (as the crew user, nothing is installed)",
+	"cmd_crew_browsers_step_deps_ready": "System libraries already installed",
+	"cmd_crew_browsers_step_dir": "Preparing the capture directory (as the crew user)",
+	"cmd_crew_browsers_step_download": "Downloading chromium and webkit (as the crew user, a few minutes)",
+	"cmd_crew_browsers_step_node": "Checking node and npm",
+	"cmd_crew_browsers_step_npm": "Installing playwright {version} from the lockfile (npm ci, as the crew user)",
+	"cmd_crew_cannot_reach": "Couldn't reach {target}: {reason}",
+	"cmd_crew_cannot_reach_bare": "Couldn't reach {target}",
+	"cmd_crew_check_failed": "Checking {target} failed",
+	"cmd_crew_check_failed_reason": "Checking {target} failed: {reason}",
+	"cmd_crew_command_failed": "`{command}` failed: {reason}",
+	"cmd_crew_download_here_failed": "Couldn't download it here either ({reason}); uploading the cached binary",
+	"cmd_crew_download_task_failed": "The download task failed",
+	"cmd_crew_enable_failed": "Enabling the service failed: {reason}",
+	"cmd_crew_engine_missing": "{agent} was not installed on the server ({reason}). Crewmates that use it cannot run until it is: fix that and run `atlas crew install` again, or install it with the vendor's command, `{line}`.",
+	"cmd_crew_export_exists": "{path} already exists. Choose another file with `-o` (an export never overwrites).",
+	"cmd_crew_export_failed": "Couldn't export on {target}: {reason}",
+	"cmd_crew_export_no_secrets": "Secrets and webhook tokens were left out (`--with-secrets` includes them)",
+	"cmd_crew_export_not_included": "Agent sign-ins and project checkouts are never exported: sign in again with `atlas crew login`",
+	"cmd_crew_export_secrets": "This file contains secrets and webhook tokens (mode 0600). Keep it private and delete it when done.",
+	"cmd_crew_export_unreadable": "The export on {target} is unreadable ({reason}); {path} was kept for inspection",
+	"cmd_crew_exported": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No crewmates were exported from {target} to {path}",
+				"countExact=*, countPlural=one": "Exported {count} crewmate from {target} to {path}",
+				"countExact=*, countPlural=*": "Exported {count} crewmates from {target} to {path}"
+			}
+		}
+	],
+	"cmd_crew_fail_apt_install": "`apt-get install` on {target} failed: {reason}",
+	"cmd_crew_fail_capture_dir": "Creating the capture directory on {target} failed: {reason}",
+	"cmd_crew_fail_install_deps": "`playwright install-deps --dry-run` on {target} failed: {reason}",
+	"cmd_crew_fail_npm_ci": "`npm ci` on {target} failed: {reason}",
+	"cmd_crew_fail_playwright_install": "`playwright install` on {target} failed: {reason}",
+	"cmd_crew_fail_write_file": "Writing {file} on {target} failed: {reason}",
+	"cmd_crew_get_binary_failed": "Couldn't get atlas {version} onto the host.\n  On the host: {on_host}\n  On this machine: {here}\n  There is no cached binary at {path} either.\n  Check this machine's internet access (it honors https_proxy), or give a Linux binary with `--binary`.",
+	"cmd_crew_gone": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Deleted {home} on {target} (no crewmates). It is gone; to keep a copy, run `atlas crew export {target}` before uninstalling.",
+				"countExact=*, countPlural=one": "Deleted {home} on {target} ({count} crewmate). It is gone; to keep a copy, run `atlas crew export {target}` before uninstalling.",
+				"countExact=*, countPlural=*": "Deleted {home} on {target} ({count} crewmates). It is gone; to keep a copy, run `atlas crew export {target}` before uninstalling."
+			}
+		}
+	],
+	"cmd_crew_gone_none": "No crew data was found on {target}.",
+	"cmd_crew_host_download_failed": "The host couldn't download atlas {version} ({reason}); downloading it here and sending it over SSH",
+	"cmd_crew_hostd_version_mismatch": "hostd answers as {got}, not {want}: a process from before the update may still hold the socket",
+	"cmd_crew_import_failed": "Couldn't import on {target}: {reason}",
+	"cmd_crew_import_summary": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{file}: no crewmates, written by atlas {version}",
+				"countExact=*, countPlural=one": "{file}: {count} crewmate, written by atlas {version}",
+				"countExact=*, countPlural=*": "{file}: {count} crewmates, written by atlas {version}"
+			}
+		}
+	],
+	"cmd_crew_import_summary_secrets": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{file}: no crewmates, written by atlas {version}, with secrets",
+				"countExact=*, countPlural=one": "{file}: {count} crewmate, written by atlas {version}, with secrets",
+				"countExact=*, countPlural=*": "{file}: {count} crewmates, written by atlas {version}, with secrets"
+			}
+		}
+	],
+	"cmd_crew_imported": "Imported into {target}. Sign agents in with `atlas crew login` if this server has none.",
+	"cmd_crew_install_binary_failed": "Installing the binary on {target} failed: {reason}",
+	"cmd_crew_install_ready": "Crew server ready: {account}. Add it in Atlas Desktop → Crew, then sign the agents in (`atlas crew login <agent>`).",
+	"cmd_crew_installer_failed": "the installer failed",
+	"cmd_crew_key_missing": "The SSH key {path} does not exist",
+	"cmd_crew_link_failed": "Linking atlas for {user} failed: {reason}",
+	"cmd_crew_list_failed": "Listing the crewmates failed: {reason}",
+	"cmd_crew_login_install_first": "Install {agent} on the crew server first if needed:",
+	"cmd_crew_login_opening": "Opening sign-in session: {command}",
+	"cmd_crew_login_opening_crewmate": "Opening sign-in session for crewmate {id}: {command}",
+	"cmd_crew_migration_notice": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No crewmate changed to its own Linux user.",
+				"countExact=*, countPlural=one": "{count} crewmate now runs as its own Linux user. Its agent sign-ins were shared and are not copied: sign each agent in again with `atlas crew login <server> <agent> --crewmate <id>`. A project checkout is made again by the next task; the old one is kept as work.pre-isolation next to it.",
+				"countExact=*, countPlural=*": "{count} crewmates now run as their own Linux users. Their agent sign-ins were shared and are not copied: sign each agent in again with `atlas crew login <server> <agent> --crewmate <id>`. A project checkout is made again by the next task; the old one is kept as work.pre-isolation next to it."
+			}
+		}
+	],
+	"cmd_crew_missing_tools": "Missing on the host: {tools}",
+	"cmd_crew_missing_tools_install": "On Debian or Ubuntu: `sudo apt-get install -y {packages}`",
+	"cmd_crew_mkdir_ssh_failed": "Creating the .ssh folder failed: {reason}",
+	"cmd_crew_name_mismatch": "Not the server name. Nothing was deleted.",
+	"cmd_crew_no_crew_user": "(no crew user found)",
+	"cmd_crew_no_reason_given": "no reason given",
+	"cmd_crew_no_ssh_key": "No SSH key found (ssh -G lists none that exists). Create one with: `ssh-keygen -t ed25519`",
+	"cmd_crew_no_systemd": "systemd is not running as PID 1 (no /run/systemd/system): a crew server needs a systemd host, not a container or an OpenRC/runit system",
+	"cmd_crew_not_a_crew_server": "{host} is not a crew server (no {service} service). Run `atlas crew install {target}` first.",
+	"cmd_crew_not_ready": "{target} is not ready for a crew server. Nothing was changed:",
+	"cmd_crew_old_dir_not_removed": "Couldn't remove the old install folder: {reason}",
+	"cmd_crew_pair_code": "code  {code}",
+	"cmd_crew_pair_expires": "It works once and expires in {secs} s. The phone pairs with {host} directly: the crew keeps working with your computer off.",
+	"cmd_crew_pair_failed": "Couldn't get a pairing invite from {target}: {reason}\n  Is the crew server installed and running? Check with `atlas crew status {target}`.",
+	"cmd_crew_pair_link": "link  {url}",
+	"cmd_crew_pair_no_invite": "The crew server did not answer with a pairing invite",
+	"cmd_crew_pair_open": "Open Atlas Mobile → Add a computer → scan this code, or type it.",
+	"cmd_crew_pair_too_long": "The pairing link is too long for a QR code",
+	"cmd_crew_pause_failed": "Couldn't pause the crew on {target}: {reason}",
+	"cmd_crew_paused": "Crew on {target} paused",
+	"cmd_crew_probe_failed": "Probing the host failed: {reason}",
+	"cmd_crew_remove_users_failed": "Removing the crewmates' users failed: {reason}",
+	"cmd_crew_resume_failed": "Couldn't resume the crew on {target}: {reason}",
+	"cmd_crew_resumed": "Crew on {target} resumed",
+	"cmd_crew_reuse_user": "Reusing the existing system user {user} (its home {home} holds the crewmates' data)",
+	"cmd_crew_server_removed": "Crew server removed from {target}.",
+	"cmd_crew_ssh_launch_failed": "Couldn't launch ssh. Check that ssh is installed.",
+	"cmd_crew_ssh_unreachable": "Couldn't connect to {target} over SSH: {reason}",
+	"cmd_crew_step_creating_user": "Creating the {user} user",
+	"cmd_crew_step_isolation": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Setting up one Linux user per crewmate (none existing)",
+				"countExact=*, countPlural=one": "Setting up one Linux user per crewmate ({count} existing)",
+				"countExact=*, countPlural=*": "Setting up one Linux user per crewmate ({count} existing)"
+			}
+		}
+	],
+	"cmd_crew_step_preflight": "Checking {target}",
+	"cmd_crew_step_retire": "Retiring the old atlas-bot service (data is kept)",
+	"cmd_crew_step_ssh": "Configuring SSH access for {user}",
+	"cmd_crew_step_staging": "Staging the atlas binary",
+	"cmd_crew_step_start": "Starting {service} and waiting for hostd (up to {secs} s)",
+	"cmd_crew_step_unit": "Writing the systemd service",
+	"cmd_crew_sudo_needed_export": "sudo on {target} asks for a password. Grant the SSH user passwordless sudo to export.",
+	"cmd_crew_sudo_needed_import": "sudo on {target} asks for a password. Grant the SSH user passwordless sudo to import.",
+	"cmd_crew_sudo_password_rejected": "Wrong sudo password. Try again.",
+	"cmd_crew_sudo_password_required": "sudo on {target} asks for a password. Grant passwordless sudo to this user, or run it from a terminal: {command}",
+	"cmd_crew_sudo_stdin_failed": "Couldn't read the sudo password from stdin",
+	"cmd_crew_swap_no_previous": "hostd did not come up on {target} within {secs} s and there was no previous binary to go back to. See the logs: `atlas crew logs {target}`",
+	"cmd_crew_swap_rolled_back": "The new binary did not bring hostd up within {secs} s, so the previous binary was restored and is running. See the logs: `atlas crew logs {target}`",
+	"cmd_crew_temp_dir_failed": "Couldn't create a temporary folder for the download",
+	"cmd_crew_too_old_export": "The atlas on {target} is too old to export. Run `atlas crew install {target}` to update it, then try again.",
+	"cmd_crew_too_old_import": "The atlas on {target} is too old to import. Run `atlas crew install {target}` to update it, then try again.",
+	"cmd_crew_type_server_name": "Type the server name ({name}) to delete it:",
+	"cmd_crew_uninstall_failed": "Uninstall failed: {reason}",
+	"cmd_crew_uninstall_needs_decision": "Uninstall deletes data and needs a decision. Run it in a terminal to confirm, or pass `--yes` (take a copy first: `atlas crew export {target}`).",
+	"cmd_crew_uninstall_no_user": "the crew user and its home {home}",
+	"cmd_crew_uninstall_service": "the atlas-crew service and /usr/local/lib/atlas-crew",
+	"cmd_crew_uninstall_signins": "agent sign-ins stored in that home",
+	"cmd_crew_uninstall_title": "Uninstalling the crew server on {target} deletes:",
+	"cmd_crew_uninstall_user_crewmates": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "the crew user and its home {home} (no crewmates)",
+				"countExact=*, countPlural=one": "the crew user and its home {home} ({count} crewmate): its definition, memory, task history, secrets and checkouts",
+				"countExact=*, countPlural=*": "the crew user and its home {home} ({count} crewmates): their definitions, memory, task history, secrets and checkouts"
+			}
+		}
+	],
+	"cmd_crew_uninstall_user_crewmates_size": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "the crew user and its home {home} (no crewmates, {size})",
+				"countExact=*, countPlural=one": "the crew user and its home {home} ({count} crewmate, {size}): its definition, memory, task history, secrets and checkouts",
+				"countExact=*, countPlural=*": "the crew user and its home {home} ({count} crewmates, {size}): their definitions, memory, task history, secrets and checkouts"
+			}
+		}
+	],
+	"cmd_crew_unit_masked": "{unit} is masked on the server and Atlas could not unmask it ({why}). Run on the server: {command}, then retry",
+	"cmd_crew_unit_unmasked": "{unit} was masked: Atlas unmasked it and wrote the real unit",
+	"cmd_crew_unit_write_failed": "writing {unit} failed: {why}",
+	"cmd_crew_unknown_agent": "Unknown agent \"{agent}\". Supported: {supported}",
+	"cmd_crew_unsupported_host": "atlas crew needs a Linux x86_64 or aarch64 host with systemd and sudo (got: {uname})",
+	"cmd_crew_update_done": "atlas on {host} updated; the previous binary is kept (`atlas crew update {target} --rollback`).",
+	"cmd_crew_update_down": "hostd is down on {target}: the update failed and the rollback did not bring it back either. See the logs: `atlas crew logs {target}`",
+	"cmd_crew_update_failed": "Update failed on {target}: {reason}",
+	"cmd_crew_update_rolled_back": "The new binary did not bring hostd up within {secs} s, so Atlas rolled back to the previous one, which is running. See the logs: `atlas crew logs {target}`",
+	"cmd_crew_update_step_restart": "Restarting {service} and waiting for hostd",
+	"cmd_crew_update_step_restore": "Restoring the previous binary on {host}",
+	"cmd_crew_update_step_runner": "Refreshed the capture runner on {host}",
+	"cmd_crew_update_step_stage": "Staging atlas {version} ({triple}) on {host}",
+	"cmd_crew_update_step_upload": "Uploading {path} to {host}",
+	"cmd_crew_upload_failed": "Binary upload failed: {reason}",
+	"cmd_crew_useradd_failed": "Creating the crew user failed: {reason}",
+	"cmd_crew_version_ahead": "atlas {server} (ahead of this CLI's {cli})",
+	"cmd_crew_version_behind": "atlas {server} (behind this CLI's {cli}: run `atlas crew update`)",
+	"cmd_crew_version_current": "atlas {version} (up to date)",
+	"cmd_crew_version_unknown": "atlas version unknown (is hostd running?)"
+}

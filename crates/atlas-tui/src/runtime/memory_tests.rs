@@ -236,11 +236,11 @@ fn reset_forgets_the_previous_process() {
 #[test]
 fn the_reason_names_both_numbers_in_the_requested_format() {
     assert_eq!(
-        warn_reason(2254857830, 3 << 29),
+        warn_reason(2254857830, 3 << 29).message,
         "using 2.1 GB, over memory_warn 1.5 GB"
     );
     assert_eq!(
-        warn_reason(700 * MB, 512 * MB),
+        warn_reason(700 * MB, 512 * MB).message,
         "using 700 MB, over memory_warn 512 MB"
     );
 }

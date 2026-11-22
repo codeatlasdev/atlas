@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::sig::Signal;
 use anyhow::Result;
+use atlas_i18n::t;
 use tokio::signal;
 use tokio::sync::mpsc;
 
@@ -21,13 +22,16 @@ use crate::runtime::service::ServiceState;
 pub(crate) fn lock_or_err(root_dir: &Path) -> Result<SingletonLock> {
     let log_dir = crate::runtime::log_dir(root_dir);
     let lock_path = log_dir.join(".tui.lock");
-    crate::runtime::ensure_log_dir(&log_dir)
-        .map_err(|e| anyhow::anyhow!("atlas dev: cannot create {}: {e}", log_dir.display()))?;
+    crate::runtime::ensure_log_dir(&log_dir).map_err(|e| {
+        anyhow::anyhow!(t!(
+            "tui_runtime_lock_log_dir",
+            path = log_dir.display().to_string(),
+            reason = e.to_string()
+        ))
+    })?;
     SingletonLock::acquire(&lock_path).map_err(|_| match SingletonLock::existing_pid(&lock_path) {
-        Some(pid) => {
-            anyhow::anyhow!("atlas dev is already running (pid {pid}); use 'atlas dev --status'")
-        }
-        None => anyhow::anyhow!("atlas dev is already running; use 'atlas dev --status'"),
+        Some(pid) => anyhow::anyhow!(t!("tui_runtime_lock_running_pid", pid = pid)),
+        None => anyhow::anyhow!(t!("tui_runtime_lock_running")),
     })
 }
 
@@ -46,9 +50,14 @@ async fn run_deps(root_dir: &Path, cfg: &ProjectConfig) {
     .await
     {
         DepsOutcome::UpToDate => {}
-        DepsOutcome::Installed => eprintln!("\x1b[32m✓\x1b[0m dependencies installed"),
+        DepsOutcome::Installed => {
+            eprintln!("\x1b[32m✓\x1b[0m {}", t!("tui_runtime_deps_installed"))
+        }
         DepsOutcome::Failed(reason) => {
-            eprintln!("\x1b[31m✗\x1b[0m pre_command failed: {reason} (continuing)")
+            eprintln!(
+                "\x1b[31m✗\x1b[0m {}",
+                t!("tui_runtime_deps_failed", reason = reason.render())
+            )
         }
     }
 }
@@ -79,22 +88,34 @@ impl RunnerLoop {
         control_rx: Option<mpsc::Receiver<ControlRequest>>,
     ) -> Result<Self> {
         println!(
-            "\x1b[1;34m●\x1b[0m atlas dev ({})",
-            if foreground { "headless" } else { "runner" }
+            "\x1b[1;34m●\x1b[0m {}",
+            t!(
+                "tui_runtime_run_banner",
+                mode = if foreground { "headless" } else { "runner" }
+            )
         );
-        println!("  project: {}", cfg.name);
+        println!(
+            "  {}",
+            t!("tui_runtime_run_project", name = cfg.name.as_str())
+        );
         match selection.names() {
             Some(names) => println!(
-                "  services: {} of {} ({})",
-                names.len(),
-                cfg.services.len(),
-                names
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                "  {}",
+                t!(
+                    "tui_runtime_run_services_of",
+                    count = names.len(),
+                    total = cfg.services.len(),
+                    names = names
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             ),
-            None => println!("  services: {}", cfg.services.len()),
+            None => println!(
+                "  {}",
+                t!("tui_runtime_run_services", count = cfg.services.len())
+            ),
         }
         println!();
 
@@ -115,9 +136,18 @@ impl RunnerLoop {
         ));
 
         if foreground {
-            println!("\x1b[1;32m✓\x1b[0m Starting services. Press Ctrl+C to stop.");
+            println!(
+                "\x1b[1;32m✓\x1b[0m {}",
+                t!(
+                    "tui_runtime_run_started_foreground",
+                    key = atlas_i18n::shortcut_for("ctrl-c", "linux", atlas_i18n::lang())
+                )
+            );
         } else {
-            println!("\x1b[1;32m✓\x1b[0m Starting services. Stop with: atlas down");
+            println!(
+                "\x1b[1;32m✓\x1b[0m {}",
+                t!("tui_runtime_run_started_detached", command = "atlas down")
+            );
         }
         println!();
 
@@ -161,13 +191,13 @@ impl RunnerLoop {
         }
 
         println!();
-        println!("\x1b[33m●\x1b[0m Shutting down...");
+        println!("\x1b[33m●\x1b[0m {}", t!("tui_runtime_run_stopping"));
 
         self.watchdog.abort();
         self.hub.bye();
         self.manager.stop_all().await;
 
-        println!("\x1b[32m✓\x1b[0m Done.");
+        println!("\x1b[32m✓\x1b[0m {}", t!("tui_runtime_run_done"));
         Ok(())
     }
 }
@@ -237,34 +267,57 @@ async fn handle_event(manager: &mut ServiceManager, event: ManagerEvent, foregro
                 ServiceState::Unhealthy => "\x1b[31m‼\x1b[0m",
                 ServiceState::Degraded => "\x1b[33m◐\x1b[0m",
             };
-            eprintln!("{icon} {name}: {state:?}");
+            eprintln!("{icon} {name}: {}", state.label());
             manager.update_state(&name, state);
         }
-        ManagerEvent::CriticalAlert { message, .. } => {
-            eprintln!("  [!] {message}");
+        ManagerEvent::CriticalAlert { note, .. } => {
+            eprintln!("  [!] {}", note.render());
         }
-        ManagerEvent::ServiceNote { name, message } => {
-            eprintln!("\x1b[36m↻\x1b[0m {name}: {message}");
+        ManagerEvent::ServiceNote { name, note } => {
+            eprintln!("\x1b[36m↻\x1b[0m {name}: {}", note.render());
         }
         ManagerEvent::InfraFailed { names, reason } => {
-            eprintln!("\x1b[31m✗\x1b[0m infra {}: {reason}", names.join(", "));
+            eprintln!(
+                "\x1b[31m✗\x1b[0m {}",
+                t!(
+                    "tui_runtime_run_infra_failed",
+                    names = names.join(", "),
+                    reason = reason.render().as_str()
+                )
+            );
             manager.record_failure(&names, &reason);
         }
         ManagerEvent::LogReady { name } => manager.mark_log_ready(&name),
         ManagerEvent::TunnelState { state } => {
-            eprintln!("\x1b[36m⇄\x1b[0m tunnel: {state:?}");
+            eprintln!(
+                "\x1b[36m⇄\x1b[0m {}",
+                t!("tui_runtime_run_tunnel", state = state.label())
+            );
             manager.write_status_file();
         }
         ManagerEvent::ActionProgress { label, line } => {
-            println!("[action {label}] {line}");
+            println!(
+                "{}",
+                t!(
+                    "tui_runtime_run_action_line",
+                    label = label.as_str(),
+                    line = line.as_str()
+                )
+            );
         }
         ManagerEvent::ActionCompleted { label, ok, resume } => {
-            let (icon, word) = if ok {
-                ("\x1b[32m✓\x1b[0m", "done")
+            let (icon, line) = if ok {
+                (
+                    "\x1b[32m✓\x1b[0m",
+                    t!("tui_runtime_run_action_done", label = label.as_str()),
+                )
             } else {
-                ("\x1b[31m✗\x1b[0m", "failed")
+                (
+                    "\x1b[31m✗\x1b[0m",
+                    t!("tui_runtime_run_action_failed", label = label.as_str()),
+                )
             };
-            eprintln!("{icon} action {label}: {word}");
+            eprintln!("{icon} {line}");
             // Same as the TUI: services paused for the action come back afterwards.
             for name in resume {
                 manager.restart_service(&name).await;

@@ -8,8 +8,19 @@
 	import { Alert, Button, SegmentedControl, Skeleton, Spinner, Tooltip } from "@codeatlasdev/ui";
 	import { Info, RefreshCw, TriangleAlert, WifiOff } from "@lucide/svelte";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
-	import { cardState, confirmCopy, DEFAULT_CHANNEL, type Channel } from "#lib/updates.ts";
+	import {
+		cardState,
+		channelCopy,
+		channelName,
+		confirmCopy,
+		DEFAULT_CHANNEL,
+		stageNote,
+		type Channel,
+	} from "#lib/updates.ts";
 	import ReleaseTrain from "./ReleaseTrain.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
+	import type { Snippet } from "svelte";
 
 	let cards = $derived(
 		cardState(u.channels, u.info?.app.version, u.channelState?.channel ?? DEFAULT_CHANNEL),
@@ -24,7 +35,8 @@
 	/** The segment shown as selected: the unconfirmed pick, else the channel the app follows. */
 	let shown = $derived(pending ?? followed);
 	let shownCard = $derived(cards.find((c) => c.view.channel === shown));
-	let stageNote = $derived(u.channelState?.stage_note ?? "");
+	let stage = $derived(u.channelState ? stageNote(u.channelState) : "");
+	let pendingLabel = $derived(pendingCard ? channelCopy(pendingCard.view, "label") : "");
 
 	$effect(() => {
 		if (!u.channels.length && !u.channelsLoading && !u.channelsError) void u.loadChannels();
@@ -68,38 +80,39 @@
 
 <section class="chan" aria-labelledby="chan-title" data-setting="update-channel">
 	<div class="head">
-		<h3 id="chan-title">Update channel</h3>
-		<Tooltip
-			content="Alpha builds are for trying what is coming and can break. Beta is closer to ready. Stable only gets releases that met the bar."
-			side="top"
-		>
-			<Info size={13} aria-label="About the channels" />
+		<h3 id="chan-title">{m.settings_registry_general_update_channel_label()}</h3>
+		<Tooltip content={m.settings_updates_channel_tooltip()} side="top">
+			<Info size={13} aria-label={m.settings_updates_channel_about_aria()} />
 		</Tooltip>
-		{#if u.channelsLoading}<span class="busy"><Spinner size={11} /> Checking…</span>{/if}
+		{#if u.channelsLoading}<span class="busy"
+				><Spinner size={11} /> {m.crew_settings_browsers_row_checking()}</span
+			>{/if}
 	</div>
 
-	{#if stageNote}<p class="stage">{stageNote}</p>{/if}
+	{#if stage}<p class="stage">{stage}</p>{/if}
 
 	{#if u.channelState?.env_override}
 		<p class="note" role="status">
-			The channel is forced to <b>{u.channelState.channel}</b> by <code>ATLAS_UPDATE_CHANNEL</code> in this environment.
-			Unset it to choose here.
+			<Rich
+				parts={m.settings_updates_channel_env_forced.parts({ channel: channelName(u.channelState.channel) })}
+				tags={{ b: bold, code: mono }}
+			/>
 		</p>
 	{/if}
 
 	{#if u.channelsError}
 		<div class="offline" role="status">
 			<WifiOff size={13} />
-			<span>Could not read what each channel offers right now. You can still pick a channel.</span>
+			<span>{m.settings_updates_channel_offline()}</span>
 			<Button variant="ghost" size="sm" disabled={u.channelsLoading} onclick={() => u.loadChannels()}>
 				{#snippet leading()}<RefreshCw size={12} />{/snippet}
-				Retry
+				{m.common_action_retry()}
 			</Button>
 		</div>
 	{/if}
 
 	{#if cards.length === 0}
-		<div class="skeleton" aria-busy="true" aria-label="Loading update channels">
+		<div class="skeleton" aria-busy="true" aria-label={m.settings_updates_channel_loading_aria()}>
 			<Skeleton variant="rounded" height={32} />
 			<Skeleton variant="rounded" height={44} />
 		</div>
@@ -110,19 +123,20 @@
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="seg" aria-disabled={locked} onkeydown={onkey}>
 					<SegmentedControl
-						aria-label="Update channel"
+						aria-label={m.settings_registry_general_update_channel_label()}
 						size="sm"
 						disabled={locked}
 						value={shown}
-						items={cards.map((c) => ({ value: c.view.channel, label: c.view.label }))}
+						items={cards.map((c) => ({ value: c.view.channel, label: channelCopy(c.view, "label") }))}
 						onchange={(v) => pick(v as Channel)}
 					/>
 				</div>
 				{#if shownCard}
 					<p class="promise" id="chan-desc">
-						<span class="tag tone-{shownCard.tone}">{shownCard.view.risk_label}</span>
-						{#if shownCard.installed}<span class="tag plain">Installed</span>{/if}
-						{shownCard.view.promise}
+						<span class="tag tone-{shownCard.tone}">{channelCopy(shownCard.view, "risk_label")}</span>
+						{#if shownCard.installed}<span class="tag plain">{m.settings_updates_channel_installed()}</span
+							>{/if}
+						{channelCopy(shownCard.view, "promise")}
 					</p>
 					<p
 						class="offer"
@@ -131,9 +145,11 @@
 					>
 						{#if u.channelsLoading && !shownCard.view.offered}<Spinner size={10} />{/if}
 						{shownCard.offer}
-						<span class="cad">· {shownCard.view.cadence}</span>
+						<span class="cad">· {channelCopy(shownCard.view, "cadence")}</span>
 					</p>
-					{#if shownCard.view.alpha_era_note}<p class="era">{shownCard.view.alpha_era_note}</p>{/if}
+					{#if shownCard.view.alpha_era_note}<p class="era">
+							{channelCopy(shownCard.view, "alpha_era_note")}
+						</p>{/if}
 				{/if}
 			</div>
 			<div class="art"><ReleaseTrain {followed} {pending} /></div>
@@ -142,16 +158,23 @@
 
 	{#if pendingCard && confirm}
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-		<div class="confirm" role="group" aria-label="Switch to {pendingCard.view.label}" onkeydown={onkey}>
+		<div
+			class="confirm"
+			role="group"
+			aria-label={m.settings_updates_channel_switch_to_aria({ label: pendingLabel })}
+			onkeydown={onkey}
+		>
 			<p class="ctext">{confirm.text}</p>
 			{#if confirm.downgrade}
-				<Alert severity="warning" title="{pendingCard.view.label} offers an older build">
-					{pendingCard.view.label} has {confirm.downgrade.version}, which is older than what you run.
-					Switching alone keeps your build and waits for something newer. {confirm.downgrade.warning}
+				<Alert severity="warning" title={m.settings_updates_channel_older_title({ label: pendingLabel })}>
+					{m.settings_updates_channel_older_body({ label: pendingLabel, version: confirm.downgrade.version })}
+					{confirm.downgrade.warning}
 				</Alert>
 			{/if}
 			<div class="actions">
-				<Button variant="ghost" size="sm" disabled={saving} onclick={() => (pending = null)}>Cancel</Button>
+				<Button variant="ghost" size="sm" disabled={saving} onclick={() => (pending = null)}
+					>{m.common_action_cancel()}</Button
+				>
 				{#if confirm.downgrade}
 					<Button variant="glass" size="sm" disabled={saving || !!u.running} onclick={downgrade}>
 						{#snippet leading()}<TriangleAlert size={13} />{/snippet}
@@ -160,12 +183,15 @@
 				{/if}
 				<Button size="sm" disabled={saving} onclick={apply}>
 					{#snippet leading()}{#if saving}<Spinner size={12} />{/if}{/snippet}
-					Follow {pendingCard.view.label}
+					{m.settings_updates_channel_follow({ label: pendingLabel })}
 				</Button>
 			</div>
 		</div>
 	{/if}
 </section>
+
+{#snippet bold(content: Snippet)}<b>{@render content()}</b>{/snippet}
+{#snippet mono(content: Snippet)}<code>{@render content()}</code>{/snippet}
 
 <style>
 	.chan {

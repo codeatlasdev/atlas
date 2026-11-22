@@ -3,9 +3,12 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod agent;
+mod app_exit;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod agent_mode;
+// `ssh` runs this very executable as its SSH_ASKPASS program (see the module doc): `main` answers before anything else.
+mod askpass;
 mod boot;
 mod browser;
 // Built only on the macOS WebKit hook (`browser_fail_mac`); kept everywhere so its test runs.
@@ -25,6 +28,7 @@ mod browser_keys_win;
 mod capture;
 mod cmds;
 mod commit_msg;
+mod crash_card;
 mod ctl;
 #[cfg(debug_assertions)]
 mod debug;
@@ -38,6 +42,7 @@ mod dock;
 mod dock_mac;
 mod git;
 mod git_branch;
+mod github_app;
 mod github_auth;
 mod host;
 mod hotkeys;
@@ -47,8 +52,12 @@ mod linux_gfx;
 mod live;
 mod live_server;
 mod menu;
+mod menu_model;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 mod crew;
+mod crew_ssh;
+mod loose_fs;
+mod native_ui;
 mod natives;
 mod open_path;
 mod pty_batch;
@@ -62,6 +71,7 @@ mod stderr_log;
 #[cfg(target_os = "macos")]
 mod swipe_clock;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
+mod speech;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod swipe_engine;
 #[cfg(target_os = "macos")]
@@ -78,6 +88,7 @@ mod term;
 mod term;
 mod tray;
 mod updates;
+mod voice;
 // The ready watch runs everywhere; the reload/give-up decision only on Linux so far (#350).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod webview_guard;
@@ -131,8 +142,9 @@ fn show_main(app: &AppHandle) {
             let _ = w.show();
         }
         Err(e) => {
+            // i18n-ignore: log
             eprintln!("atlas-agent: REFUSED to show the window: {e}");
-            app.exit(3);
+            app_exit::exit(app, 3);
         }
     }
     #[cfg(target_os = "macos")]
@@ -155,6 +167,8 @@ macro_rules! handlers {
             cmds::hygiene_fix,
             cmds::projects_add,
             cmds::system_ui_sounds,
+            cmds::locale_get,
+            cmds::locale_set,
             cmds::live_resync,
             cmds::projects_remove,
             cmds::projects_pin,
@@ -167,7 +181,12 @@ macro_rules! handlers {
             cmds::project_init,
             cmds::project_save_config,
             open_path::open_pending,
+            loose_fs::loose_stat,
+            loose_fs::loose_read,
+            loose_fs::loose_write,
             cmds::project_probe,
+            cmds::project_promote,
+            cmds::path_locate,
             cmds::project_init_preview,
             cmds::stack_start,
             cmds::stack_stop,
@@ -185,10 +204,14 @@ macro_rules! handlers {
             boot::theme_cache_write,
             boot::themes_user_read,
             diag::diag_frontend_error,
+            crash_card::crash_card_pending,
+            crash_card::crash_card_dismiss,
             cmds::open_in_editor,
             cmds::open_url,
             cmds::reveal,
             cmds::reveal_path,
+            native_ui::pick_path,
+            native_ui::save_path,
             cmds::theme_unpack,
             cmds::theme_unpack_cleanup,
             cmds::theme_read_packed,
@@ -216,6 +239,7 @@ macro_rules! handlers {
             host::host_restart_force,
             host::host_diagnostics,
             workspace::workspace_load,
+            workspace::workspace_set_aside,
             workspace::workspace_save,
             worktree::worktree_create,
             worktree::worktree_remove,
@@ -249,15 +273,21 @@ macro_rules! handlers {
             crew::crew_server_install,
             crew::crew_browsers_status,
             crew::crew_browsers_install,
-            crew::ssh_key_find,
-            crew::ssh_keygen,
-            crew::ssh_authorize_key,
+            crew_ssh::ssh_key_resolve,
+            crew::ssh_hosts_list,
+            crew_ssh::ssh_keygen,
+            crew_ssh::ssh_connect_check,
+            crew_ssh::ssh_authorize_key,
             crew::crew_agent_check,
             crew::crew_agent_install,
             crew::crew_signin_argv,
             crew::provider_probe,
+            github_app::github_app_listen_start,
+            github_app::github_app_listen_wait,
+            github_app::github_app_listen_cancel,
             github_auth::project_git_info,
             menu::menu_sync,
+            menu::menu_dump,
             zoom::zoom_set,
             lifecycle::app_quit,
             live_server::live_open,
@@ -290,6 +320,8 @@ macro_rules! handlers {
             term::term_stats_reset,
             swipe_mac::swipe_zones,
             swipe_mac::swipe_zones_now,
+            swipe_mac::swipe_scrollers_now,
+            swipe_mac::swipe_abandon,
             swipe_mac::swipe_native,
             swipe_mac::swipe_go,
             term::term_key,
@@ -389,6 +421,15 @@ macro_rules! handlers {
             shots::record::shots_gif_export,
             shots::record::shots_gif_cancel,
             shots::record::shots_record_capabilities,
+            voice::voice_access,
+            voice::voice_open_settings,
+            voice::voice_start,
+            voice::voice_stop,
+            voice::voice_cancel,
+            voice::voice_read,
+            speech::speech_available,
+            speech::speech_speak,
+            speech::speech_stop,
             shots::record::shots_record_save,
             shots::record::shots_record_discard,
             shots::editor::shots_editor_load,
@@ -557,6 +598,15 @@ fn wait_for_predecessor() {
 }
 
 fn main() {
+    // Started by `ssh` to ask for the account password of "Add a crew server" (#517): fetch it, print it, exit.
+    // Before the window, the logs and the predecessor wait: it must be instant and must touch nothing.
+    if let Some(code) = askpass::run_if_helper() {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "the ssh askpass helper: no window, no display, nothing to destroy"
+        )]
+        std::process::exit(code);
+    }
     #[cfg(windows)]
     wait_for_predecessor();
     // First, so GTK/WebKit messages printed while starting (and by every web process) are kept.
@@ -567,7 +617,12 @@ fn main() {
     if agent_mode::Mode::current() == agent_mode::Mode::Agent
         && let Err(e) = agent_mode::verify_display()
     {
+        // i18n-ignore: log
         eprintln!("atlas-agent: REFUSED to show the window: {e}");
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "Linux agent instance refused before any display work: nothing to destroy"
+        )]
         std::process::exit(3);
     }
     #[cfg(target_os = "linux")]
@@ -599,7 +654,6 @@ fn main() {
     };
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(
@@ -632,7 +686,7 @@ fn main() {
             webview_guard::install(app);
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
-            app.manage(tray::CaptureMenus::default());
+            app.manage(crash_card::CrashCard::new());
             // Only macOS has a native menu bar (at the top of the screen). Windows and Linux have no native frame
             // (tauri.{windows,linux}.conf.json): the page draws one title row, owns every key there (lib/menu.ts
             // gives no accelerators off macOS) and the palette lists every command (#269).
@@ -650,6 +704,8 @@ fn main() {
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
             app.manage(agent::send::Sends::default());
             app.manage(open_path::Pending::default());
+            app.manage(voice::Voice::new(&handle));
+            app.manage(speech::Speech::new(&handle));
             // `atlas-desktop <path>` on a cold start: the page opens it once its stores are loaded.
             open_path::open(
                 &handle,
@@ -711,6 +767,10 @@ fn main() {
                     webview_win::sync(win.app_handle());
                 }
             }
+            // Dictation gives the microphone back the moment the window is no longer the one in front.
+            WindowEvent::Focused(false) if win.label() == "main" => {
+                voice::release_in_background(win.app_handle());
+            }
             // Minimize and restore arrive as a resize (0x0 while minimized).
             #[cfg(windows)]
             WindowEvent::Resized(_) if win.label() == "main" => webview_win::sync(win.app_handle()),
@@ -744,6 +804,10 @@ fn main() {
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(handlers!());
     boot::mark("builder:configured");
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the macro's own `process::exit` on an unreadable bundled config, before any window or display exists"
+    )]
     let ctx = tauri::generate_context!();
     boot::mark("context:generated");
     id_migrate::run(&ctx.config().identifier);
@@ -759,6 +823,12 @@ fn main() {
             if let tauri::RunEvent::Reopen { .. } = ev {
                 show_main(app);
             }
+            // Finder "Open With" and a file dropped on the Dock icon (`bundle.fileAssociations` in tauri.conf.json): the
+            // page opens it the way `atlas <path>` does (a loose text file goes to the light editor).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &ev {
+                open_path::open(app, open_path::paths_from_urls(urls));
+            }
             // An exit the user did not ask for (the last window going away) is held while the tray can reopen the
             // app; an explicit `exit(code)` (tray Quit, ⌘Q, the updater's restart) always goes through.
             if let tauri::RunEvent::ExitRequested { code, api, .. } = &ev
@@ -769,6 +839,10 @@ fn main() {
             // Quitting with "restart when idle" armed and no terminal left: end the old host now.
             if matches!(ev, tauri::RunEvent::Exit) {
                 host::on_exit(app);
+                // An agent instance's virtual display is destroyed here, before the process ends by whichever
+                // route got us here (`app.exit` ends in `process::exit`, which never drops a static).
+                #[cfg(target_os = "macos")]
+                agent_display::destroy();
             }
         });
 }

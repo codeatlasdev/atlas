@@ -3,11 +3,11 @@
  * the first stack and watches it come up. No rules live here; they are in flow.ts and the sound policy.
  */
 import { toast } from "@codeatlasdev/ui";
-import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { api, errText } from "#lib/api.ts";
 import { addPaths } from "#lib/components/sidebar/projects.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 import { INITIAL, next, onboardingChoices, progress, summarize, type Event, type Phase } from "./flow.ts";
 
 class Welcome {
@@ -66,13 +66,13 @@ class Welcome {
 
 	/** Add a single folder the user points at (secondary action). No atlas.yaml needed: the stack is detected. */
 	async addFolder() {
-		const dir = await pickFolder({ directory: true, title: "Add a project folder" });
+		const dir = await api.pickPath({ directory: true, title: m.onboarding_welcome_add_folder_title() });
 		if (typeof dir === "string") await this.#add([dir]);
 	}
 
 	/** The empty-scan primary action: point at a folder; its stack is detected in memory and nothing is written. */
 	async initFolder() {
-		const dir = await pickFolder({ directory: true, title: "Choose a project folder" });
+		const dir = await api.pickPath({ directory: true, title: m.onboarding_phases_choose_a_project_folder() });
 		if (typeof dir === "string") await this.#add([dir]);
 	}
 

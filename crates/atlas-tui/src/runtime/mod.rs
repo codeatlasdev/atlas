@@ -13,6 +13,9 @@ pub mod loglinks;
 pub mod logs;
 pub mod manager;
 pub mod memory;
+pub mod note;
+#[cfg(test)]
+mod note_tests;
 pub mod opener;
 pub mod port_conflict;
 pub mod probe;

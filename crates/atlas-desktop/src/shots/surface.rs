@@ -7,6 +7,7 @@
 //! All of them are listed in [`Surface`] with their label, size and behaviour (pure data, tested), so "which
 //! windows can capture create" has one answer and the capture filter can exclude them all by label.
 
+use atlas_i18n::t_in;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use super::geom::Rect;
@@ -99,6 +100,34 @@ pub fn is_pin_label(label: &str) -> bool {
     label
         .strip_prefix(PIN_PREFIX)
         .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// True for the label of any window capture builds: a surface, an overlay of a display, a pin.
+pub fn is_surface_label(label: &str) -> bool {
+    let numbered = |prefix: &str| {
+        label
+            .strip_prefix(prefix)
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    };
+    [Surface::Quick, Surface::Hud, Surface::Editor, Surface::Keys]
+        .into_iter()
+        .any(|s| s.label(0) == label)
+        || numbered(OVERLAY_PREFIX)
+        || numbered(PIN_PREFIX)
+}
+
+/// The title of a capture window (window switchers and screen readers read it) in `tag`.
+fn title(tag: &str) -> String {
+    t_in!(tag, "native_tray_capture_window_title")
+}
+
+/// The display language changed: the windows capture built before it (they are reused, never rebuilt) follow it.
+pub fn retitle(app: &AppHandle, tag: &str) {
+    for (label, win) in app.webview_windows() {
+        if is_surface_label(&label) {
+            let _ = win.set_title(&title(tag));
+        }
+    }
 }
 
 /// One card of the quick stack, logical points: the page lays cards out [`QUICK_CARD`]-wide with [`QUICK_GAP`]
@@ -214,7 +243,7 @@ pub fn build(
     let win = builder
         .theme(theme)
         .initialization_script(script)
-        .title("Atlas Capture")
+        .title(title(atlas_i18n::lang()))
         .inner_size(w, h)
         .decorations(false)
         .transparent(true)
@@ -358,6 +387,35 @@ pub fn show(app: &AppHandle, win: &WebviewWindow) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression (the frozen-message class): a capture window is built once and reused, so the title it got from
+    /// `t!` at the first capture stayed in that language after Settings → Language. `retitle` re-titles every window
+    /// of capture, and only those.
+    #[test]
+    fn a_language_switch_retitles_every_capture_window_and_nothing_else() {
+        for l in [
+            Surface::Overlay.label(3),
+            Surface::Quick.label(0),
+            Surface::Hud.label(0),
+            Surface::Editor.label(0),
+            Surface::Keys.label(0),
+            Surface::Pin.label(7),
+        ] {
+            assert!(is_surface_label(&l), "{l}");
+        }
+        for l in [
+            crate::dock::LABEL,
+            "main",
+            "tray",
+            "shots-pin-",
+            "shots-pinned-1",
+            "shots-overlay",
+        ] {
+            assert!(!is_surface_label(l), "{l}");
+        }
+        assert_eq!(title("en"), "Atlas Capture");
+        assert_eq!(title("pt-BR"), "Captura do Atlas");
+    }
 
     #[test]
     fn labels_are_unique_and_the_overlay_carries_its_display() {

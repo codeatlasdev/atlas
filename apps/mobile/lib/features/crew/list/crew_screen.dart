@@ -20,8 +20,10 @@ import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/ui/protocol_banner.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
 import 'package:atlas_mobile/features/crew/invite_sheet.dart';
 import 'package:atlas_mobile/features/crew/list/crew_skeleton.dart';
 import 'package:atlas_mobile/features/crew/list/crew_deck.dart';
@@ -31,6 +33,7 @@ import 'package:atlas_mobile/features/crew/list/pause_card.dart';
 import 'package:atlas_mobile/features/crew/new_crewmate_sheet.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_audit_screen.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_settings_screen.dart';
+import 'package:atlas_mobile/features/crew/permissions/mode_text.dart';
 
 /// A crew server with crewmates: what its pause control needs.
 typedef _Pausable = ({MacDevice device, String name, bool paused});
@@ -379,18 +382,43 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                             for (final e in needsYou)
                               NeedsYouCard(
                                 entry: e,
-                                onAnswer: (allow) =>
+                                voiceAnswer:
+                                    e.crewmate.pendingApproval == null ||
+                                        !(ref
+                                                .watch(
+                                                  crewVoiceProvider(e.device),
+                                                )
+                                                .value
+                                                ?.enabled ??
+                                            false)
+                                    ? null
+                                    : (transcript, lang) =>
+                                          answerApprovalByVoice(
+                                            ref,
+                                            e.device,
+                                            e.crewmate.pendingApproval!,
+                                            transcript,
+                                            lang,
+                                          ),
+                                onAnswer: (d) =>
                                     answerApproval(
                                       ref,
                                       e.device,
                                       e.crewmate.pendingApproval!,
-                                      allow,
+                                      d.allow,
+                                      scope: d.scope,
+                                      comment: d.comment,
                                     ).catchError((Object err) {
                                       if (context.mounted) {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                               SnackBar(
-                                                content: Text(errorText(err)),
+                                                content: Text(
+                                                  approvalFailureText(
+                                                    context.l10n,
+                                                    err,
+                                                  ),
+                                                ),
                                               ),
                                             );
                                       }

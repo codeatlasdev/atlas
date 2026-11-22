@@ -1,0 +1,121 @@
+{
+  "audit_approval_decision": {
+    "comment": "only this once",
+    "crewmate_id": "crewmate-fixture",
+    "decision": "allow",
+    "device": "desktop",
+    "kind": "approval_decision",
+    "rail": "protected_path",
+    "req": "req-fixture",
+    "seq": 1,
+    "source": "person",
+    "task_id": "task-fixture",
+    "tool": "Write",
+    "tool_input": {
+      "file_path": ".env"
+    },
+    "ts": 1700000000,
+    "wait_ms": 1200
+  },
+  "audit_approval_mode_changed": {
+    "crewmate_id": "crewmate-fixture",
+    "device": "desktop",
+    "from": "edits",
+    "kind": "approval_mode_changed",
+    "seq": 1,
+    "to": "bypass",
+    "ts": 1700000000
+  },
+  "crewmate_bypass": {
+    "agent": "claude",
+    "approval": "auto",
+    "approval_supported": true,
+    "engine": {
+      "kind": "claude"
+    },
+    "id": "crewmate-fixture",
+    "mode": "bypass",
+    "name": "Pat",
+    "queued": 0,
+    "role": "r",
+    "routines": [],
+    "spoken_replies": false,
+    "state": "idle",
+    "triggers": []
+  },
+  "crewmate_edits": {
+    "agent": "claude",
+    "approval": "ask",
+    "approval_supported": true,
+    "engine": {
+      "kind": "claude"
+    },
+    "id": "crewmate-fixture",
+    "mode": "edits",
+    "name": "Pat",
+    "queued": 0,
+    "role": "r",
+    "routines": [],
+    "spoken_replies": false,
+    "state": "idle",
+    "triggers": []
+  },
+  "crewmate_unsupported": {
+    "agent": "codex",
+    "approval": "auto",
+    "approval_supported": false,
+    "engine": {
+      "kind": "codex"
+    },
+    "id": "crewmate-fixture",
+    "mode": "bypass",
+    "name": "Cx",
+    "queued": 0,
+    "role": "r",
+    "routines": [],
+    "spoken_replies": false,
+    "state": "idle",
+    "triggers": []
+  },
+  "pending_approval": {
+    "agent": "claude",
+    "ev": "agent_approval",
+    "pane_key": "crew:crewmate-fixture:task-fixture",
+    "rail": "protected_path",
+    "req": "req-fixture",
+    "tool_input": {
+      "file_path": ".env"
+    },
+    "tool_name": "Write"
+  },
+  "refusal": {
+    "args": {},
+    "code": "crew.approval.bypass_disabled",
+    "message": "bypass is not allowed on this crew"
+  },
+  "set_approval": {
+    "agent": "claude",
+    "approval": "ask",
+    "approval_supported": true,
+    "engine": {
+      "kind": "claude"
+    },
+    "id": "crewmate-fixture",
+    "mode": "edits",
+    "name": "Pat",
+    "queued": 0,
+    "role": "r",
+    "routines": [],
+    "spoken_replies": false,
+    "state": "idle",
+    "triggers": []
+  },
+  "settings": {
+    "allow_bypass": true,
+    "default_approval": "ask"
+  },
+  "settings_no_bypass": {
+    "allow_bypass": false,
+    "default_approval": "ask"
+  }
+}

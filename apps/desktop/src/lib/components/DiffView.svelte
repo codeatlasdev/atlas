@@ -11,9 +11,14 @@
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { savePref } from "#lib/settings/savePref.ts";
 	import PathText from "./PathText.svelte";
+	import NotRepoState from "./NotRepoState.svelte";
+	import { classifyGitError } from "#lib/gitErrors.ts";
+	import { gitToast } from "#lib/gitToast.ts";
 	import { highlightFile } from "./diff/highlight.ts";
 	import { diffRows, fileRowIndex, type DiffRow } from "./diff/diffRows.ts";
 	import VirtualList from "./VirtualList.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import { statusText } from "#lib/gitText.ts";
 
 	let {
 		worktreeId,
@@ -34,6 +39,8 @@
 	let baseRef = $state("");
 	let curMode = $state<"working" | "staged" | "base">("base");
 	let loading = $state(true);
+	/** The folder is not a git repository: there is no diff, only `git init` (#505). */
+	let notRepo = $state(false);
 	let selected = $state<string | null>(null);
 	let wrap = $state(false);
 	let tokens = $state<Record<string, string[]>>({});
@@ -65,12 +72,15 @@
 		loading = true;
 		try {
 			const r = await git.diff(worktreeId, curMode, baseRef || undefined);
+			notRepo = false;
 			files = r.files;
 			base = r.base;
 			tokens = {};
 			for (const f of r.files) void highlightFile(f, tokens);
 		} catch (e) {
-			toast.error(errText(e));
+			notRepo = classifyGitError(errText(e)).kind === "not-repo";
+			if (notRepo) files = [];
+			else gitToast(errText(e));
 		} finally {
 			loading = false;
 		}
@@ -100,7 +110,7 @@
 			r = await git.run(worktreeId, unstage ? ["restore", "--staged", "--", f.path] : ["add", "--", f.path]);
 		else
 			r = await git.run(worktreeId, ["apply", "--cached", ...(unstage ? ["-R"] : []), "-"], hunkPatch(f, h));
-		if (r.code !== 0) toast.error(r.stderr || "git failed");
+		if (r.code !== 0) gitToast(r.stderr || r.stdout);
 		await load();
 	}
 
@@ -132,7 +142,7 @@
 		ws.doc.diffComments[worktreeId] = comments.map((c) =>
 			notes.some((n) => n.id === c.id) ? { ...c, sent: true } : c,
 		);
-		toast.success(`Sent ${notes.length} note${notes.length > 1 ? "s" : ""}`);
+		toast.success(m.git_diff_view_sent_notes({ count: notes.length }));
 	}
 
 	function jump(delta: 1 | -1) {
@@ -157,134 +167,148 @@
 <svelte:window {onkeydown} />
 
 <div class="diff" class:wrap>
-	{#if !only}
-		<div class="toolbar">
-			<select bind:value={curMode}>
-				<option value="base">vs base{base ? ` (${base})` : ""}</option>
-				<option value="working">Unstaged</option>
-				<option value="staged">Staged</option>
-			</select>
-			{#if curMode === "base"}
-				<select bind:value={baseRef}>
-					<option value="">{"branch base"}</option>
-					<option value="HEAD">HEAD</option>
-					{#each commits as c (c)}<option value={c.split(" ")[0]}>{c}</option>{/each}
+	{#if notRepo}
+		<NotRepoState {worktreeId} onInit={load} />
+	{:else}
+		{#if !only}
+			<div class="toolbar">
+				<select bind:value={curMode}>
+					<option value="base"
+						>{base ? m.git_diff_view_vs_base_ref({ base }) : m.git_diff_view_vs_base()}</option
+					>
+					<option value="working">{m.git_diff_view_unstaged()}</option>
+					<option value="staged">{m.git_diff_view_staged()}</option>
 				</select>
-			{/if}
-			<select
-				aria-label="Diff layout"
-				value={view}
-				onchange={(e) => savePref("diff", { view: e.currentTarget.value === "split" ? "split" : "unified" })}
-			>
-				<option value="unified">Unified</option>
-				<option value="split">Split</option>
-			</select>
-			<label><input type="checkbox" bind:checked={wrap} /> Wrap</label>
-			<button title="Refresh" onclick={load}><RefreshCw size={12} /></button>
-			<span class="spacer"></span>
-			{#if open.length}
-				<DropdownMenu align="end">
-					{#snippet trigger()}
-						<span class="send"
-							><Send size={12} /> Send {open.length} note{open.length > 1 ? "s" : ""} to agent</span
+				{#if curMode === "base"}
+					<select bind:value={baseRef}>
+						<option value="">{m.git_diff_view_branch_base()}</option>
+						<option value="HEAD">{m.git_diff_view_head()}</option>
+						{#each commits as c (c)}<option value={c.split(" ")[0]}>{c}</option>{/each}
+					</select>
+				{/if}
+				<select
+					aria-label={m.git_diff_view_diff_layout()}
+					value={view}
+					onchange={(e) =>
+						savePref("diff", { view: e.currentTarget.value === "split" ? "split" : "unified" })}
+				>
+					<option value="unified">{m.git_diff_view_unified()}</option>
+					<option value="split">{m.git_diff_view_split()}</option>
+				</select>
+				<label><input type="checkbox" bind:checked={wrap} /> {m.git_diff_view_wrap()}</label>
+				<button title={m.git_diff_view_refresh()} onclick={load}><RefreshCw size={12} /></button>
+				<span class="spacer"></span>
+				{#if open.length}
+					<DropdownMenu align="end">
+						{#snippet trigger()}
+							<span class="send"><Send size={12} /> {m.git_diff_view_send_notes({ count: open.length })}</span
+							>
+						{/snippet}
+						{#each agents.tabsIn(worktreeId) as t (t.id)}
+							<DropdownMenuItem onclick={() => sendTo(t.id)}
+								>{(t.pty && ws.titles[t.pty]) || t.label}</DropdownMenuItem
+							>
+						{/each}
+						<DropdownMenuItem onclick={() => sendTo(null)}
+							>{m.git_diff_view_new_defaultagent_session({
+								defaultAgent: agents.defaultAgent,
+							})}</DropdownMenuItem
 						>
-					{/snippet}
-					{#each agents.tabsIn(worktreeId) as t (t.id)}
-						<DropdownMenuItem onclick={() => sendTo(t.id)}
-							>{(t.pty && ws.titles[t.pty]) || t.label}</DropdownMenuItem
-						>
+					</DropdownMenu>
+				{/if}
+			</div>
+		{/if}
+		<div class="split">
+			{#if !only}
+				<nav class="tree">
+					{#each files as f (f.path)}
+						<button class="file {f.status}" class:on={selected === f.path} onclick={() => reveal(f.path)}>
+							<span class="st">{f.status[0].toUpperCase()}</span>
+							<PathText path={f.path} />
+							{#if comments.some((c) => c.path === f.path && !c.resolved)}<span class="dot"></span>{/if}
+						</button>
+					{:else}
+						<p class="empty">{loading ? m.common_state_loading() : m.git_diff_view_no_changes()}</p>
 					{/each}
-					<DropdownMenuItem onclick={() => sendTo(null)}>New {agents.defaultAgent} session</DropdownMenuItem>
-				</DropdownMenu>
+				</nav>
+			{/if}
+			{#if rows.length}
+				<VirtualList
+					bind:this={list}
+					bind:firstVisible
+					class="files"
+					items={rows}
+					key={(r) => r.key}
+					estimate={20}
+					overscan={4}
+				>
+					{#snippet header()}
+						{#if current && rows[firstVisible]?.kind !== "file"}
+							<div class="pin">
+								<span class="mono">{current.path}</span>
+							</div>
+						{/if}
+					{/snippet}
+					{#snippet item(r)}
+						{#if r.kind === "file"}
+							<header>
+								<span class="mono">{r.f.old_path ? `${r.f.old_path} → ` : ""}{r.f.path}</span>
+								<span class="dim">{statusText(r.f.status)}</span>
+								<button class="act" onclick={() => stage(r.f)}
+									>{curMode === "staged"
+										? m.git_diff_view_unstage_file()
+										: m.git_diff_view_stage_file()}</button
+								>
+							</header>
+						{:else if r.kind === "binary"}
+							{#if IMAGE.test(r.f.path)}
+								<p class="dim pad">{m.git_diff_view_image_changed_open_the_file()}</p>
+							{:else}
+								<p class="dim pad">{m.git_diff_view_binary_file()}</p>
+							{/if}
+						{:else if r.kind === "hunk"}
+							<div class="hunk-head">
+								<span class="mono">{r.hunk.header}</span>
+								{#if r.f.status !== "untracked"}
+									<button
+										class="act"
+										onclick={() => stage(r.f, r.hunk)}
+										title={curMode === "staged"
+											? m.git_diff_view_unstage_hunk()
+											: m.git_diff_view_stage_hunk()}
+									>
+										{#if curMode === "staged"}<Minus size={11} />{:else}<Plus size={11} />{/if}
+									</button>
+								{/if}
+							</div>
+						{:else if view === "split"}
+							<SplitTable
+								path={r.f.path}
+								hunk={r.hunk}
+								tokens={r.tokens}
+								{comments}
+								bind:draft
+								onsave={addComment}
+								onresolve={setResolved}
+							/>
+						{:else}
+							<DiffTable
+								path={r.f.path}
+								hunk={r.hunk}
+								tokens={r.tokens}
+								{comments}
+								bind:draft
+								onsave={addComment}
+								onresolve={setResolved}
+							/>
+						{/if}
+					{/snippet}
+				</VirtualList>
+			{:else if only}
+				<p class="empty">{loading ? m.common_state_loading() : m.git_diff_view_no_changes_in_file()}</p>
 			{/if}
 		</div>
 	{/if}
-	<div class="split">
-		{#if !only}
-			<nav class="tree">
-				{#each files as f (f.path)}
-					<button class="file {f.status}" class:on={selected === f.path} onclick={() => reveal(f.path)}>
-						<span class="st">{f.status[0].toUpperCase()}</span>
-						<PathText path={f.path} />
-						{#if comments.some((c) => c.path === f.path && !c.resolved)}<span class="dot"></span>{/if}
-					</button>
-				{:else}
-					<p class="empty">{loading ? "Loading…" : "No changes"}</p>
-				{/each}
-			</nav>
-		{/if}
-		{#if rows.length}
-			<VirtualList
-				bind:this={list}
-				bind:firstVisible
-				class="files"
-				items={rows}
-				key={(r) => r.key}
-				estimate={20}
-				overscan={4}
-			>
-				{#snippet header()}
-					{#if current && rows[firstVisible]?.kind !== "file"}
-						<div class="pin">
-							<span class="mono">{current.path}</span>
-						</div>
-					{/if}
-				{/snippet}
-				{#snippet item(r)}
-					{#if r.kind === "file"}
-						<header>
-							<span class="mono">{r.f.old_path ? `${r.f.old_path} → ` : ""}{r.f.path}</span>
-							<span class="dim">{r.f.status}</span>
-							<button class="act" onclick={() => stage(r.f)}
-								>{curMode === "staged" ? "Unstage file" : "Stage file"}</button
-							>
-						</header>
-					{:else if r.kind === "binary"}
-						{#if IMAGE.test(r.f.path)}
-							<p class="dim pad">Image changed (open the file to view).</p>
-						{:else}
-							<p class="dim pad">Binary file</p>
-						{/if}
-					{:else if r.kind === "hunk"}
-						<div class="hunk-head">
-							<span class="mono">{r.hunk.header}</span>
-							{#if r.f.status !== "untracked"}
-								<button
-									class="act"
-									onclick={() => stage(r.f, r.hunk)}
-									title={curMode === "staged" ? "Unstage hunk" : "Stage hunk"}
-								>
-									{#if curMode === "staged"}<Minus size={11} />{:else}<Plus size={11} />{/if}
-								</button>
-							{/if}
-						</div>
-					{:else if view === "split"}
-						<SplitTable
-							path={r.f.path}
-							hunk={r.hunk}
-							tokens={r.tokens}
-							{comments}
-							bind:draft
-							onsave={addComment}
-							onresolve={setResolved}
-						/>
-					{:else}
-						<DiffTable
-							path={r.f.path}
-							hunk={r.hunk}
-							tokens={r.tokens}
-							{comments}
-							bind:draft
-							onsave={addComment}
-							onresolve={setResolved}
-						/>
-					{/if}
-				{/snippet}
-			</VirtualList>
-		{:else if only}
-			<p class="empty">{loading ? "Loading…" : "No changes in this file"}</p>
-		{/if}
-	</div>
 </div>
 
 <style>
@@ -416,6 +440,8 @@
 		font: inherit;
 		font-size: 11px;
 		padding: 1px 6px;
+		white-space: nowrap;
+		flex-shrink: 0;
 		color: var(--ca-text-secondary);
 	}
 	.hunk-head {
@@ -427,6 +453,8 @@
 	}
 	.mono {
 		font-family: var(--mono);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 	.dim {
 		color: var(--ca-text-secondary);

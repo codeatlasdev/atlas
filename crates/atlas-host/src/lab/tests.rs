@@ -15,6 +15,7 @@ async fn main_daemon(dir: &Path) -> HostClient {
     let d = dir.to_path_buf();
     let opts = ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         ..Default::default()
     };
     tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
@@ -26,6 +27,7 @@ async fn lab_daemon(dir: &Path, main: &Path) -> HostClient {
     let (d, m) = (dir.to_path_buf(), main.to_path_buf());
     let opts = ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         lab: Some(m),
         ..Default::default()
     };
@@ -34,7 +36,7 @@ async fn lab_daemon(dir: &Path, main: &Path) -> HostClient {
 }
 
 async fn connect(dir: &Path) -> HostClient {
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
         }
@@ -43,9 +45,9 @@ async fn connect(dir: &Path) -> HostClient {
     panic!("hostd at {} did not start", dir.display());
 }
 
-/// Poll `f` until it returns `Some`, for up to 10 s.
+/// Poll `f` until it returns `Some` (the hang ceiling is the only bound).
 async fn until<T, F: AsyncFnMut() -> Option<T>>(what: &str, mut f: F) -> T {
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if let Some(v) = f().await {
             return v;
         }
@@ -146,7 +148,10 @@ async fn the_lab_sees_an_agent_hooked_into_main_and_follows_its_changes() {
     assert_eq!(st["last_message"], "done!");
 }
 
-/// A lab started after the agents already exist must still list them (seeded, not only followed).
+/// A lab started after the agents already exist must still list them (seeded, not only followed), from the very first
+/// call: `lab::connect` promises a lab never answers empty. It once bound its socket and accepted clients while the seed
+/// still ran in the background, so a client that connected at once read no agents (flaky under a loaded test run). The
+/// seed is held open here so that race is the rule, not the exception.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_lab_started_later_is_seeded_with_the_existing_agents() {
     let tmp = tempfile::tempdir().unwrap();
@@ -160,8 +165,10 @@ async fn a_lab_started_later_is_seeded_with_the_existing_agents() {
     .await;
     drop(until_hook);
     hook(&main_dir, "old", json!({"event": "agent_start"}));
+    *crate::lab::TEST_SEED_PAUSE.lock() = Some((main_dir.clone(), Duration::from_millis(400)));
     let lab = lab_daemon(&tmp.path().join("lab"), &main_dir).await;
     let v = lab.call("agent_status_all", json!({})).await.unwrap();
+    *crate::lab::TEST_SEED_PAUSE.lock() = None;
     assert_eq!(v["panes"]["old"]["state"], "working", "{v}");
 }
 
@@ -706,7 +713,7 @@ async fn a_phone_attached_through_the_lab_streams_main_s_terminal() {
     early.extend(mid);
 
     let mut seen = String::new();
-    for _ in 0..40 {
+    for _ in 0..240 {
         early.extend(phone.pushes(250).await);
         for ev in early.drain(..) {
             if matches!(ev["ev"].as_str(), Some("pty_replay" | "pty_output")) {
@@ -801,16 +808,15 @@ async fn a_phone_leaving_the_lab_leaves_no_subscriber_on_main() {
 async fn the_lab_mirrors_main_s_approvals_and_answers_them_through_main() {
     let r = Rig::new().await;
     let mut lab_phone = lab_phone(&r).await;
-    // No phone on main: the prompt is not held (nothing waits on the lab phone).
-    let t = std::time::Instant::now();
-    let body = tokio::task::spawn_blocking({
-        let d = r.main_dir();
-        move || decision(&d)
+    // No phone on main: the prompt is not held (nothing waits on the lab phone). A held prompt would announce
+    // itself on main's event stream and wait 55 s: the helper fails on that event, whatever the machine's speed.
+    let mut main_events = r.main.events();
+    let d = r.main_dir();
+    let body = crate::agents::hook_server::answered_without_holding(&mut main_events, move || {
+        decision(&d)
     })
-    .await
-    .unwrap();
+    .await;
     assert_eq!(crate::agents::hook_server::parse_decision(&body), None);
-    assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
 
     // Main's own phone connects: now a prompt is held, and the lab phone sees and answers it.
     let main_info = pair_start(&r.main).await;
@@ -827,12 +833,23 @@ async fn the_lab_mirrors_main_s_approvals_and_answers_them_through_main() {
         let d = r.main_dir();
         move || decision(&d)
     });
-    let req = loop {
-        let p = lab_phone.pushes(500).await;
-        if let Some(e) = p.iter().find(|e| e["ev"] == "agent_approval") {
-            break e["req"].as_str().unwrap().to_string();
+    // Bounded: a prompt main did not hold (answered at once) never reaches the lab phone, and an unbounded wait hung
+    // the run for 190 s with no reason given (2026-11-19, see `a_phone_that_reads_paired_is_already_connected`).
+    let req = tokio::time::timeout(atlas_core::scaling::HANG, async {
+        loop {
+            let p = lab_phone.pushes(500).await;
+            if let Some(e) = p.iter().find(|e| e["ev"] == "agent_approval") {
+                break e["req"].as_str().unwrap().to_string();
+            }
         }
-    };
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!(
+            "the lab phone never saw main's prompt (main answered without holding it: {})",
+            asked.is_finished()
+        )
+    });
     // The mirrored prompt is also listed for a phone that connects after the push.
     let listed = r.lab.call("agent_status_all", json!({})).await.unwrap();
     assert_eq!(listed["pending_approvals"][0]["req"], req, "{listed}");

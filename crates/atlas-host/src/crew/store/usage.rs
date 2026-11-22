@@ -24,7 +24,33 @@ const SUFFIX: &str = ".jsonl.gz";
 pub(super) fn is_rotated_name(name: &str) -> bool {
     name.strip_prefix(PREFIX)
         .and_then(|n| n.strip_suffix(SUFFIX))
-        .is_some_and(|d| d.len() == 10 && chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok())
+        .is_some_and(is_calendar_date)
+}
+
+/// `YYYY-MM-DD`, digits only, and a day the calendar has.
+fn is_calendar_date(d: &str) -> bool {
+    let b = d.as_bytes();
+    let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
+    b.len() == 10
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && digits(0..4)
+        && digits(5..7)
+        && digits(8..10)
+        && jiff::civil::Date::new(
+            d[0..4].parse().unwrap_or(0),
+            d[5..7].parse().unwrap_or(0),
+            d[8..10].parse().unwrap_or(0),
+        )
+        .is_ok()
+}
+
+/// `usage-<YYYY-MM-DD>.jsonl.gz`, the UTC day of `ts` (unix seconds; an out-of-range `ts` is day 0, 1970-01-01).
+pub(super) fn rotated_name(ts: u64) -> String {
+    let at = std::time::UNIX_EPOCH
+        .checked_add(std::time::Duration::from_secs(ts))
+        .unwrap_or(std::time::UNIX_EPOCH);
+    format!("{PREFIX}{}{SUFFIX}", atlas_core::time::utc_date(at))
 }
 
 /// The rotated files of the crewmate dir `dir`, oldest first (the date sorts as text).
@@ -51,6 +77,7 @@ pub(super) fn read_lines(dir: &Path) -> Vec<String> {
         let mut bytes = Vec::new();
         // A damaged gzip keeps what was decoded before the damage.
         if let Err(e) = flate2::read::MultiGzDecoder::new(f).read_to_end(&mut bytes) {
+            // i18n-ignore: log
             eprintln!("atlas crew: {} is damaged: {e}", dir.join(&name).display());
         }
         out.extend(jsonl::lines(io::Cursor::new(bytes)).map(|l| l.text));
@@ -64,10 +91,7 @@ pub(super) fn read_lines(dir: &Path) -> Vec<String> {
 pub(super) fn rotate(dir: &Path, ts: u64, keep: usize) -> io::Result<()> {
     let live = dir.join(LIVE);
     let data = std::fs::read(&live)?;
-    let day = chrono::DateTime::from_timestamp(i64::try_from(ts).unwrap_or(0), 0)
-        .unwrap_or_default()
-        .format("%Y-%m-%d");
-    let target = dir.join(format!("{PREFIX}{day}{SUFFIX}"));
+    let target = dir.join(rotated_name(ts));
 
     let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     gz.write_all(&data)?;
@@ -85,4 +109,62 @@ pub(super) fn rotate(dir: &Path, ts: u64, keep: usize) -> io::Result<()> {
         let _ = std::fs::remove_file(dir.join(old));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Contract (chrono → jiff migration, #540): rotated usage files are named by the UTC day of the newest record,
+    // and a total sums every file that name matches, so the name must never move for the same instant.
+    #[test]
+    fn a_rotated_file_is_named_by_the_utc_day_of_its_newest_record() {
+        let day = |ts| rotated_name(ts);
+        assert_eq!(day(0), "usage-1970-01-01.jsonl.gz");
+        assert_eq!(day(86_399), "usage-1970-01-01.jsonl.gz");
+        assert_eq!(day(86_400), "usage-1970-01-02.jsonl.gz");
+        assert_eq!(day(951_782_400), "usage-2000-02-29.jsonl.gz", "a leap day");
+        assert_eq!(day(1_700_000_000), "usage-2023-11-14.jsonl.gz");
+        assert_eq!(day(1_794_873_599), "usage-2026-11-16.jsonl.gz");
+        assert_eq!(day(1_794_873_600), "usage-2026-11-17.jsonl.gz");
+        assert_eq!(day(253_402_128_000), "usage-9999-12-30.jsonl.gz");
+        // A record time that no calendar holds is day 0, never a panic and never a missing name.
+        assert_eq!(day(u64::MAX), "usage-1970-01-01.jsonl.gz");
+        assert_eq!(day(i64::MAX as u64), "usage-1970-01-01.jsonl.gz");
+    }
+
+    #[test]
+    fn only_a_real_calendar_date_is_a_rotated_name() {
+        for ok in [
+            "usage-1970-01-01.jsonl.gz",
+            "usage-2026-11-17.jsonl.gz",
+            "usage-2028-02-29.jsonl.gz",
+            "usage-2000-02-29.jsonl.gz",
+            "usage-9999-12-31.jsonl.gz",
+        ] {
+            assert!(is_rotated_name(ok), "{ok}");
+        }
+        for bad in [
+            "usage-2026-02-29.jsonl.gz",
+            "usage-1900-02-29.jsonl.gz",
+            "usage-2026-13-01.jsonl.gz",
+            "usage-2026-00-10.jsonl.gz",
+            "usage-2026-11-00.jsonl.gz",
+            "usage-2026-11-31.jsonl.gz",
+            "usage-2026-1-17.jsonl.gz",
+            "usage-2026-11-1.jsonl.gz",
+            "usage-2026-11-17.jsonl",
+            "usage-2026-11-17.jsonl.gz.tmp",
+            "usage-.jsonl.gz",
+            "usage-../../x.jsonl.gz",
+            "usage-2026-11-17 .jsonl.gz",
+            "usage-2026/11/17.jsonl.gz",
+            "usage-2026-11-1a.jsonl.gz",
+            "usage-２０２６-11-17.jsonl.gz",
+            "usage.jsonl",
+            "audit-2026-11-17.jsonl.gz",
+        ] {
+            assert!(!is_rotated_name(bad), "{bad}");
+        }
+    }
 }

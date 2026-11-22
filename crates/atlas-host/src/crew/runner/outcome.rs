@@ -156,6 +156,10 @@ pub(super) fn finish_task(
     task.finished_at = Some(now_s());
     // Every ending lands here: the commands of this run are no evidence for any other.
     hub.crew.tape.forget(&task.id);
+    // Its grants end with it: the next task asks again.
+    hub.crew
+        .approvals
+        .forget(&crate::crew::pane::key(&crewmate.id, &task.id));
     // A caller with no steps of its own (a conversational turn) keeps the ones the task has.
     if !steps.is_empty() {
         task.steps = steps;
@@ -173,6 +177,11 @@ pub(super) fn finish_task(
                 task.state = TaskState::Done;
                 // Every path ends here, so the machine line never reaches what people read (desktop, phone, Telegram).
                 task.result = Some(visible_reply(&result));
+                // Without a `spoken:` line of the agent's own, a client reads the first sentences.
+                if task.spoken.is_empty() {
+                    task.spoken =
+                        super::spoken::first_sentences(task.result.as_deref().unwrap_or_default());
+                }
             }
             Err(e) => {
                 // Don't overwrite Cancelled state.
@@ -241,6 +250,7 @@ pub(super) fn finish_task(
         tokio::spawn(async move {
             let expired = crate::crew::push::notify(&tokens, "task_done").await;
             if !expired.is_empty() {
+                // i18n-ignore: log
                 eprintln!("atlas crew: push: {} expired token(s)", expired.len());
             }
         });
@@ -259,6 +269,7 @@ pub(super) fn persist(hub: &Hub, crewmate_id: &str, task: &Task) -> Result<(), S
                 "cannot record task state to {}: {e}",
                 hub.crew.store.tasks_path(crewmate_id).display()
             );
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
                 task.id, task.state

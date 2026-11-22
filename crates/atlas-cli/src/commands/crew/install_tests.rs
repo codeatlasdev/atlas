@@ -386,3 +386,207 @@ fn uninstall_removes_everything_when_only_the_service_itself_runs_as_the_user() 
     assert!(!sim.exists("lib/atlas-crew"));
     assert!(!sim.exists("etc/systemd/system/atlas-crew.service"));
 }
+
+// ---------------------------------------------------------------------------------------------
+// Issue #518: a masked unit is a symlink to /dev/null. `sudo tee` wrote the unit text through it, the link stayed,
+// and `systemctl enable` then refused "Unit … is masked". Every unit Atlas owns goes through one script that
+// unmasks it and replaces the path instead of writing through it.
+// ---------------------------------------------------------------------------------------------
+
+const UNIT_TEXT: &[u8] = b"[Unit]\nDescription=Atlas Crew\n[Service]\nExecStart=/bin/true\n";
+
+fn is_link(sim: &Sim, rel: &str) -> bool {
+    std::fs::symlink_metadata(sim.path(rel)).is_ok_and(|m| m.file_type().is_symlink())
+}
+
+fn mask(sim: &Sim, unit: &str) {
+    std::os::unix::fs::symlink("/dev/null", sim.path(&format!("etc/systemd/system/{unit}")))
+        .unwrap();
+}
+
+#[test]
+fn a_masked_unit_is_unmasked_and_written_as_a_real_file() {
+    let sim = Sim::new();
+    mask(&sim, "atlas-crew.service");
+    let r = sim.run(
+        &layout::write_unit_script("/etc/systemd/system/atlas-crew.service"),
+        UNIT_TEXT,
+    );
+    assert_eq!(r.code, Some(0), "{}\n{}", r.stdout, r.stderr);
+    let rel = "etc/systemd/system/atlas-crew.service";
+    assert!(
+        !is_link(&sim, rel),
+        "still a symlink: the unit went into the link target"
+    );
+    assert_eq!(sim.read(rel).as_bytes(), UNIT_TEXT);
+    assert_eq!(
+        layout::unmasked_units(&r.stdout),
+        ["atlas-crew.service"],
+        "{}",
+        r.stdout
+    );
+    // The state `systemctl enable` sees now is not masked.
+    let enabled = sim.run("systemctl is-enabled atlas-crew.service", b"");
+    assert_eq!(enabled.code, Some(0), "{}", enabled.stdout);
+}
+
+// The class of the bug: whatever the path is a link to, the write replaces the link and never writes through it
+// (a unit linked into another file by `systemctl link`, an alias, a dangling link). `systemctl` here says nothing
+// is masked, so only the replace-not-write-through part can save the target.
+#[test]
+fn a_unit_path_that_is_a_symlink_is_replaced_never_written_through() {
+    let sim = Sim::new();
+    sim.write("elsewhere/precious.service", b"keep me");
+    std::os::unix::fs::symlink(
+        sim.path("elsewhere/precious.service"),
+        sim.path("etc/systemd/system/atlas-crew-spawn.socket"),
+    )
+    .unwrap();
+    sim.fake("systemctl", "exit 0"); // not masked as far as systemd says
+    let r = sim.run(
+        &layout::write_unit_script("/etc/systemd/system/atlas-crew-spawn.socket"),
+        UNIT_TEXT,
+    );
+    assert_eq!(r.code, Some(0), "{}\n{}", r.stdout, r.stderr);
+    assert_eq!(sim.read("elsewhere/precious.service"), "keep me");
+    let rel = "etc/systemd/system/atlas-crew-spawn.socket";
+    assert!(!is_link(&sim, rel));
+    assert_eq!(sim.read(rel).as_bytes(), UNIT_TEXT);
+    assert!(layout::unmasked_units(&r.stdout).is_empty(), "{}", r.stdout);
+}
+
+#[test]
+fn a_unit_that_is_not_masked_is_written_without_an_unmask_and_leaves_no_temp_file() {
+    let sim = Sim::new();
+    let r = sim.run(
+        &layout::write_unit_script("/etc/systemd/system/atlas-crew.service"),
+        UNIT_TEXT,
+    );
+    assert_eq!(r.code, Some(0), "{}\n{}", r.stdout, r.stderr);
+    assert_eq!(
+        sim.read("etc/systemd/system/atlas-crew.service").as_bytes(),
+        UNIT_TEXT
+    );
+    assert!(!sim.read("log/systemctl").contains("unmask"));
+    let left: Vec<_> = std::fs::read_dir(sim.path("etc/systemd/system"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(left, ["atlas-crew.service"], "temp file left behind");
+}
+
+// Every unit the install writes (atlas-crew itself comes from `install.rs`, the five helper units from the
+// isolation actions) goes through the same script, so masking any of them is survivable.
+#[test]
+fn every_unit_atlas_owns_is_unmasked_by_the_install_actions() {
+    let sim = Sim::new();
+    let acct = layout::account(layout::Probe::default());
+    let units: Vec<(String, String)> = super::isolation::install_actions(&acct, &[], &[])
+        .into_iter()
+        .filter_map(|a| match a {
+            super::isolation::Action::Write { file, contents } => Some((file, contents)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        units.len(),
+        5,
+        "the spawn and provision sockets and services, and the egress oneshot"
+    );
+    for (file, contents) in &units {
+        let name = file.rsplit('/').next().unwrap();
+        mask(&sim, name);
+        let r = sim.run(&layout::write_unit_script(file), contents.as_bytes());
+        assert_eq!(r.code, Some(0), "{name}: {}\n{}", r.stdout, r.stderr);
+        let rel = format!("etc/systemd/system/{name}");
+        assert!(!is_link(&sim, &rel), "{name} is still masked");
+        assert_eq!(sim.read(&rel), *contents, "{name}");
+        assert_eq!(layout::unmasked_units(&r.stdout), [name], "{name}");
+    }
+}
+
+// Unmask impossible (sudo refused it, a read-only /etc): the script stops with its own code and nothing is written,
+// so the caller can say the exact command to run instead of "writing the service failed".
+#[test]
+fn a_unit_that_cannot_be_unmasked_fails_with_the_unmask_code_and_writes_nothing() {
+    let sim = Sim::new();
+    mask(&sim, "atlas-crew.service");
+    sim.fake(
+        "systemctl",
+        "case \"$1\" in is-enabled) echo masked; exit 1;; unmask) echo 'Access denied' >&2; exit 1;; esac",
+    );
+    let r = sim.run(
+        &layout::write_unit_script("/etc/systemd/system/atlas-crew.service"),
+        UNIT_TEXT,
+    );
+    assert_eq!(
+        r.code,
+        Some(layout::UNMASK_FAILED),
+        "{}\n{}",
+        r.stdout,
+        r.stderr
+    );
+    assert!(is_link(&sim, "etc/systemd/system/atlas-crew.service"));
+    atlas_i18n::set_lang("en");
+    let err = layout::unit_write_error(
+        r.code.unwrap(),
+        &r.stderr,
+        "/etc/systemd/system/atlas-crew.service",
+    )
+    .to_string();
+    assert!(
+        err.contains("sudo systemctl unmask atlas-crew.service"),
+        "{err}"
+    );
+    assert!(err.contains("Access denied"), "{err}");
+    assert!(
+        !err.contains('\n'),
+        "the desktop shows the last line only: {err}"
+    );
+}
+
+#[test]
+fn another_failure_of_the_write_is_reported_as_a_write_failure() {
+    atlas_i18n::set_lang("en");
+    let err = layout::unit_write_error(
+        1,
+        "tee: /etc: Read-only file system\n",
+        "/etc/systemd/system/x.service",
+    )
+    .to_string();
+    assert!(err.contains("writing x.service failed"), "{err}");
+    assert!(err.contains("Read-only file system"), "{err}");
+}
+
+// Atlas Desktop sends a sudo password: the first stdin line is the password, the rest must still reach the `tee`
+// of the unit after the unmask's own `sudo` ran.
+#[test]
+fn a_masked_unit_is_written_whole_when_the_install_runs_with_a_sudo_password() {
+    let sim = Sim::new();
+    sim.write("sudo-password", b"hunter2\n");
+    mask(&sim, "atlas-crew.service");
+    let script = binary::with_sudo_password(&layout::write_unit_script(
+        "/etc/systemd/system/atlas-crew.service",
+    ));
+    let mut stdin = b"hunter2\n".to_vec();
+    stdin.extend_from_slice(UNIT_TEXT);
+    let r = sim.run(&script, &stdin);
+    assert_eq!(r.code, Some(0), "{}\n{}", r.stdout, r.stderr);
+    assert_eq!(
+        sim.read("etc/systemd/system/atlas-crew.service").as_bytes(),
+        UNIT_TEXT
+    );
+    assert_eq!(layout::unmasked_units(&r.stdout), ["atlas-crew.service"]);
+}
+
+// Atlas Desktop shows the last `hint: ` line of a failed install as "what to do".
+#[test]
+fn the_hint_line_names_the_unmask_command_in_one_plain_line() {
+    let h = layout::unmask_hint("atlas-crew.service");
+    assert!(h.starts_with("hint: "), "{h}");
+    assert!(
+        h.contains("`sudo systemctl unmask atlas-crew.service`"),
+        "{h}"
+    );
+    assert!(!h.contains('\n') && !h.contains('\x1b'), "{h:?}");
+}

@@ -3,7 +3,9 @@
 //! - First client line: `{"hello":{"token":"<hex>","client":"desktop|cli|test","proto":2}}`;
 //!   reply `{"ok":true,"data":{..info}}` or `{"ok":false,"error":"unauthorized"}` + close.
 //! - Request `{"id":n,"cmd":"..","args":{..}}` → `{"id":n,"ok":true,"data":{..}}` |
-//!   `{"id":n,"ok":false,"error":".."}`.
+//!   `{"id":n,"ok":false,"error":".."}`. A failure a client tells apart carries two more keys (additive; `error`
+//!   stays the English every client has always shown): `{"id":n,"ok":false,"error":"..","code":"..","args":{..}}`,
+//!   see [`Failure`] and [`REPLY_CODES`].
 //! - Push (no `id`): `{"ev":"pty_output"|"pty_replay"|"pty_title"|"pty_activity"|"pty_exit"|"pty_dropped"|"fs_event",..}`.
 //!   `pty_activity {pty}` goes to every attached connection (listeners too) at most once a second while the
 //!   program prints; an older daemon simply never sends it.
@@ -37,7 +39,9 @@
 //!   `lsp_apply_edit_result {id, applied}`. `lsp_open` also takes `root` (the worktree that opened it) and `overrides` (the user's
 //!   `lsp.<language>` settings: `command`, `args`, `initialization_options`, `settings`,
 //!   `disabled`) and replies with `reason` (why `missing`/`crashed`: `{code, message, hint?,
-//!   command?}`) and, for `disabled`, `supported` (languages that have a server).
+//!   command?, args?}`; `message` and `hint` are English, `args` (additive) holds the values they were written
+//!   from so a client can write its own sentence for `code`, see `atlas_lsp::install::Failure`) and, for
+//!   `disabled`, `supported` (languages that have a server).
 //!   `lsp_catalog` (servers + what is installed), `lsp_install {name}`, `lsp_uninstall
 //!   {name}`, `lsp_restart {name, root?}` and `lsp_log {name, lines?}` serve Settings →
 //!   Languages and the status bar. Each status entry carries `label`, `version`, `source`
@@ -49,6 +53,7 @@
 
 use std::collections::BTreeMap;
 
+use atlas_core::progress::Coded;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -380,11 +385,27 @@ pub enum HostCmd {
     /// `{agents: [{id, label, setup, state: ok|missing|unknown}]}`: installed agents and whether
     /// their hooks report to Atlas (`atlas setup <agent> --check`).
     AgentIntegrations {},
-    /// Answer a pending permission prompt (`agent_approval` push) by its `req`.
+    /// Answer a pending permission prompt (`agent_approval` push) by its `req`. `scope` says how far an allow
+    /// reaches (`once`, the default, or `task`: the same kind of call for the rest of that task); `comment` is
+    /// delivered to the agent with the decision (`crew::approval`).
     AgentApprove {
         pane: String,
         req: String,
         allow: bool,
+        #[serde(default)]
+        scope: crate::agents::ApproveScope,
+        #[serde(default)]
+        comment: Option<String>,
+    },
+    /// Answer a pending permission prompt with what was heard (#648). hostd decides what the words mean
+    /// (`crew::voice_card`): `{verdict: allow|deny|comment|needs_tap|unclear, comment?, reason?}`. An allow is
+    /// once, and never for Bypass, a rail, a destructive call or an untrusted source.
+    AgentApproveVoice {
+        pane: String,
+        req: String,
+        transcript: String,
+        #[serde(default)]
+        lang: Option<String>,
     },
     /// Type `text` into the pane's terminal, then Enter, only while the agent is idle/done.
     /// With `steer` and an omp agent it is also allowed while the agent works: omp queues
@@ -465,7 +486,9 @@ pub enum HostCmd {
         #[serde(default)]
         query: Option<String>,
     },
-    /// `op`: `restart` | `start` | `stop` one service, or `up` (start the stack detached).
+    /// `op`: `restart` | `start` | `stop` one service (`service` required), `up` (start the stack
+    /// detached) or `down` (stop the whole stack, like the desktop's stack stop; `service` is not
+    /// used; nothing running answers `{}` too, a stack still alive after 10 s is an error).
     ProjectService {
         id: String,
         #[serde(default)]
@@ -549,7 +572,13 @@ pub enum HostCmd {
         name: String,
         role: String,
         agent: String,
-        approval: String,
+        /// The permission mode: `ask`, `edits`, `bypass`, or the legacy `auto` (= `bypass`). Without it (and
+        /// without `mode`) the crew's `default_approval`.
+        #[serde(default)]
+        approval: Option<String>,
+        /// The same, named `mode`; wins over `approval` when both are sent.
+        #[serde(default)]
+        mode: Option<String>,
         #[serde(default)]
         workdir: Option<String>,
         #[serde(default)]
@@ -586,9 +615,20 @@ pub enum HostCmd {
         /// `None` = don't touch; `Some(None)` = clear (use crew default); `Some(Some(true/false))` = set.
         #[serde(default, deserialize_with = "present")]
         short_replies: Option<Option<bool>>,
+        /// `Some(true)`: the agent ends each reply with a `spoken:` line for listening (#648).
+        #[serde(default)]
+        spoken_replies: Option<bool>,
     },
     CrewmateDelete {
         id: String,
+    },
+    /// Switch a crewmate's permission mode (owner clients only: Desktop, Mobile, the owner's Telegram chat).
+    /// Applies from the next tool call, calls already waiting are re-decided at once. Replies with the
+    /// crewmate as `crewmate_list` shows it; a refusal is coded (`crew.approval.*`, see [`REPLY_CODES`]).
+    CrewmateSetApproval {
+        id: String,
+        /// `ask`, `edits` or `bypass`.
+        mode: String,
     },
     CrewmateTask {
         id: String,
@@ -602,6 +642,9 @@ pub enum HostCmd {
         /// The task changes what people see: it needs the agent's own captures to be `done` (`prove_ui`).
         #[serde(default)]
         ui: bool,
+        /// The prompt was (partly) dictated: the agent is told so (`crew::voice`), never shown as user text.
+        #[serde(default)]
+        dictated: bool,
     },
     /// One piece of an image too big for a protocol line, staged for the next `crewmate_task`
     /// that names `upload`. The last piece (`last: true`) completes it.
@@ -670,6 +713,39 @@ pub enum HostCmd {
         token: Option<String>,
     },
     CrewTelegramLink {},
+    /// Dictation on this crew server: whether it is on, the engine in use, the cap, the effective replacements
+    /// (`crew::voice`).
+    CrewVoiceStatus {},
+    /// Turn voice on or off, choose the engine, set the crew's own replacements. Owner only
+    /// (`crew.voice.forbidden`). Replies like `crew_voice_status`.
+    CrewVoiceSet {
+        #[serde(default)]
+        enabled: Option<bool>,
+        #[serde(default)]
+        engine: Option<crate::crew::voice::EngineSetting>,
+        #[serde(default)]
+        replacements: Option<Vec<crate::crew::voice::Replacement>>,
+    },
+    /// One piece of a dictation's WAV (16 kHz mono s16le), at most `crew::attachments::CHUNK` raw bytes. `upload`
+    /// empty opens one; the reply names it. `last` completes it. Audio is deleted after the transcription, and
+    /// after 10 minutes without a piece.
+    CrewmateVoicePut {
+        #[serde(default)]
+        upload: String,
+        piece_b64: String,
+        #[serde(default)]
+        last: bool,
+    },
+    /// Transcribe an upload for crewmate `id` (its hints; the engine of the crew). `partial` listens to the last
+    /// 30 s so far and leaves the upload open; a final one needs the last piece and deletes the audio.
+    CrewmateTranscribe {
+        id: String,
+        upload: String,
+        #[serde(default)]
+        language: Option<String>,
+        #[serde(default)]
+        partial: bool,
+    },
     /// Whether Telegram is configured and how many chats are linked. Never returns the token.
     CrewTelegramStatus {},
     MobileInvite {
@@ -750,9 +826,44 @@ pub enum HostCmd {
         #[serde(default)]
         attachments: Vec<crate::crew::attachments::Sent>,
     },
+    /// Answer a waiting `choose` card with what was heard (#648): `{verdict: choice|needs_tap|unclear, choice?}`.
+    #[serde(rename = "crewmate_action_answer_voice")]
+    CrewmateActionAnswerVoice {
+        id: String,
+        task: String,
+        transcript: String,
+        #[serde(default)]
+        lang: Option<String>,
+    },
     /// If gh is already logged in, wake any connect_github waiters immediately.
     #[serde(rename = "crew_github_connect_resume")]
     CrewGithubConnectResume {},
+    /// The manifest to POST to GitHub to create this crew server's GitHub App, and where to POST it (owner only).
+    #[serde(rename = "crew_github_app_manifest")]
+    CrewGithubAppManifest {
+        /// `user` or `org`.
+        owner_kind: String,
+        /// The organization's login, for `owner_kind: "org"`.
+        #[serde(default)]
+        org: Option<String>,
+        /// Also ask for the Workflows permission (edit `.github/workflows`). Off by default.
+        #[serde(default)]
+        workflows: bool,
+        /// The server's name, for the app's name (`atlas-crew-<server>`); this machine's host name when absent.
+        #[serde(default)]
+        server_name: Option<String>,
+    },
+    /// Exchange the one-time `code` GitHub redirected back with for the app's credentials, kept on this server only.
+    #[serde(rename = "crew_github_app_convert")]
+    CrewGithubAppConvert {
+        code: String,
+    },
+    /// The app (never its key) and the installations that can reach it, or `{app: null}`.
+    #[serde(rename = "crew_github_app_status")]
+    CrewGithubAppStatus {},
+    /// Delete the stored app key.
+    #[serde(rename = "crew_github_app_remove")]
+    CrewGithubAppRemove {},
     /// The kill switch: cancel every running crewmate task, hold every queue, stop automations.
     #[serde(rename = "crew_pause")]
     CrewPause {},
@@ -765,9 +876,12 @@ pub enum HostCmd {
     /// Write crew-level reply-summary settings.
     #[serde(rename = "crew_settings_set")]
     CrewSettingsSet {
-        short_replies: bool,
+        /// Absent leaves it as it is: a client that changes one control sends only that field.
         #[serde(default)]
-        short_replies_model: Option<String>,
+        short_replies: Option<bool>,
+        /// `None` = absent, left as it is; `Some(None)` (`null`) or `""` = clear (the default model); `Some(Some(m))` = set.
+        #[serde(default, deserialize_with = "present")]
+        short_replies_model: Option<Option<String>>,
         /// Agents the server runs at once (at least 1); absent leaves it as it is.
         #[serde(default)]
         max_agents: Option<usize>,
@@ -775,6 +889,18 @@ pub enum HostCmd {
         /// is, `0` goes back to the computed default.
         #[serde(default)]
         agent_memory_max: Option<u64>,
+        /// The mode new crewmates start in (`ask`, `edits`, `bypass`); absent leaves it as it is.
+        #[serde(default)]
+        default_approval: Option<String>,
+        /// Whether any crewmate may use Bypass; absent leaves it as it is. Turning it off takes every
+        /// crewmate out of Bypass (back to Ask).
+        #[serde(default)]
+        allow_bypass: Option<bool>,
+        /// The public `https://` URL GitHub reaches this server at (your reverse proxy or tunnel to the hook server;
+        /// Atlas never exposes it itself): the GitHub App's webhook posts to `<url>/github/webhook`. Absent leaves
+        /// it as it is, an empty string turns webhooks off.
+        #[serde(default)]
+        public_url: Option<String>,
     },
     /// A terminal that runs only `engine`'s login command as the crew user (`crew::engine_login`); the reply is
     /// `{engine, pty}` and the phone attaches with its terminal screen. `engine` is one of `claude`, `codex`,
@@ -819,11 +945,118 @@ impl HostCmd {
 
 /// Build a response line.
 pub fn reply(id: u64, res: Result<Value, String>) -> String {
+    reply_failure(id, res.map_err(Failure::Text))
+}
+
+/// [`reply`] for a request whose failure may carry a code.
+pub fn reply_failure(id: u64, res: Result<Value, Failure>) -> String {
     let v = match res {
         Ok(data) => serde_json::json!({"id": id, "ok": true, "data": data}),
-        Err(e) => serde_json::json!({"id": id, "ok": false, "error": e}),
+        Err(Failure::Text(e)) => serde_json::json!({"id": id, "ok": false, "error": e}),
+        Err(Failure::Coded(c)) => {
+            serde_json::json!({"id": id, "ok": false, "error": c.message, "code": c.code, "args": c.args})
+        }
     };
     v.to_string()
+}
+
+/// Why a request failed: a text (what every failure was), or a text with the stable `code` and `args` a client
+/// writes its own sentence from (`atlas_core::progress::Coded`). `error` on the wire is the text in both cases, so a
+/// client that has never heard of the code shows what it always showed.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Failure {
+    Text(String),
+    Coded(Coded),
+}
+
+impl From<String> for Failure {
+    fn from(s: String) -> Self {
+        Self::Text(s)
+    }
+}
+
+impl From<&str> for Failure {
+    fn from(s: &str) -> Self {
+        Self::Text(s.into())
+    }
+}
+
+impl From<Coded> for Failure {
+    fn from(c: Coded) -> Self {
+        Self::Coded(c)
+    }
+}
+
+impl From<Failure> for String {
+    /// The text a caller that does not read codes prints: what the failure always was.
+    fn from(f: Failure) -> Self {
+        match f {
+            Failure::Text(s) => s,
+            Failure::Coded(c) => c.message,
+        }
+    }
+}
+
+/// The codes a request's failure can carry, with their `args` and `error` (English, as always):
+///
+/// | code | args | `error` |
+/// |---|---|---|
+/// | `fs.not_found` | `path` | `not_found` |
+/// | `fs.io` | `kind` (`permission_denied` \| `not_a_directory` \| `is_a_directory` \| `already_exists` \| `other`), `path`, `detail` (the OS's own text, `other` only) | the OS's text, e.g. `Permission denied (os error 13)` |
+/// | `exec.spawn_failed` | `program`, `reason` (`not_found` \| `permission_denied` \| `other`), `detail` (the OS's own text, `other` only) | `<program>: <the OS's text>` |
+/// | `hostd.invalid_argument` | `field`, `reason` (`bad_base64` \| `empty` \| `no_parent` \| `invalid`) | what it always said |
+/// | `crew.approval.bypass_disabled` | none | `bypass is not allowed on this crew` |
+/// | `crew.approval.unsupported_engine` | `engine`, `mode` | `<engine> has no approval channel: it always runs unattended` |
+/// | `crew.approval.forbidden` | none | `only the owner can change a permission mode` |
+/// | `crew.github_app.exists` | none | an app is already set up |
+/// | `crew.github_app.code_expired` | none | the manifest code is used or past its hour |
+/// | `crew.github_app.conversion_failed` | `status` (GitHub's HTTP status, 0 when it was not reached) | GitHub refused the conversion |
+/// | `crew.github_app.none` | none | no app is set up |
+/// | `crew.github_app.forbidden` | none | the caller is not the owner |
+/// | `crew.voice.off` | none | voice is turned off on this crew |
+/// | `crew.voice.not_installed` | none | no voice engine is configured or installed |
+/// | `crew.voice.engine_failed` | `engine` (its label), `detail` | `<engine> failed: <detail>` (never retried on another engine) |
+/// | `crew.voice.too_long` | `max_seconds` | the dictation is over the cap |
+/// | `crew.voice.bad_audio` | none | the audio is not 16 kHz mono 16-bit PCM WAV |
+/// | `crew.voice.forbidden` | none | a non-owner changed the voice settings |
+///
+/// A client reads the code only when it knows it (`client::reply_error`), else it has the text. A new code is added
+/// here, to the desktop's catalog (`apps/desktop/src/lib/hostMessages.ts`) and to its fixture test in one change.
+pub const REPLY_CODES: &[&str] = &[
+    FS_NOT_FOUND,
+    FS_IO,
+    EXEC_SPAWN_FAILED,
+    INVALID_ARGUMENT,
+    APPROVAL_BYPASS_DISABLED,
+    APPROVAL_UNSUPPORTED_ENGINE,
+    APPROVAL_FORBIDDEN,
+    crate::crew::github::app::EXISTS,
+    crate::crew::github::app::CODE_EXPIRED,
+    crate::crew::github::app::CONVERSION_FAILED,
+    crate::crew::github::app::NONE,
+    crate::crew::github::app::FORBIDDEN,
+    crate::crew::voice::OFF,
+    crate::crew::voice::NOT_INSTALLED,
+    crate::crew::voice::ENGINE_FAILED,
+    crate::crew::voice::TOO_LONG,
+    crate::crew::voice::BAD_AUDIO,
+    crate::crew::voice::FORBIDDEN,
+];
+pub const FS_NOT_FOUND: &str = "fs.not_found";
+pub const FS_IO: &str = "fs.io";
+pub const EXEC_SPAWN_FAILED: &str = "exec.spawn_failed";
+pub const INVALID_ARGUMENT: &str = "hostd.invalid_argument";
+pub const APPROVAL_BYPASS_DISABLED: &str = "crew.approval.bypass_disabled";
+pub const APPROVAL_UNSUPPORTED_ENGINE: &str = "crew.approval.unsupported_engine";
+pub const APPROVAL_FORBIDDEN: &str = "crew.approval.forbidden";
+
+/// A request argument hostd cannot use: `field` is the argument, `reason` why (see [`REPLY_CODES`]).
+pub(crate) fn invalid_argument(field: &str, reason: &str, message: impl Into<String>) -> Coded {
+    Coded::new(
+        INVALID_ARGUMENT,
+        serde_json::json!({"field": field, "reason": reason}),
+        message,
+    )
 }
 
 /// The `pty_title` push for the title a `pty_attach` answer carries, or `None` when it has none. A
@@ -935,5 +1168,169 @@ mod tests {
             HostCmd::LspOpen { root, .. } => assert!(root.is_none()),
             other => panic!("{other:?}"),
         }
+    }
+
+    /// A failed reply keeps `error`, the English text every client has always read, and adds `code` and `args`;
+    /// a reply without them (an older daemon) is a plain text error on the client.
+    #[test]
+    fn a_coded_failure_keeps_the_error_text_and_adds_code_and_args() {
+        let coded = Coded::new(
+            "fs.not_found",
+            serde_json::json!({"path": "/w/a"}),
+            "not_found",
+        );
+        let v: Value = serde_json::from_str(&reply_failure(4, Err(coded.into()))).unwrap();
+        assert_eq!(v["id"], 4);
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["error"], "not_found");
+        assert_eq!(v["code"], "fs.not_found");
+        assert_eq!(v["args"], serde_json::json!({"path": "/w/a"}));
+
+        let v: Value = serde_json::from_str(&reply(4, Err("boom".into()))).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"id": 4, "ok": false, "error": "boom"})
+        );
+        let e = crate::client::reply_error(&v);
+        assert!(e.downcast_ref::<Coded>().is_none());
+        assert_eq!(e.to_string(), "boom");
+
+        // A code this build has never heard of is the text alone, never a half-known failure.
+        let future = serde_json::json!({"ok": false, "error": "no way", "code": "fs.from_the_future", "args": {}});
+        let e = crate::client::reply_error(&future);
+        assert!(e.downcast_ref::<Coded>().is_none());
+        assert_eq!(e.to_string(), "no way");
+    }
+
+    /// Contract with the desktop: `apps/desktop/src/lib/__fixtures__/hostd-reply-errors.json` is the REAL wire shape
+    /// of every coded failure of a request: each sample is built by the function hostd uses, written as the reply
+    /// line, read back by the client, and the `{code, args, message}` the desktop receives is what is stored, next to
+    /// [`REPLY_CODES`], which `apps/desktop/src/lib/hostReplyText.test.ts` renders from the catalog. `UPDATE_FIXTURES=1`
+    /// regenerates it.
+    #[tokio::test]
+    async fn reply_errors_json_contract() {
+        use std::io::{Error, ErrorKind as K};
+        // The OS's own words, fixed: the fixture is the same on every runner.
+        let os = |kind, text: &str| Error::new(kind, text.to_string());
+        let cwd = std::env::temp_dir();
+        let cwd = cwd.to_str().unwrap();
+        let Err(crate::protocol::Failure::Coded(empty_argv)) =
+            crate::exec::run("/", &[], &BTreeMap::new(), None, 1000).await
+        else {
+            panic!("an empty argv is a coded failure");
+        };
+        let samples = [
+            crate::fs::coded(
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+                "/work/old-name.txt",
+            ),
+            crate::fs::coded(
+                &os(K::PermissionDenied, "Permission denied (os error 13)"),
+                "/work/locked",
+            ),
+            crate::fs::coded(
+                &os(K::NotADirectory, "Not a directory (os error 20)"),
+                "/work/README.md",
+            ),
+            crate::fs::coded(
+                &os(K::IsADirectory, "Is a directory (os error 21)"),
+                "/work/src",
+            ),
+            crate::fs::coded(
+                &os(K::AlreadyExists, "File exists (os error 17)"),
+                "/work/src",
+            ),
+            crate::fs::coded(
+                &os(K::Other, "Read-only file system (os error 30)"),
+                "/work/readonly",
+            ),
+            crate::exec::spawn_failed(
+                "git",
+                cwd,
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+            ),
+            crate::exec::spawn_failed(
+                "/opt/tools/lint",
+                cwd,
+                &os(K::PermissionDenied, "Permission denied (os error 13)"),
+            ),
+            crate::exec::spawn_failed("sh", cwd, &os(K::Other, "Exec format error (os error 8)")),
+            // The same OS error when the working folder is the missing one.
+            crate::exec::spawn_failed(
+                "git",
+                "/work/gone",
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+            ),
+            crate::fs::write("/work/a.txt", "***", None).unwrap_err(),
+            crate::fs::write("/", "", None).unwrap_err(),
+            empty_argv,
+            invalid_argument("org", "invalid", "org: not a GitHub login"),
+            crate::crew::approval::bypass_disabled(),
+            crate::crew::approval::unsupported_engine("codex", crate::crew::store::Mode::Ask),
+            crate::crew::approval::forbidden(),
+            crate::crew::github::app::exists(),
+            crate::crew::github::app::code_expired(),
+            crate::crew::github::app::conversion_failed(503, "GitHub refused the conversion: down"),
+            crate::crew::github::app::none(),
+            crate::crew::github::app::forbidden(),
+            crate::crew::voice::off(),
+            crate::crew::voice::not_installed(),
+            crate::crew::voice::engine_failed(
+                "whisper.cpp (small)",
+                "whisper-cli exited with status 1",
+            ),
+            crate::crew::voice::too_long(),
+            crate::crew::voice::bad_audio(),
+            crate::crew::voice::forbidden(),
+        ];
+        let errors: Vec<Value> = samples
+            .iter()
+            .map(|c| {
+                let v: Value =
+                    serde_json::from_str(&reply_failure(1, Err(c.clone().into()))).unwrap();
+                assert_eq!(v["error"], c.message.as_str(), "the text is the old one");
+                let e = crate::client::reply_error(&v);
+                let got = e
+                    .downcast_ref::<Coded>()
+                    .expect("the client reads the code")
+                    .wire();
+                assert_eq!(got, c.wire(), "the reply keeps code, args and text");
+                got
+            })
+            .collect();
+        for code in REPLY_CODES {
+            assert!(
+                errors.iter().any(|e| e["code"] == *code),
+                "no sample for {code}"
+            );
+        }
+        for e in &errors {
+            assert!(
+                REPLY_CODES.contains(&e["code"].as_str().unwrap()),
+                "{e} is not in REPLY_CODES"
+            );
+        }
+        let value = serde_json::json!({"codes": REPLY_CODES, "errors": errors});
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/hostd-reply-errors.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 }

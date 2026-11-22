@@ -295,7 +295,7 @@ fn empty_filtered_view_says_zero_matches() {
     assert!(
         rows_text(&term)
             .iter()
-            .any(|r| r.contains("0 matches in web"))
+            .any(|r| r.contains("No matches in web"))
     );
     // Not narrowed: plain blank.
     p.narrowed = false;
@@ -444,63 +444,80 @@ fn plain_lines_without_links_skip_the_scan() {
     assert!(entry_links(&entry("nothing to see here, 12:30:45 ok"), false).is_empty());
 }
 
+/// Drawing a 10-row window costs the window, not the buffer: the same near the bottom of a buffer 8 times
+/// larger (flat, 1x). A render that walked the lines to find the window would cost 8x. (It used to time 50
+/// frames of 200k lines against 20 ms each, which a loaded runner can fail with nothing regressed.)
 #[test]
 fn render_cost_is_bounded_by_the_window_not_the_buffer() {
-    // 200k lines; drawing a 10-row window must not touch them all.
-    let mut buf = LogBuffer::new(1_000_000);
-    for i in 0..200_000 {
-        buf.push(
-            "api".into(),
-            format!("line {i} some text to wrap around"),
-            LogStream::Stdout,
-        );
-    }
-    let key = crate::runtime::logindex::ViewKey {
-        service: None,
-        hidden: vec![],
-        min_level: None,
-        filter: None,
-        find: None,
-        json: false,
-        window: Default::default(),
-    };
-    let mut index = ViewIndex::new();
-    index.sync(&buf, &key);
-    let opts = ViewOpts::default();
-    let mut rows = RowCache::new();
-    rows.sync(
-        &buf,
-        None,
-        index.seqs(0..index.len()),
-        text_width_for(60),
-        &opts,
-    );
-    let p = LogPane {
-        src: Source {
-            buf: &buf,
-            index: &index,
-            rows: &rows,
+    let fixture = |lines: usize| {
+        let mut buf = LogBuffer::new(1_000_000);
+        for i in 0..lines {
+            buf.push(
+                "api".into(),
+                format!("line {i} some text to wrap around"),
+                LogStream::Stdout,
+            );
+        }
+        let key = crate::runtime::logindex::ViewKey {
             service: None,
-        },
-        scroll: 100_000,
-        opts,
-        find: None,
-        cursor: None,
-        tab: "All",
-        narrowed: false,
-        new_lines: 0,
+            hidden: vec![],
+            min_level: None,
+            filter: None,
+            find: None,
+            json: false,
+            window: Default::default(),
+        };
+        let mut index = ViewIndex::new();
+        index.sync(&buf, &key);
+        let mut rows = RowCache::new();
+        rows.sync(
+            &buf,
+            None,
+            index.seqs(0..index.len()),
+            text_width_for(60),
+            &ViewOpts::default(),
+        );
+        (buf, index, rows)
     };
-    let mut term = Terminal::new(backend::TestBackend::new(60, 10)).unwrap();
-    let t0 = std::time::Instant::now();
-    for _ in 0..50 {
-        draw(&mut term, &p);
+    fn pane<'a>((buf, index, rows): &'a (LogBuffer, ViewIndex, RowCache)) -> LogPane<'a> {
+        LogPane {
+            src: Source {
+                buf,
+                index,
+                rows,
+                service: None,
+            },
+            scroll: 100,
+            opts: ViewOpts::default(),
+            find: None,
+            cursor: None,
+            tab: "All",
+            narrowed: false,
+            new_lines: 0,
+        }
     }
-    let per_frame = t0.elapsed() / 50;
-    assert!(
-        per_frame < std::time::Duration::from_millis(20),
-        "{per_frame:?}"
+    let (small, big) = (fixture(10_000), fixture(80_000));
+    let (small_pane, big_pane) = (pane(&small), pane(&big));
+    let mut small_term = Terminal::new(backend::TestBackend::new(60, 10)).unwrap();
+    let mut big_term = Terminal::new(backend::TestBackend::new(60, 10)).unwrap();
+    let ratio = atlas_core::scaling::growth(
+        15,
+        || {
+            for _ in 0..50 {
+                draw(&mut small_term, &small_pane);
+            }
+        },
+        || {
+            for _ in 0..50 {
+                draw(&mut big_term, &big_pane);
+            }
+        },
     );
-    assert!(rows_text(&term).iter().any(|r| r.contains("line ")));
+    assert!(
+        ratio < 4.0,
+        "a window of a buffer 8x larger cost {ratio:.1}x (flat is 1x, walking the buffer 8x)"
+    );
+    assert!(rows_text(&big_term).iter().any(|r| r.contains("line ")));
 }
 
 #[test]

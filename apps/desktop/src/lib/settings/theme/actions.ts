@@ -1,9 +1,9 @@
 /** Export, remove and reveal actions for themes, shared by the Appearance tab. */
 import { toast } from "@codeatlasdev/ui";
 import { homeDir } from "@tauri-apps/api/path";
-import { save } from "@tauri-apps/plugin-dialog";
-import { errText } from "#lib/api.ts";
+import { api, errText } from "#lib/api.ts";
 import { host } from "#lib/host.ts";
+import { m } from "#lib/i18n/m.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 import { themes } from "#lib/stores/theme.svelte.ts";
 
@@ -28,27 +28,39 @@ async function guard(fn: () => Promise<void>) {
 export const copyTheme = (name: string, format: ExportFormat) =>
 	guard(async () => {
 		await navigator.clipboard.writeText(themes.exportTheme(name, format));
-		toast.success(format === "json" ? `Copied ${name} as JSON` : `Copied ${name} as a Ghostty config`);
+		toast.success(
+			format === "json"
+				? m.settings_theme_actions_copied_json({ name })
+				: m.settings_theme_actions_copied_ghostty({ name }),
+		);
 	});
 
 export const saveTheme = (name: string, format: ExportFormat) =>
 	guard(async () => {
 		const text = themes.exportTheme(name, format);
-		const path = await save({
-			title: `Save ${name}`,
+		const path = await api.savePath({
+			title: m.settings_theme_actions_save_title({ name }),
 			defaultPath: `${await homeDir()}/Downloads/${slug(name)}.${EXT[format]}`,
-			filters: [{ name: format === "json" ? "Atlas theme" : "Ghostty config", extensions: [EXT[format]] }],
+			filters: [
+				{
+					name:
+						format === "json"
+							? m.settings_theme_actions_filter_atlas()
+							: m.settings_theme_actions_filter_ghostty(),
+					extensions: [EXT[format]],
+				},
+			],
 		});
 		if (!path) return;
 		await host.fsWrite(path, text);
-		toast.success(`Saved ${path.split("/").pop()}`);
+		toast.success(m.settings_theme_actions_saved({ file: path.split("/").pop() ?? path }));
 	});
 
 export const removeTheme = (name: string) =>
 	guard(async () => {
-		const ok = await confirmDialog(`Remove ${name}?`, {
-			description: "Deletes its file from your themes folder.",
-			confirmLabel: "Remove",
+		const ok = await confirmDialog(m.settings_theme_actions_remove_title({ name }), {
+			description: m.settings_theme_actions_remove_description(),
+			confirmLabel: m.common_action_delete(),
 			destructive: true,
 		});
 		if (ok) await themes.remove(name);

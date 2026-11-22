@@ -5,7 +5,9 @@
 //! Linux: the icon is an AppIndicator/StatusNotifier item. Hosts deliver no click events (only the menu works),
 //! so the menu is the whole UI there (Show / Hide, Quit; see [`lifecycle::tray_menu`]). The icon is drawn only
 //! when something on the session bus hosts it, which [`reachable`] asks; `main.rs` uses that to decide whether
-//! closing the window may hide it (`lifecycle.rs`).
+//! closing the window may hide it (`lifecycle.rs`). Where GTK has no legacy tray to fall back on (Wayland) the icon is
+//! created only once a host is on the bus ([`wait_for_host`]), never before: libayatana-appindicator's fallback there
+//! is a GTK CRITICAL on every start (#426).
 //!
 //! The popover has no stores of its own: the main window publishes a snapshot
 //! (`tray_publish`), Rust caches it and forwards it as `tray://snapshot`; clicks come back
@@ -14,14 +16,15 @@
 
 use parking_lot::Mutex;
 use serde_json::Value;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem, MenuItemKind};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Rect, State, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 
-use crate::lifecycle::{self, TrayItem};
+use crate::lifecycle;
+use crate::menu_model::{self, ID_DOCK, ID_OPEN, ID_QUIT, ID_TOGGLE};
 
 pub const LABEL: &str = "tray";
 const WIDTH: f64 = 360.0;
@@ -42,6 +45,8 @@ pub struct TrayState {
     icon: Mutex<Option<(f64, f64, f64, f64)>>,
     /// The "Show / Hide Agent Dock" item, re-labelled when the dock is shown or hidden.
     dock_item: Mutex<Option<MenuItem<tauri::Wry>>>,
+    /// The tray's native menu, re-labelled in place when the language or the capture keys change ([`relabel`]).
+    menu: Mutex<Option<Menu<tauri::Wry>>>,
 }
 
 /// Whether the icon sits in the lower half of `screen`: a bottom taskbar (Windows default), so the popover opens above
@@ -98,7 +103,7 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let win = builder
         .theme(theme)
         .initialization_script(script)
-        .title("Atlas")
+        .title("Atlas") // i18n-ignore: the product name; the popover has no other text of its own
         .inner_size(WIDTH, HEIGHT)
         .decorations(false)
         .transparent(true)
@@ -142,6 +147,13 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 }
 
 fn show(app: &AppHandle, icon: Option<&Rect>) {
+    // The popover opens at the menu-bar icon, on the user's display. An agent instance has no tray icon; if anything
+    // asks for it anyway it is held back and recorded.
+    if crate::native_ui::gate(crate::native_ui::Kind::Window, "tray popover", "")
+        == crate::native_ui::Verdict::Suppressed
+    {
+        return;
+    }
     let Some(win) = app.get_webview_window(LABEL) else {
         return;
     };
@@ -198,103 +210,64 @@ fn toggle(app: &AppHandle, icon: &Rect) {
     }
 }
 
-const ID_OPEN: &str = "open";
-const ID_TOGGLE: &str = "toggle";
-const ID_DOCK: &str = "dock";
-const ID_QUIT: &str = "quit";
-
-/// The tray's native menu, from [`lifecycle::tray_menu`]. Quit is a plain item handled in [`on_menu`]: the
-/// predefined `quit` only exists on macOS (muda's GTK backend renders it as a disabled entry that never fires).
+/// The tray's native menu, from [`menu_model::tray`] (structure: [`lifecycle::tray_menu`]). Quit is a plain item handled
+/// in [`on_menu`]: the predefined `quit` only exists on macOS (muda's GTK backend renders it as a disabled entry that
+/// never fires).
 fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let menu = Menu::new(app)?;
-    for item in lifecycle::tray_menu(cfg!(target_os = "linux")) {
-        match item {
-            TrayItem::Open => menu.append(&MenuItem::with_id(
-                app,
-                ID_OPEN,
-                "Open Atlas",
-                true,
-                None::<&str>,
-            )?)?,
-            TrayItem::ToggleWindow => menu.append(&MenuItem::with_id(
-                app,
-                ID_TOGGLE,
-                "Show / Hide Atlas",
-                true,
-                None::<&str>,
-            )?)?,
-            TrayItem::ToggleDock => {
-                let shown = app
-                    .try_state::<crate::dock::DockState>()
-                    .is_some_and(|s| s.shown());
-                let item = MenuItem::with_id(
-                    app,
-                    ID_DOCK,
-                    lifecycle::dock_item_label(shown),
-                    true,
-                    None::<&str>,
-                )?;
-                menu.append(&item)?;
-                *app.state::<TrayState>().dock_item.lock() = Some(item);
-            }
-            TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
-            TrayItem::Capture => menu.append(&capture_submenu(app)?)?,
-            TrayItem::Quit => menu.append(&MenuItem::with_id(
-                app,
-                ID_QUIT,
-                "Quit Atlas",
-                true,
-                None::<&str>,
-            )?)?,
-        }
-    }
+    let shown = dock_shown(app);
+    let model = menu_model::tray(
+        atlas_i18n::lang(),
+        cfg!(target_os = "linux"),
+        shown,
+        &capture_keys(app),
+    );
+    let menu = crate::menu::realize_menu(app, &model)?;
+    let state = app.state::<TrayState>();
+    *state.dock_item.lock() = match menu.get(ID_DOCK) {
+        Some(MenuItemKind::MenuItem(item)) => Some(item),
+        _ => None,
+    };
+    *state.menu.lock() = Some(menu.clone());
     Ok(menu)
 }
 
-/// The text of a capture menu entry: the action and, after a tab-like gap, the key it has now. The key is text, not a
-/// menu accelerator: the real hotkey is the global one, and a second registration would fire twice in Atlas.
-fn capture_label(e: &crate::shots::prefs::MenuEntry) -> String {
-    if e.stroke.is_empty() {
-        e.label.to_string()
-    } else {
-        format!("{}    {}", e.label, e.stroke)
-    }
+fn dock_shown(app: &AppHandle) -> bool {
+    app.try_state::<crate::dock::DockState>()
+        .is_some_and(|s| s.shown())
 }
 
-/// Every capture menu item (the tray's and the app menu bar's), so a change of keys re-labels all of them. Managed
-/// before the menu bar is built (`main`), unlike [`TrayState`] and `Shots`.
-#[derive(Default)]
-pub struct CaptureMenus(Mutex<Vec<(String, MenuItem<tauri::Wry>)>>);
-
-/// The "Capture" submenu: one item per capture action (`shots::prefs::menu_entries`). The keys are the ones in
-/// force, or the saved ones before the capture module has started.
-pub fn capture_submenu(app: &AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
-    let keys = app
-        .try_state::<crate::shots::Shots>()
+/// The capture keys in force, or the saved ones before the capture module has started: what the Capture menus show.
+pub fn capture_keys(app: &AppHandle) -> crate::shots::prefs::Keys {
+    app.try_state::<crate::shots::Shots>()
         .map(|s| s.keys())
-        .unwrap_or_else(|| crate::shots::prefs::CapturePrefs::load().keys);
-    let sub = tauri::menu::Submenu::new(app, "Capture", true)?;
-    let menus = app.state::<CaptureMenus>();
-    let mut kept = menus.0.lock();
-    for e in crate::shots::prefs::menu_entries(&keys) {
-        let item = MenuItem::with_id(app, e.id.clone(), capture_label(&e), true, None::<&str>)?;
-        sub.append(&item)?;
-        kept.push((e.id, item));
-    }
-    Ok(sub)
+        .unwrap_or_else(|| crate::shots::prefs::CapturePrefs::load().keys)
 }
 
-/// Capture keys changed in Settings: re-label every capture menu item so it shows the keys in force.
-pub fn refresh_capture(app: &AppHandle, keys: &crate::shots::prefs::Keys) {
-    let Some(menus) = app.try_state::<CaptureMenus>() else {
+/// Put the text of `tag` (and the capture keys `keys`) on the tray menu, in place. A no-op without a tray (agent
+/// instances).
+pub fn relabel(app: &AppHandle, tag: &str, keys: &crate::shots::prefs::Keys) {
+    let Some(menu) = app
+        .try_state::<TrayState>()
+        .and_then(|s| s.menu.lock().clone())
+    else {
         return;
     };
-    let items = menus.0.lock();
-    for e in crate::shots::prefs::menu_entries(keys) {
-        for (_, item) in items.iter().filter(|(id, _)| *id == e.id) {
-            let _ = item.set_text(capture_label(&e));
-        }
+    if let Ok(live) = menu.items() {
+        let model = menu_model::tray(tag, cfg!(target_os = "linux"), dock_shown(app), keys);
+        crate::menu::relabel(&live, &model);
     }
+}
+
+/// The tray menu for the debug dump: the model in `tag` and, when the tray exists, the text its items hold now.
+pub fn dump(app: &AppHandle, tag: &str, keys: &crate::shots::prefs::Keys) -> Value {
+    let live = app
+        .try_state::<TrayState>()
+        .and_then(|s| s.menu.lock().clone())
+        .and_then(|m| m.items().ok());
+    serde_json::json!({
+        "live": live.as_deref().map(crate::menu::live_json),
+        "model": menu_model::tray(tag, cfg!(target_os = "linux"), dock_shown(app), keys),
+    })
 }
 
 /// Tray menu click. Quit goes through `AppHandle::exit` with an explicit code, which [`lifecycle::exit`] never blocks.
@@ -321,7 +294,7 @@ pub fn set_dock_label(app: &AppHandle, shown: bool) {
         .try_state::<TrayState>()
         .and_then(|s| s.dock_item.lock().clone())
     {
-        let _ = item.set_text(lifecycle::dock_item_label(shown));
+        let _ = item.set_text(menu_model::dock_label(atlas_i18n::lang(), shown));
     }
 }
 
@@ -355,7 +328,7 @@ fn tray_host_present() -> bool {
         "/org/freedesktop/DBus",
         "org.freedesktop.DBus",
         "NameHasOwner",
-        Some(&("org.kde.StatusNotifierWatcher",).to_variant()),
+        Some(&(WATCHER,).to_variant()),
         Some(gio::glib::VariantTy::new("(b)").expect("static type string")),
         gio::DBusCallFlags::NONE,
         1500,
@@ -396,12 +369,27 @@ fn icon() -> tauri::Result<tauri::image::Image<'static>> {
     })
 }
 
+/// Whether the popover is built right after the main window shows. Linux: never. Its tray gets no click events (a
+/// StatusNotifier host shows the icon's menu), so the popover could never be opened, yet it cost a full page load and a
+/// web process at every launch (#286). `tray_*` commands find no window and do nothing.
+pub fn builds_popover_after_launch(os: &str) -> bool {
+    os != "linux"
+}
+
 /// Create the tray icon. The popover window (a second WebView2 controller, ~110 ms on Windows) is not built here:
 /// it is not needed until the first click, so [`ensure_popover`] builds it right after the main window first shows
-/// (`boot::show_now`), or on the first click if that comes first. On Linux the popover is built but never opened
-/// (no click events there); it stays hidden, so the `tray_*` commands the page registers keep working unchanged.
+/// (`boot::show_now`, where [`builds_popover_after_launch`] says so), or on the first click if that comes first.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayState::default());
+    #[cfg(target_os = "linux")]
+    if icon_needs_host(&gdk_display_type()) {
+        wait_for_host(app);
+        return Ok(());
+    }
+    build_icon(app)
+}
+
+fn build_icon(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::with_id("main")
         .icon(icon()?)
         .icon_as_template(cfg!(target_os = "macos"))
@@ -421,6 +409,48 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// The StatusNotifier host every tray panel registers on the session bus.
+#[cfg(target_os = "linux")]
+const WATCHER: &str = "org.kde.StatusNotifierWatcher";
+
+/// Does an icon created with no StatusNotifier host on the bus trip GTK? libayatana-appindicator then falls back to a
+/// `GtkStatusIcon`, which only exists on X11 (the legacy XEmbed tray): on Wayland its tray widget is NULL and every
+/// start printed `Gtk-CRITICAL gtk_widget_get_scale_factor: assertion 'GTK_IS_WIDGET (widget)' failed` (#426) for an
+/// icon drawn nowhere. `display_type` is the GType name of the default GDK display.
+#[cfg(target_os = "linux")]
+fn icon_needs_host(display_type: &str) -> bool {
+    display_type != "GdkX11Display"
+}
+
+#[cfg(target_os = "linux")]
+fn gdk_display_type() -> String {
+    use gtk::glib::prelude::ObjectExt;
+    gtk::gdk::Display::default().map_or_else(String::new, |d| d.type_().name().to_owned())
+}
+
+/// Create the icon once a host is on the bus (now, or later: a GNOME extension enabled mid-session, a panel that
+/// registers late at login), instead of handing libayatana an icon it can only fall back with. After that the library
+/// owns the icon: it re-registers by itself when a host comes back (a restarted panel), so the watch ignores a host
+/// that goes. Runs on the main thread: the watch lives on the thread-default context that `setup` runs in.
+#[cfg(target_os = "linux")]
+fn wait_for_host(app: &AppHandle) {
+    let app = app.clone();
+    // The watch lasts as long as the app; dropping the id does not stop it.
+    let _ = gio::bus_watch_name(
+        gio::BusType::Session,
+        WATCHER,
+        gio::BusNameWatcherFlags::NONE,
+        move |_, _, _| {
+            if app.tray_by_id("main").is_none()
+                && let Err(e) = build_icon(&app)
+            {
+                crate::diag::incident("tray", &format!("icon could not be built: {e}"));
+            }
+        },
+        |_, _| {},
+    );
 }
 
 /// Build the popover once. A no-op when it exists or when no tray was started (agent instances, [`start`] never ran).
@@ -501,7 +531,30 @@ pub fn tray_action(app: AppHandle, action: Value) {
 
 #[cfg(test)]
 mod tests {
-    use super::{place, room};
+    use super::{builds_popover_after_launch, place, room};
+
+    /// #286: on Linux the popover was built at every launch and could never be opened.
+    #[test]
+    fn linux_builds_no_popover_at_launch_and_the_others_keep_theirs() {
+        assert!(!builds_popover_after_launch("linux"));
+        assert!(builds_popover_after_launch("macos"));
+        assert!(builds_popover_after_launch("windows"));
+    }
+
+    /// #426: on Wayland an icon created with no tray host made libayatana fall back to a GtkStatusIcon that has no
+    /// widget there (`Gtk-CRITICAL gtk_widget_get_scale_factor`); on X11 the fallback is the legacy tray and works.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_icon_waits_for_a_host_except_on_x11_where_the_legacy_tray_fallback_draws_it() {
+        use super::icon_needs_host;
+        assert!(icon_needs_host("GdkWaylandDisplay"));
+        assert!(icon_needs_host("GdkBroadwayDisplay"));
+        assert!(
+            icon_needs_host(""),
+            "no display at all: nothing to fall back on"
+        );
+        assert!(!icon_needs_host("GdkX11Display"));
+    }
 
     const SCREEN: (f64, f64, f64, f64) = (0.0, 0.0, 3024.0, 1964.0);
     const SIZE: (f64, f64) = (720.0, 1040.0);

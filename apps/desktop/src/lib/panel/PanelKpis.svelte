@@ -2,6 +2,7 @@
 	import { Cpu, Layers, MemoryStick, RotateCw, TriangleAlert } from "@lucide/svelte";
 	import { fmtMem } from "#lib/format.ts";
 	import Kpi from "./Kpi.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** The five headline tiles: service health, restarts, errors, memory and CPU. */
 	let {
@@ -28,33 +29,39 @@
 <div class="kpis" data-tour="panel-kpis">
 	<Kpi
 		icon={Layers}
-		label="Services"
+		label={m.panel_kpis_services()}
 		value="{up}/{total}"
-		hint={running ? "running" : "stopped"}
+		hint={running ? m.panel_state_running() : m.panel_state_stopped()}
 		tone={failed ? "fail" : running && up === total ? "ok" : "off"}
 	/>
 	<Kpi
 		icon={RotateCw}
-		label="Restarts"
+		label={m.panel_kpis_restarts()}
 		value={String(restarts)}
-		hint="last hour"
+		hint={m.panel_kpis_hint_last_hour()}
 		tone={restarts ? "warn" : "off"}
 	/>
 	<Kpi
 		icon={TriangleAlert}
-		label="Errors"
+		label={m.panel_kpis_errors()}
 		value={String(errors)}
-		hint="last 5 min"
+		hint={m.panel_kpis_hint_last_5_min()}
 		tone={errors ? "fail" : "off"}
 	/>
 	<Kpi
 		icon={MemoryStick}
-		label="Memory"
+		label={m.panel_kpis_memory()}
 		value={running ? fmtMem(Math.round(mem)) : "—"}
-		hint="all services"
+		hint={m.panel_kpis_hint_all_services()}
 		tone="off"
 	/>
-	<Kpi icon={Cpu} label="CPU" value={running ? `${Math.round(cpu)}%` : "—"} hint="of one core" tone="off" />
+	<Kpi
+		icon={Cpu}
+		label={m.panel_kpis_cpu()}
+		value={running ? `${Math.round(cpu)}%` : "—"}
+		hint={m.panel_kpis_hint_of_one_core()}
+		tone="off"
+	/>
 </div>
 
 <style>

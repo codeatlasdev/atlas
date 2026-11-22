@@ -69,17 +69,22 @@ struct Entry {
     #[cfg(unix)]
     #[serde(default)]
     port: Option<u16>,
+    /// The private key file picked for this server (`ssh -i`); absent when ssh finds the key by itself.
+    #[cfg(unix)]
+    #[serde(default)]
+    identity: Option<String>,
 }
 
-/// The ssh port the registry holds for `host`, `None` for the default (and when the file or entry is gone).
+/// How to ssh to `host`: the port and the picked key the registry holds for it, `None`s for the defaults (and when
+/// the file or entry is gone).
 #[cfg(unix)]
-fn port_of(registry_file: &Path, host: &str) -> Option<u16> {
-    let text = std::fs::read_to_string(registry_file).ok()?;
-    serde_json::from_str::<Vec<Entry>>(&text)
-        .ok()?
-        .into_iter()
-        .find(|e| e.host == host)
-        .and_then(|e| e.port)
+fn target_of(registry_file: &Path, host: &str) -> atlas_core::ssh::SshTarget {
+    let entry = std::fs::read_to_string(registry_file)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Vec<Entry>>(&t).ok())
+        .and_then(|v| v.into_iter().find(|e| e.host == host));
+    atlas_core::ssh::SshTarget::new(host, entry.as_ref().and_then(|e| e.port))
+        .with_identity(entry.and_then(|e| e.identity))
 }
 
 struct Server {
@@ -118,10 +123,12 @@ fn adopt_legacy_registry(desktop: &Path) {
         &desktop.join(LEGACY_REGISTRY_FILE),
         &desktop.join(REGISTRY_FILE),
     ) {
+        // i18n-ignore: log
         Ok(Adopted::BothExist) => eprintln!(
             "atlas crew: {LEGACY_REGISTRY_FILE} and {REGISTRY_FILE} both exist; using {REGISTRY_FILE}"
         ),
         Ok(Adopted::Moved | Adopted::Nothing) => {}
+        // i18n-ignore: log
         Err(e) => eprintln!("atlas crew: cannot adopt {LEGACY_REGISTRY_FILE}: {e}"),
     }
 }
@@ -243,6 +250,7 @@ impl CrewRelay {
                     pending.retain(|p| !p.servers.is_empty());
                     self.save_pending(&pending);
                 }
+                // i18n-ignore: log
                 Err(err) => eprintln!(
                     "atlas hostd: could not clear a revoked phone's push tokens on {host} (retried when it connects): {err}"
                 ),
@@ -271,6 +279,7 @@ impl CrewRelay {
             .map_err(|e| e.to_string())
             .and_then(|b| paths::write_private(&self.pending_file, &b).map_err(|e| e.to_string()));
         if let Err(e) = saved {
+            // i18n-ignore: log
             eprintln!("atlas hostd: cannot save the pending push forgets: {e}");
         }
     }
@@ -387,11 +396,13 @@ async fn keep(crew: Weak<CrewRelay>, host: String, server: Arc<Server>) {
 fn load_pending(file: &Path) -> Vec<Pending> {
     match std::fs::read(file) {
         Ok(b) => serde_json::from_slice(&b).unwrap_or_else(|e| {
+            // i18n-ignore: log
             eprintln!("atlas hostd: ignoring {}: {e}", file.display());
             Vec::new()
         }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => {
+            // i18n-ignore: log
             eprintln!("atlas hostd: cannot read {}: {e}", file.display());
             Vec::new()
         }
@@ -412,8 +423,8 @@ fn ssh_connector(_registry_file: PathBuf, _dir: PathBuf) -> Connector {
     }))
 }
 
-/// `$HOME` and the hostd token of `host`, then a tunnel to its hostd socket. `host`'s port is the
-/// one its registry entry carries (`registry_file`), read at every (re)connect.
+/// `$HOME` and the hostd token of `host`, then a tunnel to its hostd socket. `host`'s port and picked key are the
+/// ones its registry entry carries (`registry_file`), read at every (re)connect.
 #[cfg(unix)]
 async fn ssh_link(registry_file: PathBuf, dir: PathBuf, host: String) -> Result<Link, String> {
     use atlas_core::sys::CommandExt as _;
@@ -421,7 +432,7 @@ async fn ssh_link(registry_file: PathBuf, dir: PathBuf, host: String) -> Result<
     use tokio::process::Command;
 
     atlas_core::ssh::valid_target(&host)?;
-    let target = atlas_core::ssh::SshTarget::new(host.clone(), port_of(&registry_file, &host));
+    let target = target_of(&registry_file, &host);
     let out = tokio::time::timeout(
         Duration::from_secs(20),
         Command::new("ssh")

@@ -17,6 +17,8 @@
 //!
 //! Debug builds can kill the web process on purpose (`atlas desktop debug kill-web-process`).
 
+use crate::native_ui;
+use atlas_i18n::{t, t_in};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -100,9 +102,9 @@ fn watch_ready(app: tauri::AppHandle) {
                 ),
             );
             let a = app.clone();
-            let what = format!(
-                "The page did not start within {} seconds",
-                READY_TIMEOUT.as_secs()
+            let what = t!(
+                "native_notify_alert_not_ready",
+                secs = READY_TIMEOUT.as_secs()
             );
             let _ = app.run_on_main_thread(move || alarm(&a, &what));
         }
@@ -128,16 +130,27 @@ pub fn kill_web_process(app: &tauri::AppHandle) -> Result<(), String> {
     }
 }
 
-/// The text of the native error: what happened, and where the details are.
-fn message(what: &str) -> String {
+/// The text of the native error: `what` (a sentence of the language, what happened) and where the details are.
+fn message(tag: &str, what: &str) -> String {
     let base = atlas_host::paths::base();
-    format!(
-        "{what}, so Atlas has nothing to show.\n\n\
-         Details are in:\n  {}\n  {}\n\n\
-         Include them when you report it: https://github.com/codeatlasdev/atlas/issues/new",
-        atlas_host::paths::stderr_log(&base).display(),
-        atlas_host::paths::app_log(&base).display(),
-    )
+    let details = t_in!(
+        tag,
+        "native_notify_alert_details",
+        stderr = atlas_host::paths::stderr_log(&base).display().to_string(),
+        app = atlas_host::paths::app_log(&base).display().to_string(),
+        url = "https://github.com/codeatlasdev/atlas/issues/new",
+    );
+    format!("{what}\n\n{details}")
+}
+
+/// The alert of the watchdog for `what`, in the display language.
+fn alert_for(what: &str) -> native_ui::Alert {
+    native_ui::Alert {
+        title: t!("native_notify_alert_title"),
+        message: message(atlas_i18n::lang(), what),
+        ok: t!("native_notify_alert_reopen"),
+        cancel: t!("native_notify_alert_quit"),
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -150,31 +163,24 @@ fn alarm(app: &tauri::AppHandle, what: &str) {
     let _ = view.with_webview(move |pw| give_up(&pw.inner(), &what));
 }
 
+/// An agent instance shows nothing (`native_ui`): the incident is recorded, the app keeps running so the agent can
+/// inspect it, and `DIALOG` stays set so that happens once per stall.
 #[cfg(not(target_os = "linux"))]
 fn alarm(app: &tauri::AppHandle, what: &str) {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
     if DIALOG.swap(true, Ordering::SeqCst) {
         return;
     }
     let a = app.clone();
-    app.dialog()
-        .message(message(what))
-        .title("Atlas could not display its window")
-        .kind(MessageDialogKind::Error)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            "Reopen".into(),
-            "Quit".into(),
-        ))
-        .show(move |reopen| {
-            use tauri::Manager;
-            DIALOG.store(false, Ordering::SeqCst);
-            if !reopen {
-                a.exit(1);
-            } else if let Some(v) = a.get_webview("main") {
-                note_load();
-                let _ = v.reload();
-            }
-        });
+    native_ui::alert(app, alert_for(what), move |reopen| {
+        use tauri::Manager;
+        DIALOG.store(false, Ordering::SeqCst);
+        if !reopen {
+            crate::app_exit::exit(&a, 1);
+        } else if let Some(v) = a.get_webview("main") {
+            note_load();
+            let _ = v.reload();
+        }
+    });
 }
 
 /// Hook `web-process-terminated` on the main webview.
@@ -190,11 +196,19 @@ fn hook_termination(app: &tauri::App) {
         let wv: webkit2gtk::WebView = pw.inner();
         let last = std::rc::Rc::new(std::cell::Cell::new(None::<Instant>));
         wv.connect_web_process_terminated(move |wv, reason| {
-            let why = match reason {
-                webkit2gtk::WebProcessTerminationReason::Crashed => "crashed",
-                webkit2gtk::WebProcessTerminationReason::ExceededMemoryLimit => "out of memory",
-                webkit2gtk::WebProcessTerminationReason::TerminatedByApi => "terminated by the app",
-                _ => "ended",
+            // The log line stays English; the dialog's sentence is the catalog message of the same reason.
+            let (why, sentence) = match reason {
+                webkit2gtk::WebProcessTerminationReason::Crashed => {
+                    ("crashed", t!("native_notify_alert_crashed"))
+                }
+                webkit2gtk::WebProcessTerminationReason::ExceededMemoryLimit => {
+                    ("out of memory", t!("native_notify_alert_out_of_memory"))
+                }
+                webkit2gtk::WebProcessTerminationReason::TerminatedByApi => (
+                    "terminated by the app",
+                    t!("native_notify_alert_terminated"),
+                ),
+                _ => ("ended", t!("native_notify_alert_ended")),
             };
             crate::diag::incident("webview-terminated", why);
             let now = Instant::now();
@@ -203,50 +217,40 @@ fn hook_termination(app: &tauri::App) {
                     note_load();
                     wv.reload();
                 }
-                Action::GiveUp => {
-                    give_up(wv, &format!("The page's web process {why} twice in a row"))
-                }
+                Action::GiveUp => give_up(wv, &sentence),
             }
         });
     });
 }
 
-/// The native dialog: the page cannot show anything any more. GTK main thread only.
+/// The native dialog: the page cannot show anything any more. GTK main thread only. An agent instance shows nothing
+/// (`native_ui`): the incident is recorded, the app keeps running, and `DIALOG` stays set so that happens once.
 #[cfg(target_os = "linux")]
 fn give_up(wv: &webkit2gtk::WebView, what: &str) {
     use gtk::prelude::*;
     use webkit2gtk::WebViewExt;
-    const COPY: gtk::ResponseType = gtk::ResponseType::Other(1);
     if DIALOG.swap(true, Ordering::SeqCst) {
         return;
     }
     let parent = wv.toplevel().and_then(|w| w.downcast::<gtk::Window>().ok());
-    let d = gtk::MessageDialog::new(
+    let answer = native_ui::gtk_alert(
         parent.as_ref(),
-        gtk::DialogFlags::MODAL,
-        gtk::MessageType::Error,
-        gtk::ButtonsType::None,
-        "Atlas could not display its window",
+        &alert_for(what),
+        &t!("native_notify_alert_copy_details"),
+        copy_details,
     );
-    d.set_secondary_text(Some(&message(what)));
-    d.add_button("Quit", gtk::ResponseType::Close);
-    d.add_button("Copy details", COPY);
-    d.add_button("Reopen", gtk::ResponseType::Accept);
-    d.set_default_response(gtk::ResponseType::Accept);
-    let answer = loop {
-        let r = d.run();
-        if r != COPY {
-            break r;
+    if let Some(reopen) = answer {
+        DIALOG.store(false, Ordering::SeqCst);
+        if reopen {
+            note_load();
+            wv.reload();
+        } else {
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "Linux (GTK) only: no agent display exists there to destroy"
+            )]
+            std::process::exit(1);
         }
-        copy_details();
-    };
-    d.close();
-    DIALOG.store(false, Ordering::SeqCst);
-    if answer == gtk::ResponseType::Accept {
-        note_load();
-        wv.reload();
-    } else {
-        std::process::exit(1);
     }
 }
 
@@ -303,8 +307,84 @@ mod tests {
     /// The text is what a user reads when nothing else works: both log paths must be in it.
     #[test]
     fn the_message_names_both_logs() {
-        let m = message("The page did not start");
-        assert!(m.contains("stderr.log") && m.contains("app.log"), "{m}");
-        assert!(m.starts_with("The page did not start,"));
+        for tag in ["en", "pt-BR"] {
+            let m = message(tag, "What happened.");
+            assert!(m.contains("stderr.log") && m.contains("app.log"), "{m}");
+            assert!(m.starts_with("What happened.\n\n"), "{m}");
+            assert!(m.contains("https://github.com/codeatlasdev/atlas/issues/new"));
+        }
+    }
+
+    // The dialog is native text the person reads when nothing else works: each language has its own sentences, and the
+    // wait is a number inside them, not a composed fragment.
+    #[test]
+    fn the_dialog_text_is_in_the_language_and_carries_the_wait() {
+        let not_ready = |tag| t_in!(tag, "native_notify_alert_not_ready", secs = 30);
+        assert_eq!(
+            not_ready("en"),
+            "The page did not start within 30 seconds, so Atlas has nothing to show."
+        );
+        assert_eq!(
+            not_ready("pt-BR"),
+            "A página não iniciou em 30 segundos, então o Atlas não tem nada para mostrar."
+        );
+        let quit = |tag, os| atlas_i18n::lookup_on(tag, "native_notify_alert_quit", None, os);
+        assert_eq!(quit("en", "windows").as_deref(), Some("Exit"));
+        assert_eq!(quit("pt-BR", "mac").as_deref(), Some("Sair"));
+    }
+
+    /// Incident 2026-11-18: an agent instance's "page did not start" alert covered the maintainer's screen. The
+    /// watchdog's alert, in an agent instance, is recorded with its title and text and never reaches the dialog.
+    #[test]
+    fn the_watchdog_alert_in_an_agent_instance_is_recorded_and_never_shown() {
+        use crate::agent_mode::Mode;
+        use crate::native_ui::{Verdict, alert_with};
+        use std::cell::{Cell, RefCell};
+        let what = t!(
+            "native_notify_alert_not_ready",
+            secs = READY_TIMEOUT.as_secs()
+        );
+        let (shown, lines) = (Cell::new(false), RefCell::new(Vec::new()));
+        let v = alert_with(
+            Mode::Agent,
+            alert_for(&what),
+            |l| lines.borrow_mut().push(l),
+            |_| shown.set(true),
+        );
+        assert_eq!(v, Verdict::Suppressed);
+        assert!(!shown.get(), "no dialog in an agent instance");
+        let lines = lines.into_inner();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].contains(&t!("native_notify_alert_title")),
+            "{}",
+            lines[0]
+        );
+        assert!(lines[0].contains(&what), "{}", lines[0]);
+    }
+
+    /// The user's app still gets the dialog, with the catalog's buttons: Reopen answers yes, Quit no.
+    #[test]
+    fn the_watchdog_alert_in_the_users_app_reaches_the_dialog_with_both_buttons() {
+        use crate::agent_mode::Mode;
+        use crate::native_ui::{Verdict, alert_with};
+        let got = std::cell::RefCell::new(None);
+        let v = alert_with(
+            Mode::User,
+            alert_for("What happened."),
+            |_| panic!("nothing to record"),
+            |a| *got.borrow_mut() = Some(a),
+        );
+        assert_eq!(v, Verdict::Allowed);
+        let a = got.into_inner().expect("the dialog sink ran");
+        assert_eq!(a.title, t!("native_notify_alert_title"));
+        assert!(a.message.starts_with("What happened.\n\n"), "{}", a.message);
+        assert_eq!(
+            (a.ok, a.cancel),
+            (
+                t!("native_notify_alert_reopen"),
+                t!("native_notify_alert_quit")
+            )
+        );
     }
 }

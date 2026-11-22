@@ -2,28 +2,77 @@ name: Mobile release
 
 # Atlas Mobile, from a `mobile-v1.2.0` tag to the stores, through fastlane
 # (apps/mobile/fastlane/Fastfile):
-#   1. unattended: build, sign, upload to TestFlight and the Play internal testing track;
+#   1. unattended: build, sign, upload to TestFlight and the Play internal testing track; on a tag, the
+#      tag's GitHub release appears as a pre-release with Play's universal APK of that build;
 #   2. after a maintainer approves the `mobile-store` environment: that same build goes to App
-#      Store review (released on approval) and to Play production (every user at once).
+#      Store review (released on approval) and to Play production (every user at once), and the
+#      pre-release becomes a normal release. Never "Latest" (scripts/mobile-apk-release.sh).
 # Not approved, it stays with testers. Both stores share one build number (the run's start, in
 # minutes), and the version comes from the tag. Secrets: docs/mobile.md, "Releases".
+#
+# A pull request that touches this release path runs only the rehearsal: both store builds made
+# exactly as a release makes them, unsigned, never uploaded, with no secret and no environment.
 on:
   push:
     tags: ["mobile-v*"]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/mobile-release.yml
+      - .github/actions/mobile-store-setup/**
+      - apps/mobile/fastlane/**
+      - apps/mobile/Gemfile
+      - apps/mobile/Gemfile.lock
+      - apps/mobile/.ruby-version
+      - apps/mobile/ios/**
+      - apps/mobile/android/**
+      - apps/mobile/pubspec.yaml
+      - apps/mobile/pubspec.lock
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-release
-  cancel-in-progress: false
+  # Publishing runs queue behind each other; a pull request's rehearsal is replaced by its next push.
+  group: ${{ github.event_name == 'pull_request' && format('mobile-rehearsal-{0}', github.event.pull_request.number) || 'mobile-release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Nothing reaches testers or the stores from a commit CI did not pass (#311), the same gate as
   # release.yml. `github.sha` is the tagged commit on a tag push and the chosen ref on a dispatch.
+  rehearsal:
+    name: Rehearsal (${{ matrix.platform }})
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ios
+            os: macos-latest
+            targets: aarch64-apple-ios
+          - platform: android
+            os: ubuntu-latest
+            targets: aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/mobile-store-setup
+        with:
+          targets: ${{ matrix.targets }}
+
+      - name: Store build, unsigned
+        working-directory: apps/mobile
+        env:
+          LANE: ${{ matrix.platform }}_rehearse
+        run: bundle exec fastlane "$LANE"
+
   gate:
     name: CI gate
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 130
     permissions:
@@ -73,22 +122,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - uses: ./.github/actions/mobile-store-setup
         with:
-          flutter-version-file: apps/mobile/pubspec.yaml
-          channel: stable
-
-      - name: Rust targets for the native crate
-        run: rustup target add aarch64-apple-ios
-
-      - uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
-        with:
-          working-directory: apps/mobile
-
-      # No cache: a publishing run must not restore what another run could have written.
-      - name: fastlane
-        working-directory: apps/mobile
-        run: bundle install
+          targets: aarch64-apple-ios
 
       - name: Build and upload
         working-directory: apps/mobile
@@ -100,6 +136,7 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TESTFLIGHT_GROUPS: ${{ vars.TESTFLIGHT_GROUPS }}
+          BETA_FEEDBACK_EMAIL: ${{ vars.BETA_FEEDBACK_EMAIL }}
           GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
         run: bundle exec fastlane ios_beta
 
@@ -122,22 +159,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - uses: ./.github/actions/mobile-store-setup
         with:
-          flutter-version-file: apps/mobile/pubspec.yaml
-          channel: stable
-
-      - name: Rust targets for the native crate
-        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-
-      - uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
-        with:
-          working-directory: apps/mobile
-
-      # No cache: a publishing run must not restore what another run could have written.
-      - name: fastlane
-        working-directory: apps/mobile
-        run: bundle install
+          targets: aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
 
       - name: Build and upload
         working-directory: apps/mobile
@@ -160,21 +184,65 @@ jobs:
           path: apps/mobile/build/symbols/android
           if-no-files-found: error
 
+  apk:
+    name: APK on the tag (pre-release)
+    # A tag's release page shows the build testers have; a run by hand has no tag to put it on.
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    needs: [number, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: mobile-beta
+    permissions:
+      contents: write # the tag's GitHub release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          working-directory: apps/mobile
+
+      - name: fastlane
+        working-directory: apps/mobile
+        run: bundle install
+
+      # Play's own universal APK, signed with its app signing key: it and a Play Store install update each other.
+      # Play generates it a few minutes after the upload, so this stage waits for it.
+      - name: Universal APK from Play
+        working-directory: apps/mobile
+        env:
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+          VERSION: ${{ needs.number.outputs.version }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          APK_WAIT_MINUTES: "20"
+        run: bundle exec fastlane android_apk
+
+      - name: Pre-release with the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.number.outputs.version }}
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+        run: scripts/mobile-apk-release.sh testing "$TAG" "$VERSION" "$BUILD_NUMBER"
+
   store:
     name: To the stores (needs approval)
     # Only a tagged release can go public; a run by hand is for testers.
     if: startsWith(github.ref, 'refs/tags/mobile-v')
     needs: [number, ios, android]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     # Required reviewers on this environment hold the job until one of them approves.
     environment: mobile-store
+    permissions:
+      contents: write # the tag's GitHub release with the APK
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: ruby/setup-ruby@824c0e29fdfc7d689c191c27acc969d2d04b7dd8 # v1.331.0
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
           working-directory: apps/mobile
 
@@ -192,3 +260,21 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: bundle exec fastlane release
+
+      # The pre-release of step 1 becomes a normal release (still not "Latest"). The APK is fetched again so a tag
+      # whose testing stage failed still gets it; Play has it by now, so no wait.
+      - name: Universal APK from Play
+        working-directory: apps/mobile
+        env:
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+          VERSION: ${{ needs.number.outputs.version }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: bundle exec fastlane android_apk
+
+      - name: Release with the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.number.outputs.version }}
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+        run: scripts/mobile-apk-release.sh store "$TAG" "$VERSION" "$BUILD_NUMBER"

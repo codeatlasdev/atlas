@@ -6,6 +6,7 @@ use atlas_core::channel::{self, Channel, Decision};
 use atlas_core::update_cache::{
     self as cache, CHECK_INTERVAL_SECS, UpdateCache, background_available, now_secs,
 };
+use atlas_i18n::t;
 use clap::{Args, Subcommand};
 use std::env;
 use std::io::{BufRead, IsTerminal, Write};
@@ -18,6 +19,28 @@ use super::update_pkg;
 use atlas_core::pkgowner::{self, PackageManager};
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const RESET: &str = "\x1b[0m";
+
+/// Glyph and color are code; the words are the catalog's.
+fn step(message: &str) -> String {
+    format!("\x1b[1;34m◆{RESET} {message}")
+}
+
+fn done(message: &str) -> String {
+    format!("\x1b[1;32m✓{RESET} {message}")
+}
+
+fn warn(message: &str) -> String {
+    format!("\x1b[33m◆{RESET} {message}")
+}
+
+/// A command or version inside a sentence.
+fn bold(text: &str) -> String {
+    format!("{BOLD}{text}{RESET}")
+}
 
 /// `atlas update` — see `docs/cli.md#atlas-update`.
 #[derive(Debug, Args)]
@@ -309,9 +332,15 @@ pub fn print_update_notice() {
     );
     eprintln!();
     eprintln!("\x1b[2m{rule}\x1b[0m");
-    eprintln!(" \x1b[1;32m⬆ Update available\x1b[0m");
+    eprintln!(" \x1b[1;32m⬆ {}{RESET}", t!("tui_runtime_app_update_title"));
     eprintln!(
-        " atlas \x1b[2mv{CURRENT_VERSION}\x1b[0m → \x1b[1mv{v}\x1b[0m   Run: \x1b[1;36m{run}\x1b[0m"
+        " {}",
+        t!(
+            "cmd_update_banner_line",
+            current = format!("{DIM}v{CURRENT_VERSION}{RESET}"),
+            latest = bold(&format!("v{v}")),
+            command = format!("\x1b[1;36m{run}{RESET}")
+        )
     );
     eprintln!("\x1b[2m{rule}\x1b[0m");
 }
@@ -322,7 +351,7 @@ async fn fetch_latest_tag(on: Channel) -> Result<String> {
     let tag =
         tokio::task::spawn_blocking(move || atlas_core::github::channel_tag(REPO, on)).await??;
     if tag.is_empty() {
-        bail!("empty version from GitHub");
+        bail!("{}", atlas_i18n::t!("update_empty_version"));
     }
     Ok(tag)
 }
@@ -358,16 +387,24 @@ fn confirm_downgrade(
 ) -> Result<bool> {
     println!();
     println!(
-        "\x1b[1;33m!\x1b[0m Downgrading v{current} → v{offered} ({on}). Data written by v{current} (settings, caches, \
-         terminal host state) may not be readable by the older build; back up ~/.atlas first if it matters."
+        "\x1b[1;33m!{RESET} {}",
+        t!(
+            "cmd_update_downgrading",
+            current = current.to_string(),
+            offered = offered.to_string(),
+            channel = on.to_string()
+        )
     );
     if yes {
         return Ok(true);
     }
     if !interactive() {
-        bail!("a downgrade needs confirmation: run it in a terminal, or pass --yes");
+        bail!("{}", t!("cmd_update_downgrade_needs_confirmation"));
     }
-    print!("Install v{offered} now? [y/N] ");
+    print!(
+        "{} ",
+        t!("cmd_update_install_ask", version = offered.to_string())
+    );
     std::io::stdout().flush()?;
     Ok(ch::parse_confirm(&read_line().unwrap_or_default()))
 }
@@ -399,9 +436,9 @@ fn interactive() -> bool {
 /// Persist `on` in the file shared with Atlas Desktop.
 fn remember_channel(on: Channel) -> Result<()> {
     ch::persist_channel(&channel::file(), on).with_context(|| {
-        format!(
-            "cannot save the update channel to {}",
-            channel::file().display()
+        t!(
+            "cmd_update_channel_save_failed",
+            path = channel::file().display().to_string()
         )
     })
 }
@@ -432,18 +469,21 @@ async fn channel_command(name: Option<Channel>, json: bool) -> Result<()> {
         let view = views
             .iter()
             .find(|v| v.channel == name)
-            .context("channel missing from the listing")?;
+            .with_context(|| t!("cmd_update_channel_missing", channel = name.to_string()))?;
         print!("{}", ch::render_switched(view));
         return Ok(());
     }
 
     print!("{}", ch::render_channels(&views, &installed));
     if !interactive() {
-        println!("Switch with: atlas update channel <stable|beta|alpha>");
+        println!("{}", t!("cmd_update_channel_switch_hint"));
         return Ok(());
     }
     loop {
-        print!("Pick a channel [1-3 or name, Enter keeps {selected}]: ");
+        print!(
+            "{} ",
+            t!("cmd_update_channel_pick", selected = selected.to_string())
+        );
         std::io::stdout().flush()?;
         // EOF behaves like Enter: leave things as they are.
         match ch::parse_pick(&read_line().unwrap_or_default()) {
@@ -453,13 +493,21 @@ async fn channel_command(name: Option<Channel>, json: bool) -> Result<()> {
                 let view = views
                     .iter()
                     .find(|v| v.channel == picked)
-                    .context("channel missing from the listing")?;
+                    .with_context(|| {
+                        t!("cmd_update_channel_missing", channel = picked.to_string())
+                    })?;
                 println!();
                 print!("{}", ch::render_switched(view));
                 return Ok(());
             }
             Pick::Invalid => {
-                println!("Enter 1, 2, 3, stable, beta or alpha (or nothing to keep {selected}).")
+                println!(
+                    "{}",
+                    t!(
+                        "cmd_update_channel_pick_invalid",
+                        selected = selected.to_string()
+                    )
+                )
             }
         }
     }
@@ -484,9 +532,8 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     // `--check` only reports, so it is allowed.
     if !req.check_only && update_core::is_dev_binary() {
         bail!(
-            "this atlas is a dev build or linked to one ({}); `atlas update` only replaces release installs. \
-             `atlas unlink` goes back to the release build",
-            judged.display()
+            "{}",
+            t!("cmd_update_dev_build", path = judged.display().to_string())
         );
     }
     // `atlas link` made ~/.atlas/bin/atlas a symlink to target/debug/atlas: replacing
@@ -500,16 +547,22 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
             .is_ok_and(|m| m.file_type().is_symlink())
     {
         bail!(
-            "atlas is linked to a dev build ({}); run `atlas unlink` first",
-            installed.display()
+            "{}",
+            t!("cmd_update_linked", path = installed.display().to_string())
         );
     }
 
     let current = installed_version();
     if !req.json {
-        println!("\x1b[1;34m◆\x1b[0m Checking for updates...");
-        println!("  Current: v{CURRENT_VERSION}");
-        println!("  Channel: {on}");
+        println!("{}", step(&t!("cmd_update_checking")));
+        println!(
+            "  {}",
+            t!("cmd_update_row_current", version = CURRENT_VERSION)
+        );
+        println!(
+            "  {}",
+            t!("cmd_update_row_channel", channel = on.to_string())
+        );
         println!();
     }
 
@@ -519,11 +572,14 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
         Ok(tag) => tag,
         Err(e) => {
             save_cache(&load_cache().failed_for(on, now_secs()));
-            return Err(e.context(
-                "Could not check for updates. Check your network connection (needs curl).",
-            ));
+            return Err(e.context(t!("cmd_update_check_failed")));
         }
     };
+
+    // Whether the version that runs was withdrawn (`data/yanked.json`): told below, and it turns an
+    // older offer into a rollback instead of "you are ahead". Never fails (an unreadable list is none).
+    let yank =
+        tokio::task::spawn_blocking(|| atlas_core::github::yank_of(REPO, CURRENT_VERSION)).await?;
 
     // Whatever this run does next, the check itself is what the cache holds: the exit banner, the
     // prompt and hostd's `info.update` (the phone's version line) read it, and `--check` is how a
@@ -535,18 +591,25 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
 
     if req.json {
         // `--json` is a report: it never installs.
-        let report = ch::check_json(&current, on, Some(&tag));
+        let report = ch::with_yank(ch::check_json(&current, on, Some(&tag)), yank.as_ref());
         let report = managed_report(&method, &current, &tag, report);
         println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(UpdateOutcome::Unchanged);
     }
 
     let (offered, decision) =
-        ch::offer(&current, &tag).with_context(|| format!("Bad remote version '{tag}'"))?;
+        ch::offer(&current, &tag).with_context(|| t!("cmd_update_bad_tag", tag = tag.as_str()))?;
     let managed = !matches!(
         method,
         InstallMethod::ShellInstaller | InstallMethod::Manual
     );
+
+    if let Some(y) = &yank {
+        println!("{}\n", ch::yank_notice(&current, y, Some(&offered), on));
+    }
+    // A withdrawn running version may leave the channel's safe release below it: leaving is allowed
+    // without `--downgrade` (the confirmation below still applies).
+    let rollback = req.downgrade || yank.is_some();
 
     match decision {
         Decision::Current => {
@@ -559,29 +622,44 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
             return Ok(UpdateOutcome::Unchanged);
         }
         Decision::Ahead => {
-            println!("{}", ch::describe(&current, &tag, on, req.downgrade));
-            if !req.downgrade || req.check_only {
+            // The withdrawal notice above already says what installing the older release means.
+            if yank.is_none() {
+                println!("{}", ch::describe(&current, &tag, on, req.downgrade));
+            }
+            if !rollback || req.check_only {
                 return Ok(UpdateOutcome::Unchanged);
             }
             if managed {
-                bail!(
-                    "--downgrade needs an Atlas installed by the shell installer; another tool manages this one"
-                );
+                bail!("{}", atlas_i18n::t!("update_older_release_managed"));
             }
             if !confirm_downgrade(&current, &offered, on, req.yes)? {
-                println!("Cancelled; nothing was changed.");
+                println!("{}", t!("cmd_update_cancelled"));
                 return Ok(UpdateOutcome::Unchanged);
             }
         }
         Decision::Upgrade => {
             if req.downgrade {
                 bail!(
-                    "--downgrade only applies when the {on} channel offers an older build than v{current}; \
-                     v{offered} is newer, run `atlas update`"
+                    "{}",
+                    t!(
+                        "cmd_update_downgrade_not_newer",
+                        channel = on.to_string(),
+                        current = current.to_string(),
+                        offered = offered.to_string()
+                    )
                 );
             }
-            println!("  Latest:  v{offered}");
-            println!("  Changelog: https://github.com/{REPO}/releases/tag/{tag}");
+            println!(
+                "  {}",
+                t!("cmd_update_row_latest", version = offered.to_string())
+            );
+            println!(
+                "  {}",
+                t!(
+                    "cmd_update_box_changelog",
+                    url = format!("https://github.com/{REPO}/releases/tag/{tag}")
+                )
+            );
             println!();
             if req.check_only {
                 println!(
@@ -589,10 +667,7 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
                     ch::describe(&current, &tag, on, false)
                 );
                 if let InstallMethod::SystemPackage(Some(pm)) = &method {
-                    println!(
-                        "  Installed by {}: `atlas update` downloads, verifies and installs the package.",
-                        pm.name()
-                    );
+                    println!("  {}", t!("cmd_update_installed_by", manager = pm.name()));
                 }
                 return Ok(UpdateOutcome::Unchanged);
             }
@@ -602,9 +677,13 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
 
     match &method {
         InstallMethod::Homebrew => {
-            println!("\x1b[1;34m◆\x1b[0m Installed via Homebrew — run:");
+            println!("{}", step(&t!("cmd_update_brew_title")));
+            // i18n-ignore: the command to run, not text for a person
             println!("  brew upgrade atlas");
-            println!("  (latest: v{latest})");
+            println!(
+                "  {}",
+                t!("cmd_update_brew_latest", version = latest.as_str())
+            );
             update_core::managed_event("homebrew");
             return Ok(UpdateOutcome::Managed);
         }
@@ -612,11 +691,14 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
             return install_package(*pm, &latest, &tag, req.yes).await;
         }
         InstallMethod::SystemPackage(None) => {
+            println!("{}", step(&t!("cmd_update_package_unknown_manager")));
             println!(
-                "\x1b[1;34m◆\x1b[0m Installed by a system package, but no package manager (pacman, dpkg, rpm) was found."
-            );
-            println!(
-                "  Install the v{latest} package for your distribution: https://github.com/{REPO}/releases/tag/{tag}"
+                "  {}",
+                t!(
+                    "cmd_update_package_download",
+                    version = latest.as_str(),
+                    url = format!("https://github.com/{REPO}/releases/tag/{tag}")
+                )
             );
             update_core::managed_event("package");
             return Ok(UpdateOutcome::Managed);
@@ -624,7 +706,7 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
         InstallMethod::ShellInstaller | InstallMethod::Manual => {}
     }
 
-    let exe = env::current_exe().context("cannot locate the running atlas binary")?;
+    let exe = env::current_exe().with_context(|| t!("cmd_update_no_exe"))?;
 
     // Every artifact this update replaces must be writable *before* anything is: the CLI's
     // directory (new binary and `.atlas.prev`) and the installed app (`atlas desktop --sync`).
@@ -637,9 +719,8 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     let blocked = update_core::unwritable(&artifacts);
     if !blocked.is_empty() {
         bail!(
-            "cannot update, nothing was changed: {}. Fix the permissions, or reinstall into your home \
-             with the shell installer (`sudo atlas update` would leave root-owned files there)",
-            blocked.join("; ")
+            "{}",
+            t!("cmd_update_unwritable", blocked = blocked.join("; "))
         );
     }
 
@@ -647,7 +728,10 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     // `atlas desktop --sync` must not wait on us, hence the env marker on that child.
     let _lock = update_core::UpdateLock::acquire()?;
 
-    println!("\x1b[1;34m◆\x1b[0m Downloading v{latest}...");
+    println!(
+        "{}",
+        step(&t!("cmd_update_downloading", version = latest.as_str()))
+    );
     update_core::phase(update_core::Phase::Download);
 
     let platform = current_platform();
@@ -660,14 +744,19 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
         tmp_dir.path(),
         update_core::bytes,
     )
-    .with_context(|| format!("Download failed. Releases: https://github.com/{REPO}/releases"))?;
+    .with_context(|| {
+        t!(
+            "cmd_update_download_failed",
+            url = format!("https://github.com/{REPO}/releases")
+        )
+    })?;
 
     // `download_verified` checks the sha256 before returning.
     update_core::phase(update_core::Phase::Verify);
-    println!("\x1b[1;32m✓\x1b[0m Checksum verified");
+    println!("{}", done(&t!("cmd_update_checksum_verified")));
 
     update_core::phase(update_core::Phase::InstallCli);
-    println!("\x1b[1;34m◆\x1b[0m Installing...");
+    println!("{}", step(&t!("cmd_update_installing")));
 
     let binary = extract_tarball(&std::fs::read(&tarball_path)?)?;
 
@@ -683,14 +772,17 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     let backup = update_core::CliBackup::save(&exe)?;
     if let Err(e) = self_replace::self_replace(tmp_bin.path()) {
         backup.discard();
-        return Err(e).context("Failed to replace the atlas binary");
+        return Err(e).with_context(|| t!("cmd_update_replace_failed"));
     }
 
     // Clear cache
     save_cache(&load_cache().checked_for(on, None));
 
     println!();
-    println!("\x1b[1;32m✓\x1b[0m Updated to v{latest}");
+    println!(
+        "{}",
+        done(&t!("cmd_update_updated", version = latest.as_str()))
+    );
     println!();
 
     settle(&exe, backup, CURRENT_VERSION, &latest)?;
@@ -735,7 +827,7 @@ fn settle(
 ) -> Result<()> {
     let synced = sync_desktop_with_new_binary(exe);
     let result = backup.finish(synced, from, to);
-    println!("\x1b[1;34m◆\x1b[0m Refreshing skills...");
+    println!("{}", step(&t!("cmd_update_refreshing_skills")));
     refresh_with(exe);
     result
 }
@@ -762,30 +854,41 @@ async fn install_package(
     };
     let exe = update_core::judged_exe();
     let asset = pm.asset(latest);
-    println!("\x1b[1;34m◆\x1b[0m Downloading {asset}...");
+    println!(
+        "{}",
+        step(&t!("desktop_pkg_downloading", asset = asset.as_str()))
+    );
     update_core::phase(update_core::Phase::Download);
     let tmp_dir = tempfile::Builder::new().prefix("atlas-update-").tempdir()?;
     let file =
         download_verified(tag, &asset, tmp_dir.path(), update_core::bytes).with_context(|| {
-            format!("Download failed. Releases: https://github.com/{REPO}/releases/tag/{tag}")
+            t!(
+                "cmd_update_download_failed",
+                url = format!("https://github.com/{REPO}/releases/tag/{tag}")
+            )
         })?;
     update_core::phase(update_core::Phase::Verify);
-    println!("\x1b[1;32m✓\x1b[0m Checksum verified");
+    println!("{}", done(&t!("cmd_update_checksum_verified")));
 
     let argv = update_pkg::command_line(esc, pm, &file);
     println!();
-    println!("  This installs v{latest} with {} as root:", pm.name());
+    println!(
+        "  {}",
+        t!(
+            "cmd_update_pkg_will_run",
+            version = latest,
+            manager = pm.name()
+        )
+    );
     println!("    {}", argv.join(" "));
     if !yes {
         if !tty {
-            bail!(
-                "installing a system package needs confirmation: run it in a terminal, or pass --yes"
-            );
+            bail!("{}", t!("cmd_update_pkg_needs_confirmation"));
         }
-        print!("Install v{latest} now? [y/N] ");
+        print!("{} ", t!("cmd_update_install_ask", version = latest));
         std::io::stdout().flush()?;
         if !ch::parse_confirm(&read_line().unwrap_or_default()) {
-            println!("Cancelled; nothing was changed.");
+            println!("{}", t!("cmd_update_cancelled"));
             return Ok(UpdateOutcome::Unchanged);
         }
     }
@@ -794,16 +897,19 @@ async fn install_package(
     // app) must wait: the package manager and the refresh are one critical section.
     let _lock = update_core::UpdateLock::acquire()?;
     update_core::phase(update_core::Phase::InstallCli);
-    println!("\x1b[1;34m◆\x1b[0m Installing with {}...", pm.name());
+    println!(
+        "{}",
+        step(&t!("cmd_update_pkg_installing", manager = pm.name()))
+    );
     update_pkg::run_install(&argv)?;
     save_cache(&load_cache().checked_for(channel::current(), None));
     println!();
-    println!("\x1b[1;32m✓\x1b[0m Updated to v{latest}");
+    println!("{}", done(&t!("cmd_update_updated", version = latest)));
     println!();
 
     // The package manager replaced the file at `exe`; the *installed* binary carries the new
     // skills and hooks, this process still holds the old ones.
-    println!("\x1b[1;34m◆\x1b[0m Refreshing skills...");
+    println!("{}", step(&t!("cmd_update_refreshing_skills")));
     refresh_with(&exe);
     // The app is package-owned too (`atlas-desktop` in the same package set); nothing to sync
     // unless a user-level app exists, which `desktop --sync` handles.
@@ -824,8 +930,8 @@ fn show_package_command(
 ) -> Result<UpdateOutcome> {
     let command = pm.manual_command(latest);
     println!(
-        "\x1b[1;34m◆\x1b[0m Installed by {} — update it with:",
-        pm.name()
+        "{}",
+        step(&t!("cmd_update_pkg_managed", manager = pm.name()))
     );
     println!("  {command}");
     update_core::managed_package_event(pm.name(), installable, &command);
@@ -834,11 +940,13 @@ fn show_package_command(
     }
     if installable {
         bail!(
-            "installing a system package needs confirmation: run it in a terminal, pass --yes, or run: {command}"
+            "{}",
+            t!("cmd_update_pkg_confirm_or_run", command = command.as_str())
         );
     }
     bail!(
-        "installing a system package needs a terminal or pkexec for the password: run it in a terminal: {command}"
+        "{}",
+        t!("cmd_update_pkg_needs_terminal", command = command.as_str())
     )
 }
 
@@ -852,13 +960,18 @@ fn reconcile_host_with_new_binary(exe: &std::path::Path) {
         Ok(st) => {
             update_core::host_event("failed", 0);
             eprintln!(
-                "\x1b[33m◆\x1b[0m Terminal host check failed ({st}); run `atlas hostd --check`"
+                "{}",
+                warn(&t!(
+                    "cmd_update_host_check_failed",
+                    status = crate::chrome::exit_text(st)
+                ))
             );
         }
         Err(e) => {
             update_core::host_event("failed", 0);
             eprintln!(
-                "\x1b[33m◆\x1b[0m Terminal host check failed: {e}; run `atlas hostd --check`"
+                "{}",
+                warn(&t!("cmd_update_host_check_error", reason = e.to_string()))
             );
         }
     }
@@ -870,11 +983,17 @@ fn sync_desktop_with_new_binary(exe: &std::path::Path) -> Result<()> {
         .args(["desktop", "--sync"])
         .env(update_core::HOLDS_LOCK_ENV, "1")
         .status()
-        .context("cannot run the new atlas")?;
+        .with_context(|| t!("cmd_update_run_new_failed"))?;
     if st.success() {
         Ok(())
     } else {
-        bail!("`atlas desktop --sync` failed ({st})")
+        bail!(
+            "{}",
+            t!(
+                "cmd_update_desktop_sync_failed",
+                status = crate::chrome::exit_text(st)
+            )
+        )
     }
 }
 
@@ -884,7 +1003,11 @@ fn sync_desktop_with_new_binary(exe: &std::path::Path) -> Result<()> {
 fn sync_desktop_best_effort(exe: &std::path::Path) {
     if let Err(e) = sync_desktop_with_new_binary(exe) {
         eprintln!(
-            "\x1b[33m◆\x1b[0m Atlas Desktop could not follow: {e:#} (non-fatal); run `atlas desktop --install`"
+            "{}",
+            warn(&t!(
+                "cmd_update_desktop_could_not_follow",
+                reason = format!("{e:#}")
+            ))
         );
     }
 }
@@ -906,7 +1029,14 @@ fn refresh_with(exe: &std::path::Path) {
 fn run_self(args: &[&str]) {
     match env::current_exe() {
         Ok(exe) => run_self_with(&exe, args),
-        Err(e) => eprintln!("\x1b[33m◆\x1b[0m `atlas {}` skipped: {e}", args.join(" ")),
+        Err(e) => eprintln!(
+            "{}",
+            warn(&t!(
+                "cmd_update_step_skipped",
+                args = args.join(" "),
+                reason = e.to_string()
+            ))
+        ),
     }
 }
 
@@ -914,12 +1044,20 @@ fn run_self_with(exe: &std::path::Path, args: &[&str]) {
     match std::process::Command::new(exe).args(args).status() {
         Ok(st) if st.success() => {}
         Ok(st) => eprintln!(
-            "\x1b[33m◆\x1b[0m `atlas {}` failed ({st}) (non-fatal)",
-            args.join(" ")
+            "{}",
+            warn(&t!(
+                "cmd_update_step_failed_status",
+                args = args.join(" "),
+                status = crate::chrome::exit_text(st)
+            ))
         ),
         Err(e) => eprintln!(
-            "\x1b[33m◆\x1b[0m `atlas {}` failed: {e} (non-fatal)",
-            args.join(" ")
+            "{}",
+            warn(&t!(
+                "cmd_update_step_failed_error",
+                args = args.join(" "),
+                reason = e.to_string()
+            ))
         ),
     }
 }
@@ -946,12 +1084,12 @@ fn extract_tarball(data: &[u8]) -> Result<Vec<u8>> {
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
             if buf.is_empty() {
-                bail!("the atlas binary in the tarball is empty; refusing to install it");
+                bail!("{}", t!("cmd_update_tarball_empty"));
             }
             return Ok(buf);
         }
     }
-    bail!("Could not find atlas binary in tarball")
+    bail!("{}", t!("cmd_update_tarball_missing"))
 }
 
 #[cfg(test)]
@@ -1003,7 +1141,7 @@ mod extract_tests {
             ("other", tar::EntryType::Regular, b"x"),
         ]);
         let e = extract_tarball(&dir).unwrap_err().to_string();
-        assert!(e.contains("Could not find atlas binary"), "{e}");
+        assert_eq!(e, atlas_i18n::t_in!("en", "cmd_update_tarball_missing"));
         // And a real file after the directory entry is still found.
         let both = tarball(&[
             (exe().as_str(), tar::EntryType::Directory, b"".as_slice()),

@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use atlas_core::clock::Clock;
 use atlas_core::ipc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
@@ -49,14 +50,16 @@ impl ControlServer {
         root_dir: &Path,
         guard: Guard,
     ) -> std::io::Result<(Self, mpsc::Receiver<ControlRequest>)> {
-        Self::bind_with(root_dir, guard, QUEUE_WAIT)
+        Self::bind_with(root_dir, guard, QUEUE_WAIT, Clock::default())
     }
 
-    /// [`bind`](Self::bind) with another wait for a queue slot (tests shorten it).
+    /// [`bind`](Self::bind) with another wait for a queue slot, measured on `clock` (tests shorten it and move
+    /// the clock by hand).
     pub(crate) fn bind_with(
         root_dir: &Path,
         guard: Guard,
         queue_wait: Duration,
+        clock: Clock,
     ) -> std::io::Result<(Self, mpsc::Receiver<ControlRequest>)> {
         let path = socket_path(root_dir);
         crate::runtime::ensure_log_dir(&crate::runtime::log_dir(root_dir))?;
@@ -88,7 +91,7 @@ impl ControlServer {
                             refuse_busy(stream).await;
                             continue;
                         }
-                        conns.spawn(serve_conn(stream, tx.clone(), guard.clone(), queue_wait));
+                        conns.spawn(serve_conn(stream, tx.clone(), guard.clone(), queue_wait, clock.clone()));
                     }
                     Some(_) = conns.join_next(), if !conns.is_empty() => {}
                 }
@@ -184,6 +187,7 @@ async fn serve_conn(
     tx: mpsc::Sender<ControlRequest>,
     guard: Guard,
     queue_wait: Duration,
+    clock: Clock,
 ) {
     let (rd, mut wr) = ipc::split(stream);
     let mut rd = BufReader::new(rd);
@@ -200,7 +204,14 @@ async fn serve_conn(
             (ControlResponse::err("request too large"), None)
         } else {
             let line = String::from_utf8_lossy(&buf);
-            handle_line(line.trim_end_matches(['\n', '\r']), &tx, &guard, queue_wait).await
+            handle_line(
+                line.trim_end_matches(['\n', '\r']),
+                &tx,
+                &guard,
+                queue_wait,
+                &clock,
+            )
+            .await
         };
         let Ok(mut text) = serde_json::to_string(&resp.0) else {
             break;
@@ -226,6 +237,7 @@ async fn handle_line(
     tx: &mpsc::Sender<ControlRequest>,
     guard: &Guard,
     queue_wait: Duration,
+    clock: &Clock,
 ) -> LineReply {
     if line.len() > MAX_LINE_BYTES {
         return (ControlResponse::err("request too large"), None);
@@ -253,10 +265,16 @@ async fn handle_line(
     } else {
         (None, None)
     };
-    match tokio::time::timeout(queue_wait, tx.send(ControlRequest { cmd, reply, stream })).await {
-        Ok(Ok(())) => {}
-        Ok(Err(_)) => return (ControlResponse::err("atlas dev is shutting down"), None),
-        Err(_) => return (ControlResponse::err(BUSY), None),
+    // `biased`: a free slot wins over an expired wait, as `tokio::time::timeout` polled the send first.
+    let queued = tokio::select! {
+        biased;
+        sent = tx.send(ControlRequest { cmd, reply, stream }) => Some(sent),
+        () = clock.sleep(queue_wait) => None,
+    };
+    match queued {
+        Some(Ok(())) => {}
+        Some(Err(_)) => return (ControlResponse::err("atlas dev is shutting down"), None),
+        None => return (ControlResponse::err(BUSY), None),
     }
     let resp = match tokio::time::timeout(REPLY_TIMEOUT, rx).await {
         Ok(Ok(resp)) => resp,

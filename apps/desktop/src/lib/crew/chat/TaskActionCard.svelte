@@ -13,7 +13,10 @@
 	import type { ChatState } from "./chat.svelte.ts";
 	import type { Attachment } from "#lib/crew/attachments.ts";
 	import ActionImages from "./ActionImages.svelte";
+	import VoiceMic from "./VoiceMic.svelte";
+	import { voiceStatus } from "#lib/crew/voice/status.svelte.ts";
 	import TaskImages from "./TaskImages.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		/** The task's images (`Task.attachments`); the card shows the agent's. */
@@ -43,6 +46,19 @@
 	const answer = (value: string) => void chat.answerAction(taskId, crewmateId, value);
 	const cancel = () => void chat.cancelAction(taskId, crewmateId);
 
+	/**
+	 * The microphone of a choice card: the transcript goes to hostd, which matches it to one option (or says it could
+	 * not). The card never picks an option from words itself; it closes only when hostd answered the action.
+	 */
+	// svelte-ignore state_referenced_locally (the chat of a card never changes; the ids are read at each use)
+	const voice = chat.voiceAnswer(
+		"choice",
+		(transcript) => chat.actionVoice(taskId, crewmateId, transcript),
+		(_, view) => {
+			if (view.decided && "choice" in view.decided) chat.settleAction(taskId, view.decided.choice);
+		},
+	);
+
 	function setInput(value: string) {
 		chat.actionInputs = { ...chat.actionInputs, [taskId]: value };
 	}
@@ -53,16 +69,22 @@
 
 <div class="action-card" role="alert">
 	{#if action.kind === "connect_github"}
-		<div class="action-title">Connect GitHub to continue</div>
+		<div class="action-title">{m.crew_chat_task_action_card_connect_github_to_continue()}</div>
 		<div class="action-reason">{action.reason}</div>
 		{#if status?.login}
-			<div class="action-connected">Connected as @{status.login}</div>
+			<div class="action-connected">
+				{m.crew_chat_task_action_card_connected_as_login({ account: `@${status.login}` })}
+			</div>
 		{:else if flow}
 			<GithubDeviceFlow {flow} {polling} oncancel={() => githubCrew.stopPolling(hostKey)} />
 		{:else}
 			<div class="action-btns">
-				<Button size="sm" onclick={() => void githubCrew.startLogin(hostKey)}>Connect</Button>
-				<Button variant="ghost" size="sm" onclick={cancel}>Cancel task</Button>
+				<Button size="sm" onclick={() => void githubCrew.startLogin(hostKey)}
+					>{m.crew_chat_task_action_card_connect()}</Button
+				>
+				<Button variant="ghost" size="sm" onclick={cancel}
+					>{m.crew_chat_task_action_card_cancel_task()}</Button
+				>
 			</div>
 		{/if}
 	{:else if action.kind === "provide_secret"}
@@ -70,7 +92,7 @@
 		<div class="action-reason">{action.reason}</div>
 		<ActionTextAnswer
 			type="password"
-			placeholder="Enter value"
+			placeholder={m.crew_chat_task_action_card_enter_value()}
 			label={action.label}
 			value={chat.actionSecrets[taskId] ?? ""}
 			{submitting}
@@ -105,29 +127,38 @@
 				</button>
 			{/each}
 		</div>
+		<VoiceMic
+			session={voice}
+			disabled={submitting}
+			unsupported={!!voiceStatus.loaded[hostKey] && !voiceStatus.of(hostKey)}
+		/>
 	{:else if action.kind === "sign_in_engine"}
-		<div class="action-title">Sign in to {action.engine}</div>
-		<div class="action-reason">Sign in to {action.engine} in Settings, then click Done.</div>
+		<div class="action-title">
+			{m.crew_chat_task_action_card_sign_in_to_engine({ engine: action.engine })}
+		</div>
+		<div class="action-reason">{m.crew_chat_task_action_card_sign_in_hint({ engine: action.engine })}</div>
 		<div class="action-btns">
-			<Button size="sm" disabled={submitting} onclick={() => answer("done")}>Done</Button>
-			<Button variant="ghost" size="sm" onclick={cancel}>Cancel</Button>
+			<Button size="sm" disabled={submitting} onclick={() => answer("done")}>{m.common_action_done()}</Button>
+			<Button variant="ghost" size="sm" onclick={cancel}>{m.common_action_cancel()}</Button>
 		</div>
 	{:else if action.kind === "add_trigger"}
-		<div class="action-title">{crewmateName} wants to add an automation</div>
+		<div class="action-title">{m.crew_chat_task_action_card_wants_to_add_automation({ crewmateName })}</div>
 		<div class="action-reason">{action.reason}</div>
 		<div class="action-detail">{describeTrigger(action.trigger)}</div>
 		{#if action.prompt}
 			<div class="action-reason">{action.prompt}</div>
 		{/if}
 		<div class="action-btns">
-			<Button size="sm" disabled={submitting} onclick={() => answer("add")}>Add</Button>
-			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("skip")}>Not now</Button>
+			<Button size="sm" disabled={submitting} onclick={() => answer("add")}>{m.common_action_add()}</Button>
+			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("skip")}
+				>{m.crew_chat_task_action_card_not_now()}</Button
+			>
 		</div>
 	{:else if action.kind === "refused" || action.kind === "prove_ui"}
 		<div class="action-title">
 			{action.kind === "prove_ui"
-				? `${crewmateName} could not prove this UI work`
-				: `${crewmateName}'s work was refused`}
+				? m.crew_chat_task_action_card_prove_ui_failed({ crewmateName })
+				: m.crew_chat_task_action_card_work_refused({ crewmateName })}
 		</div>
 		{#if agentImages.length}
 			<TaskImages attachments={agentImages} {taskId} {crewmateId} {hostKey} align="start" />
@@ -145,16 +176,19 @@
 			onremove={(i) => chat.removeActionImage(taskId, i)}
 		/>
 		<div class="action-btns">
-			<Button size="sm" disabled={submitting} onclick={() => answer("retry")}>Retry with these reasons</Button
+			<Button size="sm" disabled={submitting} onclick={() => answer("retry")}
+				>{m.crew_chat_task_action_card_retry_with_these_reasons()}</Button
 			>
 			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("override")}
-				>Override</Button
+				>{m.crew_chat_task_action_card_override()}</Button
 			>
 		</div>
 	{:else}
-		<div class="action-title">{(action as { label?: string }).label ?? "Response needed"}</div>
+		<div class="action-title">
+			{(action as { label?: string }).label ?? m.crew_chat_task_action_card_response_needed()}
+		</div>
 		<ActionTextAnswer
-			label="Response"
+			label={m.crew_chat_task_action_card_response()}
 			value={chat.actionInputs[taskId] ?? ""}
 			{submitting}
 			onchange={setInput}

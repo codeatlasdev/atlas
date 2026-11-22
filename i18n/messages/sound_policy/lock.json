@@ -1,0 +1,24 @@
+{
+  "pt-BR": {
+    "sound_policy_agent_done_description": "af4c9d688812",
+    "sound_policy_agent_done_label": "240ed83b6b08",
+    "sound_policy_agent_needs_you_description": "a7c03b47f15b",
+    "sound_policy_agent_needs_you_label": "23f809099308",
+    "sound_policy_boot_description": "4d13644c1e8f",
+    "sound_policy_boot_label": "acc042e2d88d",
+    "sound_policy_discovery_done_description": "153156c966ed",
+    "sound_policy_discovery_done_label": "8de010eda3e1",
+    "sound_policy_error_description": "3613d333a7da",
+    "sound_policy_error_label": "b92720ff88a1",
+    "sound_policy_service_failed_description": "774c1ed3f80f",
+    "sound_policy_service_failed_label": "00c204be208f",
+    "sound_policy_stack_up_description": "2b54dacd6657",
+    "sound_policy_stack_up_label": "1a84ef4e1d97",
+    "sound_policy_success_description": "f70b37292daf",
+    "sound_policy_success_label": "4fb918d6be2e",
+    "sound_policy_toggle_description": "55acabd3a20c",
+    "sound_policy_toggle_label": "56ceda5dd996",
+    "sound_policy_update_description": "be8310860bc6",
+    "sound_policy_update_label": "bc00c35a3902"
+  }
+}

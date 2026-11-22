@@ -3,13 +3,17 @@
 	import { onMount } from "svelte";
 	import Frame from "./Frame.svelte";
 	import { Beats } from "./beats.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	// 0 main, 1 branch a, 2 branch b, 3 commits, 4 merge a, 5 hold
 	const beats = new Beats([600, 600, 600, 700, 800, 2400]);
 	onMount(() => beats.start());
+	// The pill is drawn in SVG units, so its width follows its text (monospace 10.5px is about 6.4 units a character).
+	const merged = $derived(m.onboarding_scene_worktrees_merged());
+	const mergedWidth = $derived(Math.max(70, Math.ceil(merged.length * 6.4 + 22)));
 </script>
 
-<Frame title="shop · worktrees">
+<Frame title={m.onboarding_scene_worktrees_shop_worktrees()}>
 	<svg viewBox="0 0 420 200" aria-hidden="true">
 		<defs>
 			<linearGradient id="deck-wt" x1="0" x2="1">
@@ -27,13 +31,17 @@
 		<circle class="node b" class:on={beats.n >= 3} cx="250" cy="150" r="5" />
 		<circle class="node merge" class:on={beats.n >= 4} cx="360" cy="100" r="7" />
 		<g class="tag" class:on={beats.n >= 1} transform="translate(170 22)">
-			<rect width="104" height="20" rx="10" /><text x="52" y="14">feat/checkout</text>
+			<rect width="104" height="20" rx="10" />
+			<!-- i18n-ignore: a sample branch name, not prose -->
+			<text x="52" y="14">feat/checkout</text>
 		</g>
 		<g class="tag b" class:on={beats.n >= 2} transform="translate(214 168)">
-			<rect width="104" height="20" rx="10" /><text x="52" y="14">fix/cart-total</text>
+			<rect width="104" height="20" rx="10" />
+			<!-- i18n-ignore: a sample branch name, not prose -->
+			<text x="52" y="14">fix/cart-total</text>
 		</g>
 		<g class="tag ok" class:on={beats.n >= 4} transform="translate(318 66)">
-			<rect width="70" height="20" rx="10" /><text x="35" y="14">merged</text>
+			<rect width={mergedWidth} height="20" rx="10" /><text x={mergedWidth / 2} y="14">{merged}</text>
 		</g>
 	</svg>
 </Frame>

@@ -5,6 +5,11 @@
 //! (0600; `~/.atlas/desktop/…` by default), which the omp extension and
 //! `atlas hook` re-read on every event, so they survive daemon restarts.
 //!
+//! `POST /github/webhook` is the one route with no hook token: GitHub's deliveries to the crew server's App, which
+//! the operator's reverse proxy or tunnel forwards here (Atlas never exposes this server itself). It is authorised
+//! by `X-Hub-Signature-256` over the raw body alone (`crew::triggers::github_hook`), never by the token and never
+//! through the token-in-path webhook route.
+//!
 //! `POST /hook/<agent>/decision` (a permission prompt) replies `{"decision": "allow"|"deny"|null}`
 //! once a mobile client answers, or `null` at once when none is connected.
 
@@ -20,6 +25,11 @@ use super::hook_auth::{Caller, Verdict, authorize, scrub};
 use crate::paths;
 
 const MAX_BODY: usize = 1024 * 1024;
+/// A GitHub delivery is read whole before its signature can be checked, so the bound is lower than GitHub's own 25 MB
+/// (an issue or comment body is at most 65 536 characters; a payload is some hundreds of KiB at the most).
+const GITHUB_MAX_BODY: usize = 2 * 1024 * 1024;
+/// How long the body of an unauthenticated delivery may take to arrive.
+const GITHUB_BODY_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 /// How long a permission prompt waits for a phone. Below the 60 s timeout the hook is
 /// registered with (`atlas setup`); `atlas hook` waits this plus a margin.
 pub const DECISION_WAIT: std::time::Duration = std::time::Duration::from_secs(55);
@@ -35,6 +45,7 @@ async fn bind_loopback(fixed: Option<u16>) -> std::io::Result<TcpListener> {
     if let Some(want) = fixed.filter(|p| *p != 0) {
         match TcpListener::bind(("127.0.0.1", want)).await {
             Ok(l) => return Ok(l),
+            // i18n-ignore: log
             Err(e) => eprintln!(
                 "atlas hostd: hook port {want} unavailable ({e}); isolated crewmates cannot report until it is free"
             ),
@@ -109,8 +120,16 @@ async fn serve(
     r.read_line(&mut line).await?;
     let mut parts = line.split_whitespace();
     let method = parts.next().unwrap_or("").to_string();
-    let path = parts.next().unwrap_or("").to_string();
+    // A query string names nothing here (the pane is in the body): the route is the path.
+    let path = parts
+        .next()
+        .unwrap_or("")
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .to_string();
     let (mut len, mut tok) = (0usize, String::new());
+    let (mut signature, mut delivery, mut event) = (None, None, None);
     loop {
         line.clear();
         if r.read_line(&mut line).await? == 0 || line.trim().is_empty() {
@@ -120,9 +139,23 @@ async fn serve(
             match k.trim().to_ascii_lowercase().as_str() {
                 "content-length" => len = v.trim().parse().unwrap_or(0),
                 "x-atlas-hook-token" => tok = v.trim().to_string(),
+                "x-hub-signature-256" => signature = Some(v.trim().to_string()),
+                "x-github-delivery" => delivery = Some(v.trim().to_string()),
+                "x-github-event" => event = Some(v.trim().to_string()),
                 _ => {}
             }
         }
+    }
+    if path == crate::crew::store::GITHUB_WEBHOOK_PATH {
+        let (status, body) = github_webhook(
+            &method,
+            len,
+            &mut r,
+            [signature, delivery, event],
+            crew_hub.as_ref(),
+        )
+        .await?;
+        return respond(&mut w, status, &body).await;
     }
     let caller = caller_of(&tok, token, crew_hub.as_ref());
     let (status, body) = if method.as_str() != "POST" {
@@ -158,16 +191,65 @@ async fn serve(
                     if let Some(c) = &caller {
                         scrub(c, &mut v);
                     }
-                    route(hub, mobile.can_approve(), &path, &v).await
+                    match crew_decision(crew_hub.as_ref(), &path, &v, mobile.can_approve()).await {
+                        Some(reply) => reply,
+                        None => route(hub, mobile.can_approve(), &path, &v).await,
+                    }
                 }
             }
         }
     };
+    respond(&mut w, status, &body).await
+}
+
+async fn respond(
+    w: &mut tokio::net::tcp::OwnedWriteHalf,
+    status: &str,
+    body: &str,
+) -> std::io::Result<()> {
     let resp = format!(
         "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
     w.write_all(resp.as_bytes()).await
+}
+
+/// `POST /github/webhook`: read the raw body (bounded, with a deadline: nobody has been authenticated yet) and hand
+/// it to `crew::triggers::github_hook::receive`, which checks the signature before anything else.
+/// `headers` are `[X-Hub-Signature-256, X-GitHub-Delivery, X-GitHub-Event]`.
+async fn github_webhook(
+    method: &str,
+    len: usize,
+    r: &mut BufReader<tokio::net::tcp::OwnedReadHalf>,
+    headers: [Option<String>; 3],
+    crew_hub: Option<&std::sync::Weak<crate::server::Hub>>,
+) -> std::io::Result<(&'static str, String)> {
+    if method != "POST" {
+        return Ok(("405 Method Not Allowed", String::new()));
+    }
+    let Some(hub) = crew_hub.and_then(|w| w.upgrade()) else {
+        return Ok(("503 Service Unavailable", String::new()));
+    };
+    if len > GITHUB_MAX_BODY {
+        return Ok(("413 Payload Too Large", String::new()));
+    }
+    let mut raw = vec![0u8; len];
+    match tokio::time::timeout(GITHUB_BODY_WAIT, r.read_exact(&mut raw)).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Ok(("408 Request Timeout", String::new())),
+    }
+    let [signature, delivery, event] = &headers;
+    Ok(crate::crew::triggers::github_hook::receive(
+        &hub,
+        crate::crew::triggers::github_hook::Headers {
+            signature: signature.as_deref(),
+            delivery: delivery.as_deref(),
+            event: event.as_deref(),
+        },
+        &raw,
+    )
+    .await)
 }
 
 /// Who a presented token is: the global one, a crewmate's own, or nobody (`None`: 401). Compared without
@@ -186,6 +268,27 @@ fn caller_of(
         .store
         .crewmate_of_hook_token(presented)
         .map(Caller::Crewmate)
+}
+
+/// A crewmate pane's permission prompt (`POST /hook/<agent>/decision`): decided by hostd, not held for any
+/// phone that happens to be there: the rails, the crewmate's mode and the task's grants first, a person after
+/// (`crew::approval`). `None` for every other request, which `route` answers.
+async fn crew_decision(
+    crew_hub: Option<&std::sync::Weak<crate::server::Hub>>,
+    path: &str,
+    v: &Value,
+    can_approve: bool,
+) -> Option<(&'static str, String)> {
+    let agent = path.strip_prefix("/hook/")?.strip_suffix("/decision")?;
+    if agent.is_empty() || agent.contains('/') {
+        return None;
+    }
+    let pane = v["pane_key"]
+        .as_str()
+        .filter(|p| crate::crew::pane::is_crewmate_pane(p))?;
+    let hub = crew_hub?.upgrade()?;
+    let reply = crate::crew::approval::decide(&hub, agent, pane, &v["payload"], can_approve).await;
+    Some(("200 OK", reply.body()))
 }
 
 async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'static str, String) {
@@ -229,6 +332,7 @@ async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'s
 /// - `POST /crew/<id>/locate`        — the locate tool: route, component and selector of a screenshot region
 /// - `POST /crew/<id>/ui_gate`       — the ui_gate tool: plan per change, rerun failures, regressions
 /// - `POST /crew/<id>/set_ui`        — the agent marks its task as a UI task (needs captures to be done)
+/// - `POST /crew/<id>/git_credential` — the git credential helper: an installation token for one git operation
 async fn route_crew(
     hub: &Arc<crate::server::Hub>,
     path: &str,
@@ -253,6 +357,9 @@ async fn route_crew(
         "locate" => handle_locate(hub, crewmate_id, &v()).await,
         "ui_gate" => handle_ui_gate(hub, crewmate_id, &v()).await,
         "set_ui" => handle_set_ui(hub, crewmate_id, &v()),
+        "git_credential" => {
+            crate::crew::github::app::credential_reply(hub, crewmate_id, &v()).await
+        }
         _ => ("404 Not Found", String::new()),
     }
 }
@@ -442,9 +549,9 @@ async fn handle_ask(
         }
     }
 
-    // Register waiter and block until answered or timed out (30 min).
+    // Register waiter and block until answered or timed out ([`CREWMATE_DECISION_WAIT`], 30 min).
     let rx = hub.crew.wait_ask(ask_id.clone());
-    match tokio::time::timeout(std::time::Duration::from_secs(30 * 60), rx).await {
+    match tokio::time::timeout(CREWMATE_DECISION_WAIT, rx).await {
         Ok(Ok(answer)) => {
             let text = match &answer {
                 AskAnswer::Key { value } => value.clone(),
@@ -501,5 +608,29 @@ pub fn parse_decision(body: &str) -> Option<bool> {
         "allow" => Some(true),
         "deny" => Some(false),
         _ => None,
+    }
+}
+
+/// Test helper: run `ask` (a hook asking for a permission prompt, blocking on its socket) and return its body,
+/// failing at once if the daemon HELD the prompt: a held prompt announces itself as an `agent_approval` on `events`
+/// before it waits [`DECISION_WAIT`] for an answer, so seeing that event is the proof, where timing the call is not
+/// (a loaded runner makes any "answered within N seconds" budget flake).
+#[cfg(all(test, unix))]
+pub(crate) async fn answered_without_holding(
+    events: &mut tokio::sync::broadcast::Receiver<crate::client::HostEvent>,
+    ask: impl FnOnce() -> String + Send + 'static,
+) -> String {
+    use tokio::sync::broadcast::error::RecvError;
+    let call = tokio::task::spawn_blocking(ask);
+    tokio::pin!(call);
+    loop {
+        tokio::select! {
+            body = &mut call => return body.unwrap(),
+            ev = events.recv() => match ev {
+                Ok(e) if e["ev"] == "agent_approval" => panic!("the prompt was held for an answer: {e}"),
+                Err(RecvError::Closed) => return call.await.unwrap(),
+                _ => {}
+            },
+        }
     }
 }

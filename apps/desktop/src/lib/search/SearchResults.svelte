@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { tick } from "svelte";
 	import { ChevronRight, ChevronDown } from "@lucide/svelte";
 	import { fileIcon } from "#lib/icons.ts";
 	import { openFile } from "#lib/stores/files.svelte.ts";
 	import type { SearchState } from "#lib/search/search.svelte.ts";
-	import { dirOf, flatRows, nameOf, navKey, previewRuns } from "#lib/search/rows.ts";
+	import { dirOf, flatRows, nameOf, navKey, previewRuns, type Row } from "#lib/search/rows.ts";
+	import VirtualList from "#lib/components/VirtualList.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import { kbd } from "#lib/keys.ts";
 
 	/** Result tree (files with their matches) and its keyboard navigation. */
 	let {
@@ -22,13 +24,14 @@
 
 	let collapsed = $state<Record<string, boolean>>({});
 	let cursor = $state(0);
+	let vl: ReturnType<typeof VirtualList<Row>> | undefined = $state();
 
 	let rows = $derived(flatRows(s.files, collapsed));
 
 	/** Move from the query field into the list (ArrowDown). */
 	export function enter() {
 		if (!rows.length) return false;
-		void move(0);
+		move(0);
 		list?.focus();
 		return true;
 	}
@@ -47,16 +50,16 @@
 		else openFile(worktreeId, r.path, r.match.line, r.match.start + 1);
 	}
 
-	async function move(to: number) {
+	function move(to: number) {
 		cursor = Math.min(rows.length - 1, Math.max(0, to));
-		await tick();
-		list?.querySelector(`[data-row="${cursor}"]`)?.scrollIntoView({ block: "nearest" });
+		// The cursor's row may not be in the DOM (the list renders a window): scroll by index, not by element.
+		vl?.reveal(cursor);
 	}
 
 	function onkeydown(e: KeyboardEvent) {
 		const act = navKey(e.key, rows, cursor);
 		if (!act) return;
-		if (act.type === "move") (e.preventDefault(), void move(act.to));
+		if (act.type === "move") (e.preventDefault(), move(act.to));
 		else if (act.type === "leave") (e.preventDefault(), onleaveup());
 		else if (act.type === "open") (e.preventDefault(), open(cursor));
 		else if (act.type === "fold") collapsed[act.path] = act.collapsed;
@@ -66,68 +69,105 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div class="list" bind:this={list} {onkeydown} tabindex="0" role="tree" aria-label="Search results">
-	{#if s.phase === "idle"}
-		<div class="hint">
-			<p>Search every file in this worktree.</p>
-			<p class="sub">Type to search. Use ↑ ↓ to move, Enter to open at the line.</p>
-		</div>
-	{:else if s.phase === "done" && !s.files.length}
-		<div class="hint">
-			<p>Nothing matches “{s.query}”.</p>
-			<p class="sub">Try fewer words, turn off whole word, or clear the file filters.</p>
-		</div>
-	{/if}
-	{#each rows as r, i (r.key)}
-		{#if r.kind === "file"}
-			<div
-				class="file"
-				class:cur={cursor === i}
-				data-row={i}
-				role="treeitem"
-				aria-selected={cursor === i}
-				aria-expanded={!collapsed[r.path]}
-				tabindex="-1"
-				onclick={() => ((cursor = i), open(i))}
-				onkeydown={(e) => e.key === "Enter" && open(i)}
-			>
-				{#if collapsed[r.path]}<ChevronRight size={11} />{:else}<ChevronDown size={11} />{/if}
-				<span class="ico" data-contrast-decorative>{@html fileIcon(nameOf(r.path))}</span>
-				<span class="fname">{nameOf(r.path)}</span>
-				<span class="fdir">{dirOf(r.path)}</span>
-				<span class="count">{r.count}</span>
-			</div>
-		{:else}
-			<div
-				class="match"
-				class:cur={cursor === i}
-				data-row={i}
-				role="treeitem"
-				aria-selected={cursor === i}
-				tabindex="-1"
-				onclick={() => ((cursor = i), open(i))}
-				onkeydown={(e) => e.key === "Enter" && open(i)}
-			>
-				<span class="ln">{r.match.line}</span>
-				<span class="txt"
-					>{#each previewRuns(r.match) as run, k (k)}{#if run.hit}<mark>{run.text}</mark
-							>{:else}{run.text}{/if}{/each}</span
-				>
-			</div>
-		{/if}
-	{/each}
-	{#if s.truncated}
-		<p class="more">Showing the first results. Narrow the search to see the rest.</p>
-	{/if}
+<div
+	class="list"
+	bind:this={list}
+	{onkeydown}
+	tabindex="0"
+	role="tree"
+	aria-label={m.search_results_search_results()}
+>
+	<VirtualList bind:this={vl} class="vlist" items={rows} key={(r) => r.key} estimate={22}>
+		{#snippet header()}
+			{#if s.phase === "idle"}
+				<div class="hint">
+					<p>{m.search_results_search_every_file_in_this()}</p>
+					<p class="sub">
+						{m.search_results_type_to_search_use_to({
+							up: kbd("up"),
+							down: kbd("down"),
+							enter: kbd("enter"),
+						})}
+					</p>
+				</div>
+			{:else if s.phase === "done" && !s.files.length}
+				<div class="hint">
+					<p>{m.search_results_nothing_matches_query({ query: s.query })}</p>
+					<p class="sub">{m.search_results_try_fewer_words_turn_off()}</p>
+				</div>
+			{/if}
+		{/snippet}
+		{#snippet item(r, i)}
+			{#if r.kind === "file"}
+				<div class="box head">
+					<div
+						class="file"
+						class:cur={cursor === i}
+						data-row={i}
+						role="treeitem"
+						aria-selected={cursor === i}
+						aria-expanded={!collapsed[r.path]}
+						tabindex="-1"
+						onclick={() => ((cursor = i), open(i))}
+						onkeydown={(e) => e.key === "Enter" && open(i)}
+					>
+						{#if collapsed[r.path]}<ChevronRight size={11} />{:else}<ChevronDown size={11} />{/if}
+						<span class="ico" data-contrast-decorative>{@html fileIcon(nameOf(r.path))}</span>
+						<span class="fname">{nameOf(r.path)}</span>
+						<span class="fdir">{dirOf(r.path)}</span>
+						<span class="count">{r.count}</span>
+					</div>
+				</div>
+			{:else}
+				<div class="box">
+					<div
+						class="match"
+						class:cur={cursor === i}
+						data-row={i}
+						role="treeitem"
+						aria-selected={cursor === i}
+						tabindex="-1"
+						onclick={() => ((cursor = i), open(i))}
+						onkeydown={(e) => e.key === "Enter" && open(i)}
+					>
+						<span class="ln">{r.match.line}</span>
+						<span class="txt"
+							>{#each previewRuns(r.match) as run, k (k)}{#if run.hit}<mark>{run.text}</mark
+									>{:else}{run.text}{/if}{/each}</span
+						>
+					</div>
+				</div>
+			{/if}
+		{/snippet}
+		{#snippet footer()}
+			{#if s.truncated}
+				<p class="more">{m.search_results_showing_the_first_results_narrow()}</p>
+			{/if}
+			<div class="end"></div>
+		{/snippet}
+	</VirtualList>
 </div>
 
 <style>
 	.list {
 		flex: 1;
 		min-height: 0;
-		overflow: auto;
-		padding: 2px 0 10px;
+		display: flex;
+		flex-direction: column;
 		outline: none;
+	}
+	.list :global(.vlist) {
+		flex: 1;
+	}
+	/* Padding, not margin: the list measures each row's box, and a margin would collapse out of it. */
+	.box {
+		padding: 0 4px;
+	}
+	.box.head {
+		padding-top: 2px;
+	}
+	.end {
+		height: 10px;
 	}
 	.hint {
 		padding: 20px 16px;
@@ -145,14 +185,13 @@
 		display: flex;
 		align-items: center;
 		gap: 5px;
-		margin: 0 4px;
+		margin: 0;
 		border-radius: 5px;
 		cursor: default;
 	}
 	.file {
 		height: 24px;
 		padding: 0 6px;
-		margin-top: 2px;
 	}
 	.match {
 		min-height: 22px;

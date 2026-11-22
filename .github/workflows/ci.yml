@@ -36,29 +36,36 @@ jobs:
     outputs:
       tested: ${{ steps.tested.outputs.tested }}
       rust: ${{ steps.paths.outputs.rust }}
-      front: ${{ steps.paths.outputs.front }}
+      desktop: ${{ steps.paths.outputs.desktop }}
+      i18n: ${{ steps.paths.outputs.i18n }}
+      skills: ${{ steps.paths.outputs.skills }}
+      scripts: ${{ steps.paths.outputs.scripts }}
       mobile: ${{ steps.paths.outputs.mobile }}
-      site: ${{ steps.paths.outputs.site }}
       relay: ${{ steps.paths.outputs.relay }}
+      site: ${{ steps.paths.outputs.site }}
+      installer: ${{ steps.paths.outputs.installer }}
       workflows: ${{ steps.paths.outputs.workflows }}
+      dup: ${{ steps.paths.outputs.dup }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
-      # Which areas the change touches (scripts/ci-paths.sh): a docs-only commit skips the Rust, mobile and
-      # frontend jobs. Compared with the pull request base, or the commit this push replaced.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      # Which areas the change touches (scripts/checks/map.ts, the one map `bun run check` and `bun run check:changed`
+      # read too): a docs-only commit skips the Rust, mobile and frontend jobs; an unknown path, a changed workflow, a
+      # workflow_dispatch or a missing diff runs everything. The base is the pull request's merge-ref first parent, or
+      # the commit this push replaced (scripts/lib/base.ts).
       - name: Changed areas
         id: paths
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            git diff --name-only "$BASE" HEAD | scripts/ci-paths.sh
-          else
-            scripts/ci-paths.sh </dev/null
-          fi | tee -a "$GITHUB_OUTPUT"
+        # `shell: bash` runs with pipefail: a failed plan must fail the job, not leave every output empty (every job skipped).
+        shell: bash
+        run: bun scripts/ci-plan.ts | tee -a "$GITHUB_OUTPUT"
 
       - name: Already tested in its pull request?
         id: tested
@@ -75,6 +82,10 @@ jobs:
     if: ${{ needs.plan.outputs.rust == 'true' }}
     runs-on: macos-latest
     timeout-minutes: 60
+    # hostd's git test runs a real git under a pt_BR.UTF-8 parent: the runner must have the locale, or that
+    # assertion would pass without running (crates/atlas-host/src/exec.rs). macOS ships pt_BR.UTF-8.
+    env:
+      ATLAS_REQUIRE_LOCALE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,16 +102,26 @@ jobs:
     if: ${{ needs.plan.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      ATLAS_REQUIRE_LOCALE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: System libraries (Tauri/WebKitGTK)
+      # The `locales` package is in the runner image, so this compiles the locale from its source and downloads
+      # nothing. The listing is here so the log shows the runner has it.
+      - name: Locale pt_BR.UTF-8 (hostd's git test needs it)
         run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev fish
+          sudo locale-gen pt_BR.UTF-8
+          locale -a | grep -i '^pt_BR'
+
+      # ffmpeg: the Linux recorder's tests encode a real file (#282). Cached and bounded (#604): the mirror once held this step for 36 min.
+      - name: System libraries (Tauri/WebKitGTK)
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev libssl-dev fish ffmpeg
 
       - uses: ./.github/actions/rust-gate
         with:
@@ -122,12 +143,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # Cached and bounded (#604): the mirror once held this step for 25+ min.
       - name: System libraries (Tauri/WebKitGTK) and the headless display (sway, grim, Mesa llvmpipe)
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev \
-            sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev libssl-dev sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core
 
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
@@ -139,7 +160,7 @@ jobs:
 
       # Caches are saved only from main and release branches (same rule as the rust-gate action).
       - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
 
@@ -159,6 +180,14 @@ jobs:
             --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
             --env ATLAS_BIN="$PWD/target/debug/atlas" target/debug/atlas-desktop
 
+      # What the app costs before the user does anything (#284): start to app_ready (1 cold, 4 warm), memory per process
+      # at idle, idle CPU. Fails over the budget in scripts/linux-startup-bench.ts, which is set from docs/perf/linux-startup.json.
+      - name: Startup and idle baseline
+        run: |
+          bun scripts/linux-startup-bench.ts --out startup-bench-out/report.json \
+            --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
+            --env ATLAS_BIN="$PWD/target/debug/atlas" target/debug/atlas-desktop
+
       - name: Screenshot and logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -167,6 +196,17 @@ jobs:
           path: launch-check-out/
           if-no-files-found: ignore
           retention-days: 7
+
+      # Also carries evidence/run-N/ of a start that never sent app_ready (#591): app.log, stderr.log, trace, window.png, process
+      # states and a verdict; the bench prints a one-line `evidence:` summary in the log above.
+      - name: Startup report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-linux-startup-bench
+          path: startup-bench-out/
+          if-no-files-found: ignore
+          retention-days: 30
 
   # The release's Linux aarch64 CLI (crew servers on Graviton, Oracle A1, Hetzner CAX) is built on
   # `ubuntu-22.04-arm`, and `publish` waits for it. Building it here on every push to main means a
@@ -184,10 +224,10 @@ jobs:
           persist-credentials: false
 
       - name: System libraries
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl pkg-config libssl-dev
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: build-essential curl pkg-config libssl-dev
 
       # Same steps as the release job (release.yml, build-linux-arm64): the arm64 image may lack rustup.
       - name: Install Rust
@@ -206,15 +246,76 @@ jobs:
     needs: plan
     if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.rust == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 60
+    # A normal run takes 5-12 min (Test step 3-6, Doctests under 1). A runner that froze mid-step never runs a step timeout
+    # (#520) and GitHub only notices ~45-50 min later. The job's own limit is kept by the service (a frozen job "runs to the
+    # job cap", actions/runner-images#14938) and is above the sum of the step limits (gate ~4 + Test 15 + Doctests 5), so a
+    # job that ends by it is a stalled runner, which ci-rerun-lost (scripts/ci-lost-runner.ts, `stalled`) reruns after 30 min
+    # instead of ~50. The next loss shows whether the service ends it: "exceeded the maximum execution time of 30m0s" in
+    # place of "lost communication".
+    timeout-minutes: 30
+    # `checks: write` only for the watchdog's check run (scripts/ci-watchdog.ps1, issue #520). A fork's pull request
+    # gets a read-only token whatever is declared here: the watchdog then keeps to the log.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # Everything but the tests (toolchain, nextest, cache, fmt, clippy). The tests are steps of this job, not of
+      # the action: a composite step cannot have `timeout-minutes`.
       - uses: ./.github/actions/rust-gate
         with:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
+          defer-tests: "true"
+
+      # Issue #520: this job lost its runner 10 times since 2026-11-15 ("The hosted runner lost communication with
+      # the server" after exactly 50 min), 4 times in this step with its step timeout never firing, so the runner
+      # itself died or froze; the job's live log is not kept either. The tests take 3-4 min. What this step leaves:
+      # - a hang in the tests fails the step after 15 min with its log (nextest ends a single test after 3 min,
+      #   `.config/nextest.toml`), instead of taking the runner with it; the log is a file as well, to upload below;
+      # - scripts/ci-watchdog.ps1 samples memory, commit charge, page file, handles, disk queue and free space, the
+      #   top processes and the tests running now every 15 s, to the live log, to `watchdog.log` and, off the runner,
+      #   to a check run "Windows test telemetry (#520)" updated every 30 s (the one place that outlives a lost
+      #   runner). It says when a runner process disappears and kills a test process that holds the runner's memory.
+      #   `watchdog.stop` ends it when the tests end. The token goes to the watchdog alone: it is unset before the
+      #   tests start.
+      - name: Test
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        timeout-minutes: 15
+        shell: bash
+        env:
+          WATCHDOG_TOKEN: ${{ github.token }}
+          WATCHDOG_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          rm -f watchdog.stop
+          pwsh -NoProfile -File scripts/ci-watchdog.ps1 &
+          watchdog=$!
+          unset WATCHDOG_TOKEN
+          stop_watchdog() { touch watchdog.stop; sleep 6; kill "$watchdog" 2>/dev/null || true; }
+          trap stop_watchdog EXIT
+          cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
+
+      - name: Doctests
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        timeout-minutes: 5
+        shell: bash
+        run: cargo test --workspace --locked --doc
+
+      # What the next hang or runner loss shows: the nextest log (SLOW/TIMEOUT lines name the test that hung), the
+      # JUnit report (every test with its time) and the watchdog's samples, kept briefly.
+      - name: Nextest log and JUnit report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nextest-windows-${{ github.run_attempt }}
+          path: |
+            nextest.log
+            watchdog.log
+            target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+          retention-days: 3
 
   # The tests that need root (crew isolation, issue #200): a real cross-uid spawn and a real useradd. GitHub's
   # Ubuntu runners have passwordless sudo, and the runner is thrown away, so creating system users is fine. The
@@ -245,7 +346,7 @@ jobs:
   frontend:
     name: Desktop frontend + skills
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.front == 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.desktop == 'true' || needs.plan.outputs.skills == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -264,12 +365,38 @@ jobs:
       - name: svelte-check, prettier, bun test
         run: bun run desktop:check
 
+  # Catalogs, locks, glossary, translated docs, the writing lint and the hardcoded-text ratchets (scripts/i18n). Offline
+  # and bun only, so a Rust-only or docs-only change that can break a catalog or add a println! still reaches it. The
+  # ratchets judge every file against the baseline (and the files a change touches against the diff base of
+  # scripts/lib/base.ts, so the history is fetched). It runs on every push to main and release branches even when the
+  # commit's tree was tested in its pull request: two pull requests that each pass alone can break the baseline together
+  # (merge skew), and only a run on the merged tree sees it. It takes about a second.
+  i18n:
+    name: i18n (catalogs, writing, ratchets)
+    needs: plan
+    if: ${{ github.event_name == 'push' || (needs.plan.outputs.tested != 'true' && needs.plan.outputs.i18n == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: i18n
+        run: bun run i18n:check
+
   # The repo's own scripts (setup, heavy queue, CI gates, release helpers) and their tests, on Linux and on Windows
   # through Git Bash (`scripts/sh.ts`), so a contributor's `bun run check` keeps working on both (#260).
   scripts:
     name: Repo scripts (${{ matrix.os }})
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.front == 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.scripts == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -286,9 +413,13 @@ jobs:
         with:
           no-cache: true
 
-      - name: ffmpeg (the flicker-sweep judge tests record with it)
+      # ffmpeg: the flicker-sweep judge tests record with it. Cached and bounded (#604): a slow mirror once ate the job's 15 min.
+      - name: ffmpeg
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends ffmpeg
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: ffmpeg
 
       - name: PyYAML (scripts/test-labels.sh)
         shell: bash
@@ -296,6 +427,27 @@ jobs:
 
       - name: bun run release:test
         run: bun run release:test
+
+  # site/public/install.ps1 as a user runs it (`irm <url> | iex`) in Windows PowerShell 5.1 (powershell.exe, what a
+  # stock Windows has) and PowerShell 7, against a local server that plays GitHub (scripts/install-ps1.test.ts).
+  install-ps1:
+    name: Installer (Windows PowerShell 5.1 and 7)
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.installer == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: install.ps1 in powershell.exe and pwsh
+        run: bun test scripts/install-ps1.test.ts
 
   mobile:
     name: Mobile app
@@ -314,6 +466,12 @@ jobs:
           flutter-version-file: apps/mobile/pubspec.yaml
           channel: stable
 
+      # scripts/mobile-check.sh writes the translations (ARB) from the catalog with bun.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
       - name: Native crate builds
         run: cargo build --locked --manifest-path apps/mobile/native/Cargo.toml
 
@@ -324,7 +482,7 @@ jobs:
         run: echo "v=$(sed -n 's/^flutter_rust_bridge = "=\([0-9.]*\)"$/\1/p' apps/mobile/native/Cargo.toml)" >> "$GITHUB_OUTPUT"
 
       - name: Install flutter_rust_bridge_codegen
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: flutter_rust_bridge_codegen@${{ steps.frb.outputs.v }}
 
@@ -345,7 +503,7 @@ jobs:
   push-relay:
     name: Push relay (Go)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.relay == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -395,7 +553,7 @@ jobs:
   duplication:
     name: Duplication (jscpd, <= 1.5%)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.rust == 'true' || needs.plan.outputs.front == 'true' || needs.plan.outputs.mobile == 'true') }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.dup == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -442,7 +600,7 @@ jobs:
           persist-credentials: false
 
       - name: Install zizmor
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: zizmor
 
@@ -461,7 +619,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, desktop-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, scripts, mobile, push-relay, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, desktop-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, i18n, scripts, install-ps1, mobile, push-relay, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

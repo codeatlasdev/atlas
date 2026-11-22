@@ -18,8 +18,10 @@ mod launch;
 mod package;
 mod plan;
 pub(crate) mod remote;
+mod words;
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 use clap::{Args, Subcommand};
 
 use super::AtlasCommand;
@@ -148,9 +150,13 @@ async fn rollback(
     if let Some(id) = to
         && !valid_release_id(id)
     {
-        bail!("invalid release id: {id}");
+        bail!(t!(
+            "cmd_deploy_invalid_release_id",
+            id = id,
+            target = &ctx.name
+        ));
     }
-    let run_id = format!("rb-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"));
+    let run_id = format!("rb-{}", atlas_core::time::utc_compact_now());
     let plan = Plan {
         app: &ctx.app,
         target_name: &ctx.name,
@@ -177,7 +183,7 @@ async fn rollback(
 async fn deploy(a: &DeployArgs) -> Result<()> {
     let ctx = Ctx::load(&a.dir, a.target.as_deref())?;
     let head = package::head(&ctx.root)?;
-    let base = guard::check(
+    let guard::Checked { base, newest } = guard::check(
         &ctx,
         &head,
         guard::Overrides {
@@ -187,10 +193,26 @@ async fn deploy(a: &DeployArgs) -> Result<()> {
         },
     )
     .await?;
-    step(&format!("package ({})", ctx.root.display()));
-    let rel = package::package(&ctx.root, &ctx.cfg, &head, a.allow_dirty, a.skip_build)?;
+    step(&t!(
+        "cmd_deploy_step_package",
+        root = ctx.root.display().to_string()
+    ));
+    let rel = package::package(
+        &ctx.root,
+        &ctx.cfg,
+        &head,
+        a.allow_dirty,
+        a.skip_build,
+        newest.as_deref(),
+    )?;
     if let Some((dep, ancestry)) = &base {
-        step(&guard::announce(&rel.id, &head, dep, ancestry));
+        step(&guard::announce(
+            atlas_i18n::lang(),
+            &rel.id,
+            &head,
+            dep,
+            ancestry,
+        ));
     }
     let plan = render_plan(&Plan {
         app: &ctx.app,
@@ -207,10 +229,24 @@ async fn deploy(a: &DeployArgs) -> Result<()> {
         lock_wait: a.lock_wait,
     });
     if a.dry_run {
-        println!("target:  {} ({})", ctx.name, ctx.target.host);
-        println!("release: {}", rel.id);
-        println!("sha256:  {}", rel.sha256);
-        println!("driver:  {}/driver.sh", ctx.run_dir(&rel.id));
+        println!(
+            "{}",
+            t!(
+                "cmd_deploy_dry_target",
+                name = &ctx.name,
+                host = &ctx.target.host
+            )
+        );
+        println!("{}", t!("cmd_deploy_dry_release", id = &rel.id));
+        println!("{}", t!("cmd_deploy_dry_sha256", sha256 = &rel.sha256));
+        println!(
+            "{}",
+            t!(
+                "cmd_deploy_dry_driver",
+                path = format!("{}/driver.sh", ctx.run_dir(&rel.id))
+            )
+        );
+        // i18n-ignore: `plan.sh` is the name of the file the plan is the content of, then the script itself
         println!("--- plan.sh ---\n{plan}");
         return Ok(());
     }

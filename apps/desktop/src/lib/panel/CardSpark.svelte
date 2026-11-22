@@ -4,6 +4,7 @@
 	import type { Service } from "#lib/stores/projects.svelte.ts";
 	import { metrics } from "./metrics.svelte.ts";
 	import { memoryNote } from "./memoryFacts.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** CPU and memory sparklines of one service with their current values. */
 	let {
@@ -35,11 +36,11 @@
 
 <div class="spark-wrap">
 	<div class="spark">
-		<div class="sp" title="CPU of the process tree, last {WINDOW_MIN} min">
+		<div class="sp" title={m.panel_card_spark_cpu({ minutes: WINDOW_MIN })}>
 			<Sparkline data={cpu} height="30px" color={colors.cpu} />
 			<span class="val mono">{service.cpu ?? 0}%</span>
 		</div>
-		<div class="sp" title="Memory of the process tree, last {WINDOW_MIN} min">
+		<div class="sp" title={m.panel_card_spark_memory({ minutes: WINDOW_MIN })}>
 			<Sparkline data={mem} height="30px" color={colors.mem} />
 			<span class="val mono" class:heavy={(service.mem_mb ?? 0) >= 2048}>{fmtMem(service.mem_mb ?? 0)}</span>
 		</div>

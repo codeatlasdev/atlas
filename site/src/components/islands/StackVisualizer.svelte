@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { YAML } from "../../data/stack";
+	import "../../lib/locale-client";
+	import { m } from "../../lib/paraglide/messages.js";
 	// Parses a tiny subset of atlas.yaml (services + depends_on + port) client-side and draws the start order.
 	// Not a YAML parser: it understands the shape of the example and of edits to it.
 	const initial = YAML;
@@ -8,7 +10,7 @@
 
 	type Svc = { name: string; port?: string; deps: { on: string; cond: string }[]; oneshot: boolean };
 
-	function parse(text: string): { services: Svc[]; infra: boolean; error: string } {
+	function parse(text: string): { services: Svc[]; infra: boolean; error: { service: string; dependency: string } | null } {
 		const lines = text.split("\n");
 		const services: Svc[] = [];
 		let section = "";
@@ -48,10 +50,10 @@
 		const names = new Set(services.map((s) => s.name));
 		for (const s of services) {
 			for (const d of s.deps) {
-				if (!names.has(d.on)) return { services, infra, error: `${s.name} depends on unknown service "${d.on}"` };
+				if (!names.has(d.on)) return { services, infra, error: { service: s.name, dependency: d.on } };
 			}
 		}
-		return { services, infra, error: "" };
+		return { services, infra, error: null };
 	}
 
 	const parsed = $derived(parse(src));
@@ -80,18 +82,22 @@
 
 <div class="viz">
 	<div class="sheet">
-		<div class="bar"><span>atlas.yaml</span><span class="hint">Edit me. Change a depends_on.</span></div>
-		<textarea bind:value={src} spellcheck="false" autocapitalize="none" autocorrect="off" wrap="off" aria-label="atlas.yaml example. Edit it to see the start order change."></textarea>
+		<div class="bar">
+			<!-- i18n-ignore: a file name -->
+			<span>atlas.yaml</span><span class="hint">{m.islands_stack_visualizer_editor_hint()}</span>
+		</div>
+		<textarea bind:value={src} spellcheck="false" autocapitalize="none" autocorrect="off" wrap="off" aria-label={m.islands_stack_visualizer_editor_label()}></textarea>
 	</div>
 	<div class="out">
-		<p class="cap">Start order, <span aria-live="polite">{parsed.error ? "blocked" : `${layers.length} ${layers.length === 1 ? "wave" : "waves"}`}</span></p>
+		<p class="cap" aria-live="polite">{parsed.error ? m.islands_stack_visualizer_start_order_blocked() : m.islands_stack_visualizer_start_order_waves({ count: layers.length })}</p>
 		<div class="graph" aria-live="polite">
 			{#if parsed.error}
-				<p class="err"><i class="dot fail"></i> {parsed.error}. Nothing starts.</p>
+				<p class="err"><i class="dot fail"></i> {m.islands_stack_visualizer_unknown_dependency(parsed.error)}</p>
 			{:else}
 				{#if parsed.infra}
 					<div class="wave">
-						<div class="node infra"><b>infra</b><small>docker compose up, waited on</small></div>
+						<!-- i18n-ignore: the `infra` section key of atlas.yaml -->
+						<div class="node infra"><b>infra</b><small>{m.islands_stack_visualizer_docker_compose_up_waited_on()}</small></div>
 					</div>
 				{/if}
 				{#each layers as layer}
@@ -99,8 +105,8 @@
 						{#each layer as s (s.name)}
 							<div class="node" class:one={s.oneshot}>
 								<b>{s.name}</b>
-								<small>{s.port ? `:${s.port}` : s.oneshot ? "runs once, must exit 0" : "no port"}</small>
-								{#each s.deps as d}<span class="dep">after {d.on} is {d.cond.replace(/_/g, " ")}</span>{/each}
+								<small>{s.port ? `:${s.port}` : s.oneshot ? m.islands_stack_visualizer_runs_once() : m.islands_stack_visualizer_no_port()}</small>
+								{#each s.deps as d}<span class="dep">{m.islands_stack_visualizer_after({ service: d.on, condition: d.cond.replace(/_/g, " ") })}</span>{/each}
 							</div>
 						{/each}
 					</div>

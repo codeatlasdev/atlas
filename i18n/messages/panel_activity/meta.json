@@ -1,0 +1,29 @@
+{
+	"panel_activity_action_failed": "Title of an Activity row: an action ended with an error. {label} is the action's name.",
+	"panel_activity_action_finished": "Title of an Activity row: an action ended well. {label} is the action's name.",
+	"panel_activity_action_started": "Title of an Activity row: an action started. {label} is the action's name.",
+	"panel_activity_drawer_activity": "Tooltip (title attribute) of a <DrawerShell> component, in ActivityDrawer (apps/desktop/src/lib/panel/ActivityDrawer.svelte). Extracted by i18n:extract: refine this description on review.",
+	"panel_activity_drawer_filter_activity": "Accessible name (aria-label, read by screen readers) of a <ToggleGroup> component, in ActivityDrawer (apps/desktop/src/lib/panel/ActivityDrawer.svelte). Extracted by i18n:extract: refine this description on review.",
+	"panel_activity_drawer_heavy_jobs": "Accessible name (aria-label, read by screen readers) of a <section> element, in ActivityDrawer (apps/desktop/src/lib/panel/ActivityDrawer.svelte). Extracted by i18n:extract: refine this description on review.",
+	"panel_activity_empty_hint": "Description of the empty Activity drawer.",
+	"panel_activity_events_over": "Tooltip of the ×N badge of a folded Activity row. {count} is at least 2; {span} is a compact duration (\"3m\").",
+	"panel_activity_filter_all": {
+		"description": "Option of the Activity filter that shows every row.",
+		"distinct": "agrees with the activity rows (masculine); the other filters 'tarefas' (feminine)"
+	},
+	"panel_activity_heavy_busy": "Summary of the machine-wide heavy job queue when nothing waits. {running} slots are in use of {slots}.",
+	"panel_activity_heavy_busy_waiting": "Summary of the heavy job queue when jobs wait. {queued} is the number of waiting jobs.",
+	"panel_activity_heavy_jobs_summary": "Header of the heavy jobs list in the Activity and Machine drawers. {summary} is the queue summary line.",
+	"panel_activity_heavy_running": "Detail of a running heavy job. {age} is a compact duration (\"1m05s\"). i18n-allow glossary:project",
+	"panel_activity_heavy_running_eta": "Detail of a running heavy job whose end history can estimate. {eta} is a compact duration. i18n-allow glossary:project",
+	"panel_activity_heavy_waiting": "Detail of a queued heavy job. {age} is a compact duration. i18n-allow glossary:project",
+	"panel_activity_heavy_waiting_eta": "Detail of a queued heavy job whose start history can estimate. {eta} is a compact duration. i18n-allow glossary:project",
+	"panel_activity_n_times": "Detail of an Activity row that folded identical alerts. {count} is at least 2.",
+	"panel_activity_no_activity_yet": "Title of the empty Activity drawer.",
+	"panel_activity_nothing_matches": "Title of the Activity drawer when the filter hides every row.",
+	"panel_activity_now_state": "Detail of a restart row: the state the service settled in. {state} is a state word (stopped, failed...).",
+	"panel_activity_open_service_logs": "Tooltip of an Activity row. {service} is the service name; {time} is a clock time. i18n-allow glossary:service",
+	"panel_activity_restarted": "Title of an Activity row for one restart. i18n-allow glossary:service",
+	"panel_activity_restarted_n": "Title of an Activity row for several restarts in one burst. {count} is at least 2. i18n-allow glossary:service",
+	"panel_activity_try_another_filter": "Description of the Activity drawer when the filter hides every row."
+}

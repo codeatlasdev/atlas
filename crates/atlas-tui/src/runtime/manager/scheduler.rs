@@ -4,16 +4,19 @@
 
 use std::time::Instant;
 
+use serde_json::json;
+
 use super::ServiceManager;
 use super::policy::{DepFacts, RestartDecision, Verdict, evaluate};
 use super::types::ManagerEvent;
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 impl ServiceManager {
-    pub(super) fn note(&self, name: &str, message: String) {
+    pub(super) fn note(&self, name: &str, note: Note) {
         let _ = self.event_tx.send(ManagerEvent::ServiceNote {
             name: name.to_string(),
-            message,
+            note,
         });
     }
 
@@ -63,7 +66,13 @@ impl ServiceManager {
                 && s.sched.tracker.reset_if_stable(now)
             {
                 let n = name.clone();
-                self.note(&n, "stable for 60s, restart counter reset".into());
+                self.note(
+                    &n,
+                    Note::new(
+                        "sched.stable",
+                        json!({"secs": super::policy::RESET_AFTER.as_secs()}),
+                    ),
+                );
             }
         }
 
@@ -81,7 +90,7 @@ impl ServiceManager {
             .cloned()
             .collect();
         for name in due {
-            self.note(&name, "restarting".into());
+            self.note(&name, Note::new("sched.restarting", json!({})));
             self.start_service(&name).await;
         }
 
@@ -94,13 +103,18 @@ impl ServiceManager {
             if !s.sched.pending_start {
                 continue;
             }
-            let mut waiting_on: Option<String> = None;
+            let mut waiting_on: Option<Note> = None;
             let mut failed_dep: Option<String> = None;
             for (dep, cond) in s.sched.deps.clone() {
                 match evaluate(cond, &self.dep_facts(&dep)) {
                     Verdict::Ready => {}
                     Verdict::Waiting => {
-                        waiting_on.get_or_insert_with(|| format!("{dep} ({})", cond.as_str()));
+                        waiting_on.get_or_insert_with(|| {
+                            Note::new(
+                                "sched.waiting_dep",
+                                json!({"dep": dep, "condition": cond.as_str()}),
+                            )
+                        });
                     }
                     Verdict::Failed => {
                         failed_dep = Some(dep);
@@ -110,7 +124,7 @@ impl ServiceManager {
             }
 
             if let Some(dep) = failed_dep {
-                let reason = format!("dependency {dep} failed");
+                let reason = Note::new("sched.dependency_failed", json!({"dep": dep}));
                 if let Some(s) = self.services.get_mut(name) {
                     s.sched.pending_start = false;
                     s.sched.waiting = None;
@@ -122,9 +136,9 @@ impl ServiceManager {
                 let changed = self
                     .services
                     .get_mut(name)
-                    .is_some_and(|s| s.sched.waiting.replace(w.clone()).as_deref() != Some(&w));
+                    .is_some_and(|s| s.sched.waiting.replace(w.clone()).as_ref() != Some(&w));
                 if changed {
-                    self.note(name, format!("waiting for {w}"));
+                    self.note(name, w);
                     let _ = self.event_tx.send(ManagerEvent::StatusChanged);
                 }
             } else {
@@ -158,19 +172,23 @@ impl ServiceManager {
                     0 => "∞".to_string(),
                     m => m.to_string(),
                 };
-                let code = if exit_ok { "exited" } else { "crashed" };
+                let code = if exit_ok {
+                    "sched.exited_restart"
+                } else {
+                    "sched.crashed_restart"
+                };
                 self.note(
                     name,
-                    format!(
-                        "{code}; restarting in {}s ({attempt}/{limit})",
-                        delay.as_secs()
+                    Note::new(
+                        code,
+                        json!({"secs": delay.as_secs(), "attempt": attempt, "limit": limit}),
                     ),
                 );
                 // Starting (not Failed): no critical alert, spinner in the sidebar.
                 Some(ServiceState::Starting)
             }
             RestartDecision::GiveUp { attempts } => {
-                let reason = format!("gave up after {attempts} restarts");
+                let reason = Note::new("sched.gave_up", json!({"attempts": attempts}));
                 if let Some(s) = self.services.get_mut(name) {
                     s.sched.gave_up = true;
                     s.sched.fail_reason = Some(reason.clone());
@@ -181,7 +199,7 @@ impl ServiceManager {
             RestartDecision::No => {
                 if exit_ok && s.sched.oneshot {
                     s.sched.completed_ok = true;
-                    self.note(name, "completed successfully".into());
+                    self.note(name, Note::new("sched.completed", json!({})));
                     Some(ServiceState::Stopped)
                 } else {
                     let had_policy = policy != crate::config::RestartPolicy::No;
@@ -190,15 +208,18 @@ impl ServiceManager {
                         if let Some(s) = self.services.get_mut(name) {
                             s.sched.completed_ok = true;
                         }
-                        self.note(name, "exited cleanly".into());
+                        self.note(name, Note::new("sched.exited_cleanly", json!({})));
                         return Some(ServiceState::Stopped);
                     }
                     if let Some(s) = self.services.get_mut(name) {
-                        s.sched.fail_reason = Some(if exit_ok {
-                            "exited".into()
-                        } else {
-                            "exited with error".into()
-                        });
+                        s.sched.fail_reason = Some(Note::new(
+                            if exit_ok {
+                                "sched.exited"
+                            } else {
+                                "sched.exited_error"
+                            },
+                            json!({}),
+                        ));
                     }
                     None
                 }
@@ -208,7 +229,7 @@ impl ServiceManager {
 
     /// Fire the one-time start-timeout warning for services stuck in Starting.
     fn check_start_timeouts(&mut self, now: Instant) {
-        let mut due: Vec<(String, u64, String, bool)> = Vec::new();
+        let mut due: Vec<(String, Note, bool)> = Vec::new();
         for name in &self.order {
             let Some(s) = self.services.get(name) else {
                 continue;
@@ -224,20 +245,25 @@ impl ServiceManager {
                 .starting_since
                 .map_or(secs, |t| now.saturating_duration_since(t).as_secs());
             if waited >= s.sched.start_timeout {
-                let what = port.map_or("ready_log".to_string(), |p| format!(":{p}"));
-                due.push((name.clone(), waited, what, s.critical));
+                let note = match port {
+                    Some(p) => Note::new(
+                        "sched.still_starting_port",
+                        json!({"waited": waited, "port": p}),
+                    ),
+                    None => Note::new("sched.still_starting_log", json!({"waited": waited})),
+                };
+                due.push((name.clone(), note, s.critical));
             }
         }
-        for (name, waited, what, critical) in due {
+        for (name, note, critical) in due {
             if let Some(s) = self.services.get_mut(&name) {
                 s.sched.start_warned = true;
             }
-            let message = format!("still starting after {waited}s: waiting for {what}");
-            self.note(&name, message.clone());
+            self.note(&name, note.clone());
             if critical {
                 let _ = self.event_tx.send(ManagerEvent::CriticalAlert {
                     service: name.clone(),
-                    message,
+                    note,
                 });
             }
             let _ = self.event_tx.send(ManagerEvent::StatusChanged);

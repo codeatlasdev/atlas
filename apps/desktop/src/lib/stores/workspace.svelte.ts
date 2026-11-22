@@ -2,7 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { errors } from "#lib/errors/errors.svelte.ts";
-import { classify } from "#lib/errors/diagnostics.ts";
+import { isHostFailure } from "#lib/hostText.ts";
+import { m } from "#lib/i18n/m.ts";
 import { host, type PtySummary } from "#lib/host.ts";
 import {
 	closable,
@@ -49,8 +50,8 @@ class Workspace {
 	hostError = $state<string | null>(null);
 	/** The terminal host did not answer the last `syncPtys`: `ptys` is what we knew, not what is true. */
 	hostDown = $state(false);
-	/** Main area: the selected worktree, or a global agents view. */
-	view = $state<"worktree" | "agents" | "dashboard">("worktree");
+	/** Main area: the selected worktree, a global agents view, or the light editor of a loose file (`loose` store). */
+	view = $state<"worktree" | "agents" | "dashboard" | "file">("worktree");
 	/** Top-level workspace mode: "ide" is everything today; "crew" is the full-window messenger. */
 	appMode = $state<"ide" | "crew">("ide");
 	#persist = new WorkspacePersist(this);
@@ -93,6 +94,7 @@ class Workspace {
 			}
 			this.hostError = null;
 			this.hostDown = false;
+			errors.hostReachable();
 		} catch (e) {
 			// Keep `ptys`: an unreachable host says nothing about its terminals, and replacing the map
 			// would show every tab as "Terminal is gone" (1.5.0-alpha.5). Report the outage once.
@@ -263,6 +265,11 @@ class Workspace {
 		const first = this.group(leaves(this.ensureLayout(worktreeId))[0]);
 		if (!first) return;
 		const panels = this.tabsOf(worktreeId).filter(pinned);
+		// A plain folder has no stack to show: no Panel, and one an older workspace saved for it goes.
+		if (this.worktree(worktreeId)?.plain) {
+			for (const p of panels) this.closeTab(p.id, true, true);
+			return;
+		}
 		const [keep, ...extra] = panels;
 		for (const p of extra) this.closeTab(p.id, true, true);
 		if (!keep) {
@@ -470,7 +477,7 @@ class Workspace {
 	/** A host failure folds into the one outage toast; anything else is an ordinary error toast. */
 	fail(e: unknown) {
 		const m = errText(e);
-		if (classify(m) === "host") void errors.captureHost(m);
+		if (isHostFailure(e, m)) void errors.captureHost(m);
 		else toast.error(m);
 	}
 
@@ -480,7 +487,7 @@ class Workspace {
 		if (!t || t.kind !== "terminal") return;
 		// A Restart on a host that is down can only fail the same way: say so once, change nothing.
 		if (this.hostDown) {
-			void errors.captureHost(this.hostError ?? "Terminal host not reachable.");
+			void errors.captureHost(this.hostError ?? m.errors_headline_host_title());
 			return;
 		}
 		try {

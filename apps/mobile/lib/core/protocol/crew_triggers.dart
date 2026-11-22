@@ -141,6 +141,7 @@ class Trigger {
     this.lastFired,
     this.tz,
     this.nextFire,
+    this.invalid,
   });
   final String id;
   final TriggerKind kind;
@@ -152,6 +153,10 @@ class Trigger {
   /// Unix seconds of the next scheduled fire; computed by hostd on crewmate_list.
   final int? nextFire;
 
+  /// Why hostd's cron parser refuses this schedule (one saved under an older parser): it is kept as saved and
+  /// never fires until it is fixed or deleted. Computed on crewmate_list, never sent back.
+  final String? invalid;
+
   factory Trigger.fromJson(Map<String, dynamic> j) => Trigger(
     id: j['id'] as String? ?? '',
     kind: TriggerKind.fromJson((j['kind'] as Map).cast<String, dynamic>()),
@@ -160,6 +165,7 @@ class Trigger {
     lastFired: (j['last_fired'] as num?)?.toInt(),
     tz: j['tz'] as String?,
     nextFire: (j['next_fire'] as num?)?.toInt(),
+    invalid: j['invalid'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -184,5 +190,6 @@ class Trigger {
     lastFired: lastFired,
     tz: tz ?? this.tz,
     nextFire: nextFire,
+    invalid: invalid,
   );
 }

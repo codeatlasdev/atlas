@@ -4,7 +4,7 @@
 
 use std::fs::File;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// True while `pid` names a live process (EPERM counts as alive on Unix).
 pub fn pid_alive(pid: u32) -> bool {
@@ -47,6 +47,42 @@ pub fn parent_pid() -> u32 {
 /// of the file, so the file's own contents (a pid) stay readable by the processes that lost.
 pub fn try_lock(file: &File) -> io::Result<bool> {
     imp::try_lock(file)
+}
+
+/// Replace `to` with `from` in one step, atomically for anyone opening the name `to` meanwhile: they get the old
+/// file or the new one, never "not found". `rename(2)` on Unix; on Windows `std::fs::rename` does not promise that
+/// (it can leave the name missing for an instant while a reader holds the old file), so the rename is done with POSIX
+/// semantics there. Not for directories.
+pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
+    imp::replace_file(from, to)
+}
+
+/// What [`replace_file`] does after the POSIX rename failed (Windows).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+pub(crate) enum RenameStep {
+    /// A refusal that ends on its own (the antivirus or the indexer holds the new file without delete sharing for a
+    /// moment): wait this long, then rename again.
+    Retry(std::time::Duration),
+    /// Not supported, refused for good, or retried long enough: `std::fs::rename`. It can leave the old file in
+    /// delete-pending for a reader, so it is the last resort, never the answer to a passing refusal.
+    Fallback,
+}
+
+/// The step after the POSIX rename's attempt number `attempt` (0-based) failed with Windows error `code`. Waits double
+/// from 1 ms and stop at 50 ms each, 8 retries (about 160 ms in all): long enough to outlast a scan of a new file,
+/// short enough that a write never stalls for long.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+pub(crate) fn after_posix_rename_error(code: Option<i32>, attempt: u32) -> RenameStep {
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    const RETRIES: u32 = 8;
+    match code {
+        Some(ERROR_ACCESS_DENIED | ERROR_SHARING_VIOLATION) if attempt < RETRIES => {
+            RenameStep::Retry(std::time::Duration::from_millis((1u64 << attempt).min(50)))
+        }
+        _ => RenameStep::Fallback,
+    }
 }
 
 /// Fill `buf` from the OS CSPRNG.
@@ -453,6 +489,10 @@ mod imp {
         c.arg("-c").arg(script);
         c
     }
+
+    pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
+        std::fs::rename(from, to)
+    }
 }
 
 #[cfg(windows)]
@@ -538,6 +578,83 @@ mod imp {
         }
         let index = ((info.nFileIndexHigh as u64) << 32) | info.nFileIndexLow as u64;
         Some((info.dwVolumeSerialNumber as u64, index))
+    }
+
+    /// Rename `from` over `to` with POSIX semantics (`FILE_RENAME_FLAG_POSIX_SEMANTICS`): one step in which the
+    /// name `to` goes from the old file to the new one, even while readers hold the old one open. `std::fs::rename`
+    /// is `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`, which Windows documents without that guarantee: a reader opening
+    /// the name meanwhile can find it missing (`NotFound`) or, the old file being delete-pending, be refused (`Access
+    /// is denied`) (#545). A passing refusal is retried ([`super::after_posix_rename_error`]); not supported (an old
+    /// Windows, a filesystem other than NTFS), a readonly target or a refusal that outlasts the retries falls back to
+    /// `std::fs::rename`, which has its own readonly handling.
+    pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
+        let mut attempt = 0;
+        loop {
+            let Err(e) = posix_rename(from, to) else {
+                return Ok(());
+            };
+            // A readonly target refuses with the same "access denied" as a passing scan, and waiting does not help.
+            let readonly = std::fs::metadata(to).is_ok_and(|m| m.permissions().readonly());
+            match super::after_posix_rename_error(e.raw_os_error(), attempt) {
+                super::RenameStep::Retry(wait) if !readonly => {
+                    std::thread::sleep(wait);
+                    attempt += 1;
+                }
+                _ => return std::fs::rename(from, to),
+            }
+        }
+    }
+
+    fn posix_rename(from: &Path, to: &Path) -> io::Result<()> {
+        use std::os::windows::ffi::OsStrExt;
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            DELETE, FILE_RENAME_INFO, FileRenameInfoEx, SetFileInformationByHandle,
+        };
+        const REPLACE_IF_EXISTS: u32 = 0x1; // FILE_RENAME_FLAG_REPLACE_IF_EXISTS
+        const POSIX_SEMANTICS: u32 = 0x2; // FILE_RENAME_FLAG_POSIX_SEMANTICS
+
+        // A rename by handle takes a full name: the parent in its verbatim form, then the file.
+        let name = to
+            .file_name()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?;
+        let parent = to.parent().filter(|p| !p.as_os_str().is_empty());
+        let full = std::fs::canonicalize(parent.unwrap_or(Path::new(".")))?.join(name);
+        let wide: Vec<u16> = full.as_os_str().encode_wide().collect();
+        let name_bytes = wide.len() * 2;
+
+        // The struct ends in a variable-length name: a u64-aligned buffer big enough for the header and the name.
+        let header = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+        let size = header + name_bytes + 2;
+        let mut buf = vec![0u64; size.div_ceil(8)];
+        let info = buf.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+        // SAFETY: `buf` is zeroed, aligned for the struct and `size` bytes long; every write stays inside it, and
+        // the name (a NUL after it already, the buffer being zeroed) is copied to where `FileName` starts.
+        unsafe {
+            (*info).Anonymous.Flags = REPLACE_IF_EXISTS | POSIX_SEMANTICS;
+            (*info).FileNameLength = name_bytes as u32;
+            std::ptr::copy_nonoverlapping(
+                wide.as_ptr(),
+                buf.as_mut_ptr().cast::<u8>().add(header).cast::<u16>(),
+                wide.len(),
+            );
+        }
+        // DELETE is the access a rename needs; the share mode stays the default (read, write, delete) so a
+        // concurrent reader of `from` is not locked out either.
+        let src = std::fs::OpenOptions::new().access_mode(DELETE).open(from)?;
+        // SAFETY: the handle is open for the lifetime of `src`; `buf` holds a complete FILE_RENAME_INFO of `size` bytes.
+        let ok = unsafe {
+            SetFileInformationByHandle(
+                src.as_raw_handle() as HANDLE,
+                FileRenameInfoEx,
+                buf.as_ptr().cast(),
+                size as u32,
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
     }
 
     pub fn parent_pid() -> u32 {
@@ -714,15 +831,6 @@ mod imp {
         c
     }
 
-    /// One row of the process table.
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct ProcRow {
-        pub pid: u32,
-        pub ppid: u32,
-        /// Executable file name (`node.exe`), as the snapshot reports it.
-        pub exe: String,
-    }
-
     /// Snapshot of every process (`CreateToolhelp32Snapshot`). Empty on failure.
     pub fn process_rows() -> Vec<ProcRow> {
         use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
@@ -756,36 +864,19 @@ mod imp {
         out
     }
 
-    /// Every live descendant of `root` (not `root`), parents before children. A recorded parent
-    /// pid survives its process on Windows and pids are reused, so a child counts only when it
-    /// was created no earlier than its parent.
+    /// Every live descendant of `root` (not `root`), parents before children; none when `root` is not
+    /// running. See [`super::descendants_by`].
     pub fn descendants(root: u32, rows: &[ProcRow]) -> Vec<u32> {
-        let born = |pid: u32| start_time_secs(pid).unwrap_or(0);
-        let mut out = Vec::new();
-        let mut queue = std::collections::VecDeque::from([root]);
-        while let Some(p) = queue.pop_front() {
-            let p_born = born(p);
-            for r in rows {
-                if r.ppid == p
-                    && r.pid != p
-                    && r.pid != root
-                    && !out.contains(&r.pid)
-                    && born(r.pid) >= p_born
-                {
-                    out.push(r.pid);
-                    queue.push_back(r.pid);
-                }
-            }
-        }
-        out
+        super::descendants_by(root, rows, &start_time_secs)
     }
 
-    /// End `root` and its whole tree (Windows has no process groups to signal). Never ourselves.
+    /// End `root` and its whole tree (Windows has no process groups to signal). Never ourselves or
+    /// an ancestor of ours, and nothing when no process object has `root`'s pid: after the last handle of
+    /// a child is closed its number is anyone's (see [`super::tree_targets`]), so call this while you still
+    /// hold the `Child` (a running or exited one), never after it was consumed or dropped.
     pub fn kill_tree(root: u32) {
-        let rows = process_rows();
-        let tree = descendants(root, &rows);
-        force_kill(root);
-        for pid in tree {
+        for pid in super::tree_targets(root, std::process::id(), &process_rows(), &start_time_secs)
+        {
             force_kill(pid);
         }
     }
@@ -835,15 +926,170 @@ mod imp {
     }
 }
 
+/// One row of the process table.
+#[cfg(any(windows, test))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProcRow {
+    pub pid: u32,
+    pub ppid: u32,
+    /// Executable file name (`node.exe`), as the snapshot reports it.
+    pub exe: String,
+}
+
+/// Every live descendant of `root` (not `root`), parents before children, with `born` the creation time of a
+/// pid (`None`: no such process object). A recorded parent pid survives its process on Windows and pids are
+/// reused, so a child counts only when it was created no earlier than its parent. A `root` with no creation time
+/// has no descendants: read as 0, every process that ever had a parent with that number (any older holder of
+/// the pid, the CI runner's own children included) would pass the test above. (An exited process whose handle
+/// the caller still holds keeps its creation time, so its real orphans are still found.)
+#[cfg(any(windows, test))]
+fn descendants_by(root: u32, rows: &[ProcRow], born: &dyn Fn(u32) -> Option<u64>) -> Vec<u32> {
+    let Some(root_born) = born(root) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut queue = std::collections::VecDeque::from([(root, root_born)]);
+    while let Some((p, p_born)) = queue.pop_front() {
+        for r in rows {
+            if r.ppid == p
+                && r.pid != p
+                && r.pid != root
+                && !out.contains(&r.pid)
+                && let Some(b) = born(r.pid)
+                && b >= p_born
+            {
+                out.push(r.pid);
+                queue.push_back((r.pid, b));
+            }
+        }
+    }
+    out
+}
+
+/// The pids [`kill_tree`] ends for `root`: `root` and its descendants, and nothing when `root` is not running
+/// (its number may belong to a stranger by now) or is `me` or one of `me`'s ancestors (by the table's recorded
+/// parents: the test runner, the CI runner). The process table is never trusted to name a pid that is not ours.
+#[cfg(any(windows, test))]
+fn tree_targets(
+    root: u32,
+    me: u32,
+    rows: &[ProcRow],
+    born: &dyn Fn(u32) -> Option<u64>,
+) -> Vec<u32> {
+    let mut protected = vec![me];
+    let mut at = me;
+    while let Some(r) = rows.iter().find(|r| r.pid == at)
+        && r.ppid != 0
+        && !protected.contains(&r.ppid)
+    {
+        protected.push(r.ppid);
+        at = r.ppid;
+    }
+    if protected.contains(&root) || born(root).is_none() {
+        return Vec::new();
+    }
+    let mut out = vec![root];
+    out.extend(
+        descendants_by(root, rows, born)
+            .into_iter()
+            .filter(|p| !protected.contains(p)),
+    );
+    out
+}
+
 #[cfg(windows)]
 pub use imp::{
-    CREATE_BREAKAWAY_FROM_JOB, CREATE_NO_WINDOW, DETACHED, ProcRow, descendants, kill_tree,
-    process_rows, start_time_secs, usage,
+    CREATE_BREAKAWAY_FROM_JOB, CREATE_NO_WINDOW, DETACHED, descendants, kill_tree, process_rows,
+    start_time_secs, usage,
 };
+
+/// Windows: open `target` (an `http`, `https` or `mailto` URL the caller already checked) with the user's default
+/// handler, through `ShellExecuteW` as a browser link does. The URL is ONE string: nothing parses a command line out
+/// of it, unlike `explorer.exe <string>`, which reads commas and switches (`/select,`).
+#[cfg(windows)]
+pub fn shell_open(target: &str) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    const SW_SHOWNORMAL: i32 = 1;
+    if target.contains('\0') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a link has no NUL in it",
+        ));
+    }
+    let wide = |s: &str| -> Vec<u16> {
+        std::ffi::OsStr::new(s)
+            .encode_wide()
+            .chain(Some(0))
+            .collect()
+    };
+    let (verb, file) = (wide("open"), wide(target));
+    // SAFETY: both strings are NUL-terminated and outlive the call; the optional arguments are null.
+    let code = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    } as usize;
+    // Values above 32 mean it started; the rest are error codes.
+    if code > 32 {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("ShellExecuteW returned {code}")))
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #545 again, after the POSIX rename landed: `replacing_a_file_never_leaves_its_name_missing_for_a_reader_that_
+    /// opens_it` still failed on a Windows runner, the reader getting "Access is denied". That is the old file in
+    /// delete-pending, which only the `MoveFileExW` fallback leaves behind: the POSIX rename had failed for a moment
+    /// (something such as the antivirus holding the new file without delete sharing) and the fallback ran at once.
+    /// A transient refusal is now retried, a little longer each time and briefly in total; only what will not get
+    /// better by waiting goes straight to the fallback.
+    #[test]
+    fn a_refused_posix_rename_is_retried_briefly_and_only_an_unsupported_one_falls_back_at_once() {
+        const ACCESS_DENIED: i32 = 5;
+        const SHARING_VIOLATION: i32 = 32;
+        for code in [ACCESS_DENIED, SHARING_VIOLATION] {
+            let mut waits = Vec::new();
+            let mut attempt = 0;
+            while let RenameStep::Retry(w) = after_posix_rename_error(Some(code), attempt) {
+                waits.push(w);
+                attempt += 1;
+                assert!(attempt < 100, "never stops retrying");
+            }
+            assert!(
+                waits.len() >= 5,
+                "{code}: too few retries to outlast a scan: {waits:?}"
+            );
+            assert!(
+                waits.windows(2).all(|w| w[0] <= w[1]),
+                "{code}: waits shrink: {waits:?}"
+            );
+            let total: std::time::Duration = waits.iter().sum();
+            assert!(
+                total <= std::time::Duration::from_millis(250),
+                "{code}: a write may stall {total:?}"
+            );
+        }
+        // Not supported (old Windows, not NTFS: invalid function, not supported, invalid parameter), write-protected
+        // media, or no OS code at all: the fallback, without waiting. (A readonly target also says "access denied";
+        // `imp::replace_file` checks the attribute and skips the retries.)
+        for code in [Some(1), Some(50), Some(87), Some(19), None] {
+            assert_eq!(
+                after_posix_rename_error(code, 0),
+                RenameStep::Fallback,
+                "{code:?}"
+            );
+        }
+    }
 
     #[cfg(target_os = "linux")]
     #[test]
@@ -932,7 +1178,7 @@ mod tests {
         drop(a);
         // A sibling test that forks between `open` and `exec` holds the open file description for
         // that instant, so the release is bounded, not instant (the lock is per description).
-        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let end = std::time::Instant::now() + crate::scaling::HANG;
         while !try_lock(&b).unwrap() {
             assert!(
                 std::time::Instant::now() < end,
@@ -969,7 +1215,8 @@ mod tests {
         let mut child = shell("ping -n 60 127.0.0.1 >NUL").spawn().unwrap();
         let pid = child.id();
         let mut kids = Vec::new();
-        for _ in 0..100 {
+        let end = std::time::Instant::now() + crate::scaling::HANG;
+        while std::time::Instant::now() < end {
             kids = descendants(pid, &process_rows());
             if !kids.is_empty() {
                 break;
@@ -983,6 +1230,65 @@ mod tests {
         for k in kids {
             assert!(!pid_alive(k), "descendant {k} survived");
         }
+    }
+
+    fn row(pid: u32, ppid: u32) -> ProcRow {
+        ProcRow {
+            pid,
+            ppid,
+            exe: String::new(),
+        }
+    }
+
+    /// `born` for a made-up machine: the listed pids run, with that creation time; every other pid is gone.
+    fn running(born: &[(u32, u64)]) -> impl Fn(u32) -> Option<u64> {
+        let born: std::collections::HashMap<u32, u64> = born.iter().copied().collect();
+        move |pid| born.get(&pid).copied()
+    }
+
+    // Incident (Windows CI jobs that end in "The hosted runner lost communication with the server"): callers
+    // ended the tree of a child they had already waited for. With the root gone its creation time read as 0, so
+    // every process whose recorded parent had that number, an older holder of the pid included (Windows keeps
+    // `ppid` after the parent ends and reuses the number), counted as its descendant and was killed. Here 300 is
+    // such a process: started by an earlier process numbered 100, long before the child that got 100 later.
+    #[test]
+    fn a_root_that_already_exited_has_no_descendants_and_nothing_to_kill() {
+        let rows = [row(7000, 500), row(500, 4), row(300, 100)];
+        let born = running(&[(7000, 90), (500, 10), (4, 1), (300, 5)]);
+        assert!(descendants_by(100, &rows, &born).is_empty());
+        assert!(tree_targets(100, 7000, &rows, &born).is_empty());
+    }
+
+    #[test]
+    fn a_running_root_takes_its_descendants_but_not_older_strangers_with_its_number() {
+        // 100 (born 50) -> 101 (60) -> 102 (70); 300 (born 5) names 100 as its parent but is older: a stranger.
+        // 103 names 101 but is gone.
+        let rows = [
+            row(100, 1),
+            row(101, 100),
+            row(102, 101),
+            row(300, 100),
+            row(103, 101),
+        ];
+        let born = running(&[(100, 50), (101, 60), (102, 70), (300, 5)]);
+        assert_eq!(descendants_by(100, &rows, &born), vec![101, 102]);
+        assert_eq!(tree_targets(100, 7000, &rows, &born), vec![100, 101, 102]);
+    }
+
+    #[test]
+    fn the_tree_never_includes_us_or_an_ancestor_of_ours() {
+        // 7000 (us) <- 500 (test runner) <- 4 (CI runner): "500's tree" would end us and the job.
+        let rows = [row(7000, 500), row(500, 4), row(4, 1), row(100, 500)];
+        let born = running(&[(7000, 90), (500, 10), (4, 1), (100, 80)]);
+        for root in [7000, 500, 4] {
+            assert!(tree_targets(root, 7000, &rows, &born).is_empty(), "{root}");
+        }
+        // A child of the runner that is not on our own chain is an ordinary root.
+        assert_eq!(tree_targets(100, 7000, &rows, &born), vec![100]);
+        // A tree with us or an ancestor under it leaves them out.
+        let under = [row(7000, 101), row(101, 100), row(100, 4), row(4, 1)];
+        let born = running(&[(7000, 90), (101, 80), (100, 10), (4, 1)]);
+        assert!(tree_targets(100, 7000, &under, &born).is_empty());
     }
 
     #[test]

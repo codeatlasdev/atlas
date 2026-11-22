@@ -8,6 +8,7 @@ import { randomLook } from "#lib/crew/look.ts";
 import { replayCrewOnboarding } from "#lib/crew/crewOnboarding.svelte.ts";
 import { isCrewServerKey } from "#lib/crew/sshTarget.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 class Recruit {
 	creating = $state(false);
@@ -32,7 +33,6 @@ class Recruit {
 				name: pending ? `${pending.name} Crewmate` : "New crewmate",
 				role: "",
 				agent,
-				approval: "ask",
 				look: randomLook(),
 				setup_step: "name",
 			});
@@ -54,7 +54,10 @@ export const recruit = new Recruit();
 /** Row context menu: "profile" opens the crewmate, "delete" asks first. */
 export function handleContextAction(hostKey: string, crewmateId: string, action: "profile" | "delete") {
 	if (action === "delete") {
-		if (confirm("Delete this crewmate?")) void crew.deleteCrewmate(hostKey, crewmateId);
+		const name =
+			crew.servers.find((h) => h.key === hostKey)?.crewmates.find((c) => c.id === crewmateId)?.name ?? "";
+		if (confirm(m.crew_settings_crewmate_dialog_delete_confirm({ name })))
+			void crew.deleteCrewmate(hostKey, crewmateId);
 	} else {
 		void crew.select(hostKey, crewmateId);
 	}

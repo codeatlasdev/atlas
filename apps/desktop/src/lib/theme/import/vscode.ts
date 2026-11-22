@@ -1,3 +1,4 @@
+import { m } from "#lib/i18n/m.ts";
 import { ThemeImportError } from "./errors.ts";
 import {
 	ANSI_KEYS,
@@ -109,12 +110,13 @@ export function parseVscodeTheme(text: string, fallbackName = "VS Code import"):
 	try {
 		raw = parseJsonc(text);
 	} catch (e) {
-		throw new ThemeImportError(`Invalid VS Code theme JSON: ${e instanceof Error ? e.message : String(e)}`);
+		const detail = e instanceof Error ? e.message : String(e);
+		throw new ThemeImportError(m.settings_theme_diag_vscode_invalid({ detail }));
 	}
-	if (!isObj(raw)) throw new ThemeImportError("VS Code theme must be a JSON object");
+	if (!isObj(raw)) throw new ThemeImportError(m.settings_theme_diag_vscode_not_object());
 	const warnings: string[] = [];
-	const warn = (m: string) => {
-		if (!warnings.includes(m)) warnings.push(m);
+	const warn = (message: string) => {
+		if (!warnings.includes(message)) warnings.push(message);
 	};
 	const style: Record<string, unknown> = {};
 
@@ -125,7 +127,7 @@ export function parseVscodeTheme(text: string, fallbackName = "VS Code import"):
 		if (typeof v !== "string") continue;
 		const c = normalizeColor(v);
 		if (!c) {
-			warn(`invalid color for ${src}: ${v}`);
+			warn(m.settings_theme_diag_invalid_color({ key: src, value: v }));
 			continue;
 		}
 		if (dst.startsWith("player:")) putPlayer(style, dst.slice(7) as "cursor" | "selection", c);
@@ -141,7 +143,7 @@ export function parseVscodeTheme(text: string, fallbackName = "VS Code import"):
 			if (typeof v !== "string") continue;
 			const c = normalizeColor(v);
 			if (c) style[ANSI_KEYS[i + offset]] = c;
-			else warn(`invalid color for ${key}: ${v}`);
+			else warn(m.settings_theme_diag_invalid_color({ key, value: v }));
 		}
 	});
 
@@ -152,7 +154,7 @@ export function parseVscodeTheme(text: string, fallbackName = "VS Code import"):
 	for (const item of tokenColors) {
 		if (!isObj(item)) continue;
 		if (typeof item.include === "string") {
-			warn(`tokenColors include ignored: ${item.include}`);
+			warn(m.settings_theme_diag_include_ignored({ include: item.include }));
 			continue;
 		}
 		const rule = item as Rule;
@@ -188,7 +190,7 @@ export function parseVscodeTheme(text: string, fallbackName = "VS Code import"):
 		});
 	}
 
-	if (Object.keys(style).length === 0) throw new ThemeImportError("No usable colors in VS Code theme");
+	if (Object.keys(style).length === 0) throw new ThemeImportError(m.settings_theme_diag_vscode_no_colors());
 
 	const type = typeof raw.type === "string" ? raw.type : "";
 	const bg = (style["editor.background"] ?? style["terminal.background"]) as string | undefined;

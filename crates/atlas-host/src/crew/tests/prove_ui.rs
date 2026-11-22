@@ -106,7 +106,7 @@ fn capture_calls_agent(root: &Path, calls: &[Value], reply: &str) -> std::path::
 }
 
 fn use_runner(prog: &Path) {
-    *TEST_RUNNER.lock() = Some((prog.to_path_buf(), Duration::from_secs(20)));
+    *TEST_RUNNER.lock() = Some((prog.to_path_buf(), atlas_core::scaling::HANG));
 }
 
 fn clear_runner() {
@@ -134,7 +134,7 @@ async fn a_ui_task_finishing_without_captures_parks_as_prove_ui_with_a_clear_rea
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(parked["action"]["kind"], "prove_ui", "{parked}");
@@ -170,7 +170,7 @@ async fn one_agent_image_is_not_enough_and_the_reason_counts_it() {
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
     clear_runner();
@@ -212,7 +212,7 @@ async fn a_ui_task_with_two_agent_captures_is_done() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let id = create_crewmate(&client, "Proves").await;
     let task = send(&client, &id, "restyle the header", true).await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     clear_runner();
     let atts = done["attachments"].as_array().unwrap();
     assert!(atts.len() >= 2, "{done}");
@@ -235,7 +235,7 @@ async fn a_task_that_is_not_ui_is_unaffected() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let id = create_crewmate(&client, "Plain").await;
     let task = send(&client, &id, "rename x", false).await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert!(done["action"].is_null() && done["ui"].is_null(), "{done}");
     client.call("shutdown", json!({})).await.ok();
     crate::crew::runner::set_test_agent_bin(None);
@@ -272,7 +272,7 @@ async fn images_the_user_sent_do_not_count_as_proof() {
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(parked["action"]["kind"], "prove_ui", "{parked}");
@@ -309,7 +309,7 @@ async fn the_agent_can_mark_its_task_ui_and_the_gate_then_applies() {
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(parked["action"]["kind"], "prove_ui", "{parked}");
@@ -331,7 +331,7 @@ async fn parked_ui_task(client: &HostClient, name: &str) -> (String, String) {
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
     (id, task)
@@ -368,7 +368,7 @@ async fn override_accepts_the_work_and_a_wrong_answer_is_an_error_not_a_failed_t
         )
         .await
         .unwrap();
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert_eq!(done["result"], "Restyled the header.");
     assert!(done["action"].is_null(), "{done}");
     client.call("shutdown", json!({})).await.ok();
@@ -395,7 +395,7 @@ async fn retry_runs_the_task_again_and_asks_for_captures_in_its_prompt() {
         .unwrap();
     // The same task runs again (the fake agent still attaches nothing, so it parks again), with the reason
     // and the instruction to capture in its prompt.
-    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let t = task_of(&client, &id, &task).await;
         let prompt = t["prompt"].as_str().unwrap();
@@ -433,7 +433,7 @@ async fn a_retry_with_images_carries_them_into_the_next_run() {
         )
         .await
         .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let t = task_of(&client, &id, &task).await;
         let atts = t["attachments"].as_array().cloned().unwrap_or_default();
@@ -519,9 +519,9 @@ async fn captures_land_as_agent_attachments_the_thread_can_fetch() {
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Caps").await;
     // A task must exist for a capture to attach to: a long-running one.
-    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 20"));
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 600"));
     let task = send(&client, &id, "look", false).await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(20)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     let pane = crate::crew::pane::key(&id, &task);
 
     let (status, v) = post_hook(
@@ -580,7 +580,7 @@ async fn telegram_gets_the_agent_images_as_a_media_group_then_the_buttons() {
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
     clear_runner();
@@ -641,7 +641,7 @@ async fn the_crewmate_list_carries_the_waiting_card_and_only_the_agents_images()
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
 
@@ -676,12 +676,12 @@ async fn strand_parked(
     action: crate::crew::store::TaskAction,
 ) -> (String, String) {
     use crate::crew::store::{CrewStore, TaskState};
-    let hang = fake_agent(tmp, "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp, "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(dir).await;
     let id = create_crewmate(&client, name).await;
     let task = send(&client, &id, "restyle the header", true).await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     stop(client).await;
     let store = CrewStore::new(dir);
     let mut t = store
@@ -739,7 +739,7 @@ async fn after_a_restart_override_of_a_prove_ui_card_ends_done_and_is_audited() 
         )
         .await
         .unwrap();
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert_eq!(done["result"], "Restyled the header.", "{done}");
     assert!(done["action"].is_null(), "{done}");
     assert!(
@@ -783,7 +783,7 @@ async fn after_a_restart_retry_of_a_prove_ui_card_checks_the_proof_again() {
         )
         .await
         .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let t = task_of(&client, &id, &task).await;
         let prompt = t["prompt"].as_str().unwrap();
@@ -832,7 +832,7 @@ async fn after_a_restart_override_of_a_refused_card_still_owes_the_proof() {
         .await
         .unwrap();
     // The old card is `waiting_action` too: wait for the proof card itself, not for any waiting state.
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     let parked = loop {
         let t = task_of(&client, &id, &task).await;
         if t["action"]["kind"] == "prove_ui" {
@@ -859,7 +859,7 @@ async fn after_a_restart_override_of_a_refused_card_still_owes_the_proof() {
         )
         .await
         .unwrap();
-    wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     crate::crew::runner::set_test_agent_bin(None);
     client.call("shutdown", json!({})).await.ok();
 }
@@ -871,12 +871,12 @@ async fn after_a_restart_override_of_a_refused_card_on_a_plain_task_is_done() {
     let _bin = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "PlainAfter").await;
     let task = send(&client, &id, "rename x", false).await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     stop(client).await;
     let store = CrewStore::new(&dir);
     let mut t = store
@@ -901,7 +901,7 @@ async fn after_a_restart_override_of_a_refused_card_on_a_plain_task_is_done() {
         )
         .await
         .unwrap();
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert_eq!(done["result"], "Renamed.", "{done}");
     crate::crew::runner::set_test_agent_bin(None);
     client.call("shutdown", json!({})).await.ok();

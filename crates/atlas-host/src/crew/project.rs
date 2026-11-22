@@ -99,6 +99,7 @@ pub async fn fetch(work_dir: &Path, git: &Git, mirror: Option<&Mirror>) -> Resul
         if let Some(m) = mirror
             && let Err(e) = m.refresh().await
         {
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: mirror of {} not refreshed: {e}",
                 work_dir.display()
@@ -490,7 +491,7 @@ pub(crate) fn prepare_path(path: &str) -> Result<PathBuf, String> {
 }
 
 #[allow(dead_code)]
-fn parse_github_repo(remote: &str) -> Option<String> {
+pub(crate) fn parse_github_repo(remote: &str) -> Option<String> {
     // https://github.com/owner/repo(.git)?
     if let Some(rest) = remote.strip_prefix("https://github.com/") {
         let repo = rest.trim_end_matches(".git");

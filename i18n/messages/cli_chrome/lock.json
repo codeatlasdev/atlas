@@ -1,0 +1,17 @@
+{
+  "pt-BR": {
+    "cli_chrome_arguments": "0298568b990d",
+    "cli_chrome_caused_by": "e6b31dc83ab2",
+    "cli_chrome_commands": "a771b9660dc8",
+    "cli_chrome_error": "4e1fde03bb80",
+    "cli_chrome_exit_code": "d29b0a02d315",
+    "cli_chrome_exit_signal": "e58b52ce954d",
+    "cli_chrome_help_flag": "1c01b8b580d0",
+    "cli_chrome_help_subcommand": "fbcb8a0be779",
+    "cli_chrome_help_subcommand_arg": "6419051683fe",
+    "cli_chrome_options": "0ac75dce3642",
+    "cli_chrome_tip": "5100f6c98155",
+    "cli_chrome_usage": "858fbb03e27c",
+    "cli_chrome_warning": "961bac64be66"
+  }
+}

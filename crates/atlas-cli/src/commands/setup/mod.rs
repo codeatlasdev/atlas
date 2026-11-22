@@ -18,10 +18,16 @@ mod shared;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::{Args, Subcommand, ValueEnum};
 
 use super::AtlasCommand;
 use plan::{Plan, SkillsTarget};
+
+/// Bold, for a command inside a message: the styling stays in code, the catalog holds words.
+fn bold(s: &str) -> String {
+    format!("\x1b[1m{s}\x1b[0m")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Scope {
@@ -87,18 +93,8 @@ pub enum Agent {
 impl Agent {
     const ALL: [Agent; 4] = [Agent::Omp, Agent::ClaudeCode, Agent::Codex, Agent::OpenCode];
 
-    /// Subcommand name (`atlas setup <name>`).
-    fn name(self) -> &'static str {
-        match self {
-            Agent::Omp => "omp",
-            Agent::ClaudeCode => "claude-code",
-            Agent::Codex => "codex",
-            Agent::OpenCode => "opencode",
-        }
-    }
-
-    /// Executable looked up on `PATH`.
-    fn binary(self) -> &'static str {
+    /// The built-in agent's id in `data/agents.json`: its name, binary, label and hooks come from there.
+    fn id(self) -> &'static str {
         match self {
             Agent::Omp => "omp",
             Agent::ClaudeCode => "claude",
@@ -107,13 +103,22 @@ impl Agent {
         }
     }
 
+    fn def(self) -> &'static atlas_core::agents::AgentDef {
+        atlas_core::agents::get(self.id()).expect("every setup agent is in data/agents.json")
+    }
+
+    /// Subcommand name (`atlas setup <name>`).
+    fn name(self) -> &'static str {
+        &self.def().setup
+    }
+
+    /// Executable looked up on `PATH`.
+    fn binary(self) -> &'static str {
+        &self.def().bin
+    }
+
     fn title(self) -> &'static str {
-        match self {
-            Agent::Omp => "OMP",
-            Agent::ClaudeCode => "Claude Code",
-            Agent::Codex => "Codex",
-            Agent::OpenCode => "OpenCode",
-        }
+        &self.def().label
     }
 
     /// Where this agent's user-scope config lives, for the scope banner.
@@ -126,47 +131,58 @@ impl Agent {
         }
     }
 
-    fn project_dir_name(self) -> &'static str {
+    fn project_dir_name(self) -> String {
         match self {
-            Agent::Omp => ".omp/",
-            Agent::ClaudeCode => ".mcp.json + .claude/",
-            Agent::Codex => ".codex/",
-            Agent::OpenCode => "(user-scope only)",
+            Agent::Omp => ".omp/".into(),
+            Agent::ClaudeCode => ".mcp.json + .claude/".into(),
+            Agent::Codex => ".codex/".into(),
+            Agent::OpenCode => t!("cmd_setup_project_user_only"),
         }
     }
 
-    fn next_steps(self) -> &'static [&'static str] {
+    fn next_steps(self) -> Vec<String> {
+        let status_hint = t!("cmd_setup_steps_status_hint");
         match self {
-            Agent::Omp => &[
-                "Restart omp (the hook loads at session start); \x1b[1m/reload-plugins\x1b[0m refreshes skills and MCP in a running session",
-                "Verify: \x1b[1m/mcp list\x1b[0m should show `atlas`, \x1b[1momp plugin list\x1b[0m should show `atlas-omp`",
-                "In an atlas project, the agent now gets `atlas dev --status` at session start",
+            Agent::Omp => vec![
+                t!(
+                    "cmd_setup_steps_omp_restart",
+                    command = bold("/reload-plugins")
+                ),
+                t!(
+                    "cmd_setup_steps_omp_verify",
+                    mcp = bold("/mcp list"),
+                    plugins = bold("omp plugin list")
+                ),
+                status_hint,
             ],
-            Agent::ClaudeCode => &[
-                "Restart Claude Code (project `.mcp.json` servers ask for approval on first use)",
-                "Verify: \x1b[1mclaude mcp get atlas\x1b[0m should say Connected, or run \x1b[1m/mcp\x1b[0m",
-                "In an atlas project, the agent now gets `atlas dev --status` at session start",
+            Agent::ClaudeCode => vec![
+                t!("cmd_setup_steps_claude_restart"),
+                t!(
+                    "cmd_setup_steps_claude_verify",
+                    command = bold("claude mcp get atlas"),
+                    slash = bold("/mcp")
+                ),
+                status_hint,
             ],
-            Agent::Codex => &[
-                "Restart Codex, then run \x1b[1m/hooks\x1b[0m once and trust the atlas hooks (Codex skips unreviewed hooks)",
-                "Verify: \x1b[1mcodex mcp get atlas\x1b[0m, or \x1b[1m/mcp\x1b[0m in the TUI",
-                "In an atlas project, the agent now gets `atlas dev --status` at session start",
+            Agent::Codex => vec![
+                t!("cmd_setup_steps_codex_restart", command = bold("/hooks")),
+                t!(
+                    "cmd_setup_steps_codex_verify",
+                    command = bold("codex mcp get atlas"),
+                    slash = bold("/mcp")
+                ),
+                status_hint,
             ],
-            Agent::OpenCode => &[
-                "Restart opencode so it picks up the plugin from `~/.config/opencode/plugins/`",
-                "Verify: Atlas Desktop shows agent state changes when opencode runs in its terminal",
-                "For crew servers: the plugin proxies remote permission approvals via Atlas",
+            Agent::OpenCode => vec![
+                t!("cmd_setup_steps_opencode_restart"),
+                t!("cmd_setup_steps_opencode_verify"),
+                t!("cmd_setup_steps_opencode_crew"),
             ],
         }
     }
 
-    fn removal_hint(self) -> &'static str {
-        match self {
-            Agent::Omp => "Restart omp for the removal to take effect.",
-            Agent::ClaudeCode => "Restart Claude Code for the removal to take effect.",
-            Agent::Codex => "Restart Codex for the removal to take effect.",
-            Agent::OpenCode => "Restart opencode for the removal to take effect.",
-        }
+    fn removal_hint(self) -> String {
+        t!("cmd_setup_removal_restart", label = self.title())
     }
 
     fn resolve(self, env: &Env, scope: Scope, root: Option<&Path>) -> Result<AgentPaths> {
@@ -292,7 +308,7 @@ impl Env {
             opencode_config_dir: dir_from_env("XDG_CONFIG_HOME")
                 .unwrap_or_else(|| home.join(".config"))
                 .join("opencode"),
-            cwd: std::env::current_dir().context("cannot read current directory")?,
+            cwd: std::env::current_dir().context(t!("cmd_setup_cwd_unreadable"))?,
             atlas_on_path: which("atlas").is_some(),
             omp_bin: which("omp"),
         })
@@ -343,45 +359,62 @@ impl AtlasCommand for SetupArgs {
 /// `atlas setup` with no harness: report what is installed and what to run.
 fn detect() -> Result<()> {
     let env = Env::from_process()?;
-    println!("\x1b[1;34m◆\x1b[0m Atlas agent setup");
+    println!("\x1b[1;34m◆\x1b[0m {}", t!("cmd_setup_detect_title"));
     println!();
     let mut found = Vec::new();
     for agent in Agent::ALL {
-        let pad = " ".repeat(11 - agent.name().len());
+        let pad = " ".repeat(12 - agent.name().len());
         match which(agent.binary()) {
             Some(p) => {
                 println!(
-                    "  \x1b[32m✓\x1b[0m {}{pad}found at {}",
+                    "  \x1b[32m✓\x1b[0m {}{pad}{}",
                     agent.name(),
-                    p.display()
+                    t!("cmd_setup_detect_found", path = p.display().to_string())
                 );
                 let state = match agent
                     .resolve(&env, Scope::User, None)
                     .and_then(|paths| paths.plan_install(Scope::User, false, "atlas"))
                 {
-                    Ok(plan) if plan.has_conflict() => "needs attention".to_string(),
-                    Ok(plan) if plan.has_changes() => "not set up (or outdated)".to_string(),
-                    Ok(_) => "set up, up to date".to_string(),
-                    Err(e) => format!("cannot read config: {e:#}"),
+                    Ok(plan) if plan.has_conflict() => t!("cmd_setup_state_attention"),
+                    Ok(plan) if plan.has_changes() => t!("cmd_setup_state_outdated"),
+                    Ok(_) => t!("cmd_setup_state_ok"),
+                    Err(e) => t!("cmd_setup_state_error", error = format!("{e:#}")),
                 };
-                println!("        status: {state}");
+                println!("        {}", t!("cmd_setup_detect_status", state = state));
                 found.push(agent);
             }
-            None => println!("  \x1b[2m·\x1b[0m {}{pad}not found on PATH", agent.name()),
+            None => println!(
+                "  \x1b[2m·\x1b[0m {}{pad}{}",
+                agent.name(),
+                t!("cmd_setup_detect_not_found")
+            ),
         }
     }
     println!();
     if found.is_empty() {
         println!(
-            "  No supported agent found. Install one of omp, claude (Claude Code) or codex, then run \x1b[1matlas setup <agent> --apply\x1b[0m."
+            "  {}",
+            t!(
+                "cmd_setup_detect_none",
+                command = bold("atlas setup <agent> --apply")
+            )
         );
     } else {
         for agent in found {
             println!("  {}:", agent.title());
-            println!("    Preview:  \x1b[1matlas setup {}\x1b[0m", agent.name());
             println!(
-                "    Install:  \x1b[1matlas setup {} --apply\x1b[0m",
-                agent.name()
+                "    {}",
+                t!(
+                    "cmd_setup_detect_preview",
+                    command = bold(&format!("atlas setup {}", agent.name()))
+                )
+            );
+            println!(
+                "    {}",
+                t!(
+                    "cmd_setup_detect_install",
+                    command = bold(&format!("atlas setup {} --apply", agent.name()))
+                )
             );
         }
     }
@@ -407,10 +440,10 @@ fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
     }
 
     if args.scope == Scope::Project && project_root.is_none() {
-        bail!(
-            "--scope project needs an atlas.yaml in {} or a parent directory",
-            env.cwd.display()
-        );
+        bail!(t!(
+            "cmd_setup_scope_project_missing",
+            dir = env.cwd.display().to_string()
+        ));
     }
     let paths = agent.resolve(&env, args.scope, project_root.as_deref())?;
 
@@ -418,13 +451,13 @@ fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
     let (mut plan, title) = if args.uninstall {
         (
             paths.plan_uninstall(&env, args.force)?,
-            format!("Uninstall atlas from {}", agent.title()),
+            t!("cmd_setup_title_uninstall", label = agent.title()),
         )
     } else {
         let command = shared::resolve_command(&env, &mut warnings)?;
         (
             paths.plan_install(args.scope, args.force, &command)?,
-            format!("Set up atlas for {}", agent.title()),
+            t!("cmd_setup_title_install", label = agent.title()),
         )
     };
     plan.warnings.splice(0..0, warnings);
@@ -436,14 +469,24 @@ fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
     }
 
     let scope_label = match args.scope {
-        Scope::User => format!("user ({})", agent.user_dir(&env).display()),
-        Scope::Project => format!(
-            "project ({}: {})",
-            project_root.as_deref().unwrap_or(&env.cwd).display(),
-            agent.project_dir_name()
+        Scope::User => t!(
+            "cmd_setup_scope_user",
+            dir = agent.user_dir(&env).display().to_string()
+        ),
+        Scope::Project => t!(
+            "cmd_setup_scope_project",
+            root = project_root
+                .as_deref()
+                .unwrap_or(&env.cwd)
+                .display()
+                .to_string(),
+            what = agent.project_dir_name()
         ),
     };
-    println!("\x1b[1;34m◆\x1b[0m {title}  \x1b[2mscope: {scope_label}\x1b[0m");
+    println!(
+        "\x1b[1;34m◆\x1b[0m {title}  \x1b[2m{}\x1b[0m",
+        t!("cmd_setup_scope_banner", scope = scope_label)
+    );
     println!();
 
     if !args.apply {
@@ -456,9 +499,7 @@ fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
     if plan.has_conflict() {
         print!("{}", plan.render(false));
         println!();
-        bail!(
-            "conflicts found — nothing was changed. Re-run with --force to replace foreign entries."
-        );
+        bail!(t!("cmd_setup_conflicts_refused"));
     }
     if !plan.has_changes() {
         print!("{}", plan.render(true));
@@ -466,9 +507,9 @@ fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
         println!(
             "  \x1b[32m✓\x1b[0m {}",
             if args.uninstall {
-                "nothing to remove"
+                t!("cmd_setup_applied_nothing_to_remove")
             } else {
-                "up to date"
+                t!("cmd_setup_action_up_to_date")
             }
         );
         return Ok(());
@@ -479,7 +520,7 @@ fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
     if args.uninstall {
         println!("  {}", agent.removal_hint());
     } else {
-        println!("  Next steps:");
+        println!("  {}", t!("cmd_setup_next_steps"));
         for (i, step) in agent.next_steps().iter().enumerate() {
             println!("    {}. {step}", i + 1);
         }
@@ -494,18 +535,19 @@ fn finish_dry_run(agent: Agent, plan: &Plan, uninstall: bool) {
         "--apply"
     };
     if plan.has_conflict() {
-        println!(
-            "  \x1b[31m✗\x1b[0m conflicts found; --apply will refuse unless you pass --force."
-        );
+        println!("  \x1b[31m✗\x1b[0m {}", t!("cmd_setup_dry_conflicts"));
     } else if plan.has_changes() {
         println!(
-            "  Dry run — nothing written. Run \x1b[1matlas setup {} {flag}\x1b[0m to apply.",
-            agent.name()
+            "  {}",
+            t!(
+                "cmd_setup_dry_run",
+                command = bold(&format!("atlas setup {} {flag}", agent.name()))
+            )
         );
     } else if uninstall {
-        println!("  Nothing to remove.");
+        println!("  {}", t!("cmd_setup_dry_nothing_to_remove"));
     } else {
-        println!("  \x1b[32m✓\x1b[0m up to date — nothing to do.");
+        println!("  \x1b[32m✓\x1b[0m {}", t!("cmd_setup_dry_up_to_date"));
     }
 }
 
@@ -530,11 +572,62 @@ fn refresh_agent(agent: Agent, env: &Env, project_root: Option<&Path>) -> Result
         if plan.has_changes() {
             plan::apply(&plan, paths.skills())?;
             println!(
-                "  \x1b[33m↑\x1b[0m refreshed {} setup ({})",
-                agent.title(),
-                paths.hook_path().display()
+                "  \x1b[33m↑\x1b[0m {}",
+                t!(
+                    "cmd_setup_refreshed",
+                    label = agent.title(),
+                    path = paths.hook_path().display().to_string()
+                )
             );
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(flatten)]
+        setup: SetupArgs,
+    }
+
+    // The registry (`data/agents.json`) says every built-in agent has hooks installed by `atlas setup <setup>`;
+    // hostd's integrations check, Atlas Desktop's prompt and the crew install all run that exact command. A
+    // built-in added to the registry without a harness here (or a harness without an entry) turns this red.
+    #[test]
+    fn every_built_in_agent_has_a_setup_command_with_check_and_no_harness_is_unlisted() {
+        for def in atlas_core::agents::all() {
+            let cli =
+                Cli::try_parse_from(["atlas", def.setup.as_str(), "--check"]).unwrap_or_else(|e| {
+                    panic!("`atlas setup {} --check` does not parse: {e}", def.setup)
+                });
+            let ok = match cli.setup.harness {
+                Some(Harness::Omp(a)) => (Agent::Omp, a.check),
+                Some(Harness::ClaudeCode(a)) => (Agent::ClaudeCode, a.check),
+                Some(Harness::Codex(a)) => (Agent::Codex, a.check),
+                Some(Harness::OpenCode(a)) => (Agent::OpenCode, a.check),
+                None => panic!("{}: no harness", def.setup),
+            };
+            assert!(ok.1, "{}: --check", def.setup);
+            assert_eq!(
+                ok.0.id(),
+                def.id,
+                "{}: harness maps to its registry entry",
+                def.setup
+            );
+        }
+        let covered: Vec<&str> = Agent::ALL.iter().map(|a| a.id()).collect();
+        let registry: Vec<&str> = atlas_core::agents::all()
+            .iter()
+            .map(|a| a.id.as_str())
+            .collect();
+        assert_eq!(
+            covered, registry,
+            "Agent::ALL is the registry, in its order"
+        );
+    }
 }

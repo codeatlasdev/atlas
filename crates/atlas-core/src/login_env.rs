@@ -27,10 +27,9 @@ use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
-use parking_lot::Mutex;
+use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 
 const MARK: &str = "__ATLAS_ENV__";
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(6);
@@ -80,8 +79,14 @@ fn is_path_key(k: &str) -> bool {
 }
 
 /// The cached probe; the first access runs it (a few seconds at most), so async callers use
-/// `spawn_blocking`.
-static CURRENT: LazyLock<Mutex<Probe>> = LazyLock::new(|| Mutex::new(run()));
+/// `spawn_blocking`. The first probe runs holding the lock, so callers racing for it share one shell
+/// start (#285); `None` until then.
+static CURRENT: Mutex<Option<Probe>> = Mutex::new(None);
+
+/// The cached probe, running it first if nothing did.
+fn cached() -> MappedMutexGuard<'static, Probe> {
+    MutexGuard::map(CURRENT.lock(), |slot| slot.get_or_insert_with(run))
+}
 static OVERRIDE: Mutex<Option<String>> = Mutex::new(None);
 
 /// Set the shell override (Atlas Desktop's Settings; `None` = automatic). Takes effect on the next
@@ -92,24 +97,32 @@ pub fn set_override(shell: Option<String>) {
 
 /// The cached probe, running it on first use.
 pub fn current() -> Probe {
-    CURRENT.lock().clone()
+    cached().clone()
 }
 
 /// The shell the cached probe ran (what a terminal tab starts), without cloning the environment.
 pub fn shell() -> String {
-    CURRENT.lock().shell.clone()
+    cached().shell.clone()
 }
 
 /// Run the probe now if nothing did yet. A daemon calls this from a blocking thread at start so the
 /// first terminal does not wait for the shell's rc files.
 pub fn warm() {
-    LazyLock::force(&CURRENT);
+    drop(cached());
 }
 
-/// Probe again now (after the override changed) and cache the result.
+/// Probe again now (after the override changed) and cache the result. A cache nothing has filled yet is
+/// filled by this one probe (running the probe and then letting the first reader run it again cost a
+/// second interactive login shell at every launch, #285); a filled one stays readable while the new
+/// probe runs.
 pub fn reprobe() -> Probe {
+    let mut slot = CURRENT.lock();
+    if slot.is_none() {
+        return slot.insert(run()).clone();
+    }
+    drop(slot);
     let p = run();
-    *CURRENT.lock() = p.clone();
+    *CURRENT.lock() = Some(p.clone());
     p
 }
 
@@ -123,9 +136,9 @@ pub fn reprobe() -> Probe {
 pub fn install(p: Probe) -> Installed {
     static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let previous = std::mem::replace(&mut *CURRENT.lock(), p);
+    let previous = CURRENT.lock().replace(p);
     Installed {
-        previous: Some(previous),
+        previous,
         _serial: serial,
     }
 }
@@ -138,9 +151,7 @@ pub struct Installed {
 
 impl Drop for Installed {
     fn drop(&mut self) {
-        if let Some(p) = self.previous.take() {
-            *CURRENT.lock() = p;
-        }
+        *CURRENT.lock() = self.previous.take();
     }
 }
 
@@ -206,6 +217,10 @@ pub fn fallback_path(home: &Path, base_path: &str) -> String {
     }
     parts.join(":")
 }
+
+/// The `source` of [`resolve_shell`] and of [`Probe`]. Settings > Terminal words each one (`sourceText`, desktop); any
+/// other value shows as it came.
+pub const SHELL_SOURCES: [&str; 4] = ["settings", "account", "$SHELL", "default"];
 
 /// Shell to probe and where the choice came from.
 pub fn resolve_shell() -> (String, &'static str) {
@@ -609,6 +624,42 @@ mod tests {
         assert!(d.ends_with("sh"));
     }
 
+    // Contract with the frontend: every `source` the real `pick_shell` makes is in `SHELL_SOURCES`, and that list is
+    // the fixture `__fixtures__/shell-sources.json` the desktop test reads (each one has a message).
+    #[test]
+    fn shell_sources_match_the_frontend_fixture() {
+        let ok = |p: &Path| p.starts_with("/good");
+        let s = |x: &str| Some(x.to_string());
+        let made = [
+            pick_shell(s("/good/o"), None, None, ok).1,
+            pick_shell(None, None, s("/good/a"), ok).1,
+            pick_shell(None, s("/good/e"), None, ok).1,
+            pick_shell(None, None, None, ok).1,
+        ];
+        assert_eq!(made, SHELL_SOURCES);
+        let value = serde_json::to_value(SHELL_SOURCES).unwrap();
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/shell-sources.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
     #[test]
     fn parse_keeps_env_drops_noise_and_session_vars() {
         let out = format!("Welcome!\n{MARK}\nPATH=/a:/b\0FOO=x=y\0PWD=/tmp\0\n{MARK}\nbye");
@@ -647,22 +698,42 @@ mod tests {
         assert!(parse("nothing").is_none());
     }
 
-    /// An interactive rc that blocks forever must not hang a spawn: the probe times out and falls back.
+    /// A shell that never answers; each run of it appends a line to `runs`, so a test counts the probes that
+    /// were attempted instead of timing them.
+    fn hanging_shell(home: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+        let sh = home.join("hang.sh");
+        let runs = home.join("runs");
+        std::fs::write(
+            &sh,
+            format!("#!/bin/sh\necho run >> {}\nsleep 30\n", runs.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (sh, runs)
+    }
+
+    fn runs_of(runs: &Path) -> usize {
+        std::fs::read_to_string(runs).map_or(0, |s| s.lines().count())
+    }
+
+    /// An interactive rc that blocks forever must not hang a spawn: the probe times out and falls back. Each
+    /// flag set is tried once and bounded by its own timeout, so the probe ends after exactly that many attempts
+    /// (a retry loop would add runs; a missing timeout would not report one).
     #[test]
     fn a_hanging_rc_times_out_instead_of_blocking() {
         let home = tempfile::tempdir().unwrap();
-        let sh = home.path().join("hang.sh");
-        std::fs::write(&sh, "#!/bin/sh\nsleep 30\n").unwrap();
-        std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let t = Instant::now();
+        let (sh, runs) = hanging_shell(home.path());
         let p = probe_with(sh.to_str().unwrap(), home.path(), &gui_env(home.path()));
         assert!(
             p.error.as_deref().unwrap().contains("timed out"),
             "{:?}",
             p.error
         );
-        // Three flag sets, each bounded.
-        assert!(t.elapsed() < ATTEMPT_TIMEOUT * 3 + Duration::from_secs(5));
+        assert_eq!(
+            runs_of(&runs),
+            FLAG_SETS.len(),
+            "one bounded attempt per flag set"
+        );
     }
 
     /// Opening a terminal reads the cached probe: `shell()`, `vars()` and `warm()` never run the shell
@@ -670,20 +741,21 @@ mod tests {
     #[test]
     fn reading_the_cached_probe_does_not_probe_again() {
         let home = tempfile::tempdir().unwrap();
-        let hang = home.path().join("hang.sh");
-        std::fs::write(&hang, "#!/bin/sh\nsleep 30\n").unwrap();
-        std::fs::set_permissions(&hang, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (hang, runs) = hanging_shell(home.path());
         let mut p = probe_with("/bin/sh", home.path(), &gui_env(home.path()));
         p.shell = hang.display().to_string();
         let _env = install(p);
         set_override(Some(hang.display().to_string()));
-        let t = Instant::now();
         for _ in 0..50 {
             assert_eq!(shell(), hang.display().to_string());
             assert!(vars().iter().any(|(k, _)| k == "PATH"));
             warm();
         }
         set_override(None);
-        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+        assert_eq!(
+            runs_of(&runs),
+            0,
+            "a read of the cached probe ran the shell again"
+        );
     }
 }

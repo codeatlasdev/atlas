@@ -5,24 +5,31 @@
 <script lang="ts">
 	import type { Trigger } from "#lib/crew.ts";
 	import type { AutomationForm } from "#lib/crew/automation/automationForm.svelte.ts";
+	import { dateTime } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { form, trigger, tz }: { form: AutomationForm; trigger: Trigger | null; tz?: string } = $props();
 
 	const sentence = $derived(form.liveSentence(tz));
 
-	const GITHUB_EVENTS = [
-		{ ev: "pr_opened", label: "PR opened" },
-		{ ev: "pr_review_requested", label: "Review requested" },
-		{ ev: "issue_opened", label: "Issue opened" },
-		{ ev: "ci_failed", label: "CI failed" },
-		{ ev: "release", label: "Release" },
-		{ ev: "mention", label: "Mentioned" },
-		{ ev: "issue_assigned", label: "Issue assigned" },
-		{ ev: "pr_review_comment", label: "Review comment" },
-	];
+	const GITHUB_EVENTS = $derived([
+		{ ev: "pr_opened", label: m.crew_automation_fields_github_pr_opened() },
+		{ ev: "pr_review_requested", label: m.crew_automation_fields_github_review_requested() },
+		{ ev: "issue_opened", label: m.crew_automation_fields_github_issue_opened() },
+		{ ev: "ci_failed", label: m.crew_automation_fields_github_ci_failed() },
+		{ ev: "release", label: m.crew_automation_fields_github_release() },
+		{ ev: "mention", label: m.crew_automation_fields_github_mention() },
+		{ ev: "issue_assigned", label: m.crew_automation_fields_github_issue_assigned() },
+		{ ev: "pr_review_comment", label: m.crew_automation_fields_github_review_comment() },
+	]);
 
-	const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"] as const;
-	const DAY_FULL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+	// Sunday-first, like `scheduleDays`; 2024-01-07 is a Sunday. Weekday names come from Intl, never typed.
+	const dayLabels = $derived(
+		Array.from({ length: 7 }, (_, d) => ({
+			short: dateTime(new Date(2024, 0, 7 + d), { weekday: "narrow" }),
+			full: dateTime(new Date(2024, 0, 7 + d), { weekday: "short" }),
+		})),
+	);
 </script>
 
 <div class="fields">
@@ -30,17 +37,17 @@
 		{#if !form.customCronMode}
 			<!-- Day chips -->
 			<div class="field-row">
-				<span class="field-label">Days</span>
-				<div class="day-chips" role="group" aria-label="Days of week">
-					{#each DAY_LABELS as label, d}
+				<span class="field-label">{m.crew_automation_fields_days()}</span>
+				<div class="day-chips" role="group" aria-label={m.crew_automation_fields_days_of_week()}>
+					{#each dayLabels as day, d}
 						<button
 							class="day-chip"
 							class:on={form.scheduleDays.includes(d)}
 							aria-pressed={form.scheduleDays.includes(d)}
-							aria-label={DAY_FULL[d]}
+							aria-label={day.full}
 							onclick={() => form.toggleDay(d)}
 						>
-							{label}
+							{day.short}
 						</button>
 					{/each}
 				</div>
@@ -55,31 +62,31 @@
 						class:active={form.scheduleDays.length === 7}
 						onclick={() => (form.scheduleDays = [0, 1, 2, 3, 4, 5, 6])}
 					>
-						Every day
+						{m.crew_automation_fields_every_day()}
 					</button>
 					<button
 						class="preset-btn"
 						class:active={[...form.scheduleDays].sort().join() === "1,2,3,4,5"}
 						onclick={() => (form.scheduleDays = [1, 2, 3, 4, 5])}
 					>
-						Weekdays
+						{m.crew_automation_fields_weekdays()}
 					</button>
 				</div>
 			</div>
 
 			<!-- Time -->
 			<div class="field-row">
-				<label class="field-label" for="schedule-time">Time</label>
+				<label class="field-label" for="schedule-time">{m.crew_automation_fields_time()}</label>
 				<input
 					id="schedule-time"
 					class="time-input"
 					type="time"
 					value={`${String(form.scheduleHour).padStart(2, "0")}:${String(form.scheduleMinute).padStart(2, "0")}`}
 					onchange={(e) => {
-						const [h, m] = (e.currentTarget as HTMLInputElement).value.split(":").map(Number);
-						if (!isNaN(h) && !isNaN(m)) {
+						const [h, min] = (e.currentTarget as HTMLInputElement).value.split(":").map(Number);
+						if (!isNaN(h) && !isNaN(min)) {
 							form.scheduleHour = h;
-							form.scheduleMinute = m;
+							form.scheduleMinute = min;
 						}
 					}}
 				/>
@@ -92,13 +99,13 @@
 		{:else}
 			<!-- Custom cron input -->
 			<div class="field-row">
-				<label class="field-label" for="custom-cron">Cron</label>
+				<label class="field-label" for="custom-cron">{m.crew_automation_fields_cron()}</label>
 				<input
 					id="custom-cron"
 					class="cron-input"
 					bind:value={form.customCron}
 					placeholder="0 9 * * 1-5"
-					aria-label="Cron expression"
+					aria-label={m.crew_automation_fields_cron_expression()}
 				/>
 			</div>
 			{#if sentence}
@@ -107,11 +114,12 @@
 		{/if}
 
 		<button class="toggle-cron" onclick={() => (form.customCronMode = !form.customCronMode)}>
-			{form.customCronMode ? "← Use builder" : "Custom cron →"}
+			{#if form.customCronMode}← {m.crew_automation_fields_use_builder()}{:else}{m.crew_automation_fields_custom_cron()}
+				→{/if}
 		</button>
 	{:else if form.kind === "interval"}
 		<div class="field-row">
-			<label class="field-label" for="interval-val">Every</label>
+			<label class="field-label" for="interval-val">{m.crew_automation_fields_every()}</label>
 			<div class="inline-row">
 				<input
 					id="interval-val"
@@ -119,28 +127,33 @@
 					type="number"
 					min="1"
 					bind:value={form.intervalValue}
-					aria-label="Interval amount"
+					aria-label={m.crew_automation_fields_interval_amount()}
 				/>
-				<select class="unit-select" bind:value={form.intervalUnit} aria-label="Interval unit">
-					<option value="minutes">minutes</option>
-					<option value="hours">hours</option>
-					<option value="days">days</option>
+				<select
+					class="unit-select"
+					bind:value={form.intervalUnit}
+					aria-label={m.crew_automation_fields_interval_unit()}
+				>
+					<option value="minutes">{m.crew_automation_fields_unit_minutes()}</option>
+					<option value="hours">{m.crew_automation_fields_unit_hours()}</option>
+					<option value="days">{m.crew_automation_fields_unit_days()}</option>
 				</select>
 			</div>
 		</div>
 	{:else if form.kind === "github"}
 		<div class="field-row">
-			<label class="field-label" for="gh-repo">Repo</label>
+			<label class="field-label" for="gh-repo">{m.crew_automation_fields_repo()}</label>
+			<!-- i18n-ignore: an example owner/repo name, not prose -->
 			<input
 				id="gh-repo"
 				class="text-input"
 				bind:value={form.githubRepo}
 				placeholder="owner/repo"
-				aria-label="GitHub repo"
+				aria-label={m.crew_automation_fields_github_repo()}
 			/>
 		</div>
 		<div class="field-row">
-			<span class="field-label">Events</span>
+			<span class="field-label">{m.crew_automation_fields_events()}</span>
 			<div class="check-list">
 				{#each GITHUB_EVENTS as ev}
 					<label class="check-item">
@@ -157,84 +170,92 @@
 		</div>
 	{:else if form.kind === "file"}
 		<div class="field-row">
-			<label class="field-label" for="file-glob">Glob</label>
+			<label class="field-label" for="file-glob">{m.crew_automation_fields_glob()}</label>
+			<!-- i18n-ignore: an example glob pattern, not prose -->
 			<input
 				id="file-glob"
 				class="text-input"
 				bind:value={form.fileGlob}
 				placeholder="**/*.ts"
-				aria-label="File glob"
+				aria-label={m.crew_automation_fields_file_glob()}
 			/>
 		</div>
 		<div class="field-row">
-			<label class="field-label" for="file-path">Path</label>
+			<label class="field-label" for="file-path">{m.crew_automation_fields_path()}</label>
+			<!-- i18n-ignore: an example path, not prose -->
 			<input
 				id="file-path"
 				class="text-input"
 				bind:value={form.filePath}
 				placeholder="/path/to/dir"
-				aria-label="Watch path"
+				aria-label={m.crew_automation_fields_watch_path()}
 			/>
 		</div>
 	{:else if form.kind === "crewmate"}
 		<div class="field-row">
-			<label class="field-label" for="crewmate-from">Crewmate name</label>
+			<label class="field-label" for="crewmate-from">{m.crew_automation_fields_crewmate_name()}</label>
 			<input
 				id="crewmate-from"
 				class="text-input"
 				bind:value={form.crewmateChainFrom}
-				placeholder="Crewmate name or ID"
-				aria-label="Source crewmate"
+				placeholder={m.crew_automation_fields_crewmate_name_or_id()}
+				aria-label={m.crew_automation_fields_source_crewmate()}
 			/>
 		</div>
 		<div class="field-row">
-			<label class="field-label" for="crewmate-on">When</label>
+			<label class="field-label" for="crewmate-on">{m.crew_automation_fields_when()}</label>
 			<select
 				id="crewmate-on"
 				class="unit-select"
 				bind:value={form.crewmateChainOn}
-				aria-label="When to trigger"
+				aria-label={m.crew_automation_fields_when_to_trigger()}
 			>
-				<option value="done">Finishes</option>
-				<option value="failed">Fails</option>
+				<option value="done">{m.crew_automation_fields_finishes()}</option>
+				<option value="failed">{m.crew_automation_fields_fails()}</option>
 			</select>
 		</div>
 	{:else if form.kind === "service"}
 		<div class="field-row">
-			<label class="field-label" for="svc-name">Service</label>
+			<label class="field-label" for="svc-name">{m.crew_automation_fields_service()}</label>
 			<input
 				id="svc-name"
 				class="text-input"
 				bind:value={form.serviceName}
-				placeholder="Service name"
-				aria-label="Service name"
+				placeholder={m.crew_automation_fields_service_name()}
+				aria-label={m.crew_automation_fields_service_name()}
 			/>
 		</div>
 		<div class="field-row">
-			<label class="field-label" for="svc-dir">Project dir</label>
+			<label class="field-label" for="svc-dir">{m.crew_automation_fields_project_dir()}</label>
+			<!-- i18n-ignore: an example path, not prose -->
 			<input
 				id="svc-dir"
 				class="text-input"
 				bind:value={form.serviceProjectDir}
 				placeholder="/path/to/project"
-				aria-label="Project directory"
+				aria-label={m.crew_automation_fields_project_directory()}
 			/>
 		</div>
 		<div class="field-row">
-			<label class="field-label" for="svc-on">When</label>
-			<select id="svc-on" class="unit-select" bind:value={form.serviceOn} aria-label="When to trigger">
-				<option value="failed">Fails</option>
-				<option value="recovered">Recovers</option>
+			<label class="field-label" for="svc-on">{m.crew_automation_fields_when()}</label>
+			<select
+				id="svc-on"
+				class="unit-select"
+				bind:value={form.serviceOn}
+				aria-label={m.crew_automation_fields_when_to_trigger()}
+			>
+				<option value="failed">{m.crew_automation_fields_fails()}</option>
+				<option value="recovered">{m.crew_automation_fields_recovers()}</option>
 			</select>
 		</div>
 	{:else if form.kind === "webhook"}
 		<p class="hint">
-			A unique token will be generated. Use it in your webhook URL:
+			{m.crew_automation_fields_webhook_hint()}
 			<code>/crew/&#123;crewmate-id&#125;/hook/&#123;token&#125;</code>
 		</p>
 		{#if trigger?.kind.type === "webhook"}
 			<div class="field-row">
-				<span class="field-label">Token</span>
+				<span class="field-label">{m.crew_automation_fields_token()}</span>
 				<code class="token-display">{trigger.kind.token}</code>
 			</div>
 		{/if}

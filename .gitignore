@@ -15,6 +15,9 @@ dist/
 .astro/
 .wrangler/
 
+# i18n pseudo-locale en-XA (bun run i18n:pseudo): generated from the English catalogs, never committed
+**/messages/en-XA.json
+
 # ── Flutter (apps/mobile) ───────────────────────────────────────────────────
 apps/mobile/.dart_tool/
 apps/mobile/build/
@@ -22,6 +25,8 @@ apps/mobile/native/target/
 apps/mobile/ios/Pods/
 apps/mobile/**/*.g.dart
 apps/mobile/**/*.freezed.dart
+# i18n: ARB files and the localizations class are generated from i18n/messages by scripts/mobile-check.sh, never committed
+apps/mobile/lib/l10n/
 
 # ── Secrets and machine-local config ────────────────────────────────────────
 .env
@@ -65,3 +70,6 @@ studio/out/
 demo/.out/
 __pycache__/
 *.pyc
+
+# i18n: inlang plugin caches (absolute paths of whoever ran the build) and Paraglide inputs generated at build time
+**/project.inlang/cache/

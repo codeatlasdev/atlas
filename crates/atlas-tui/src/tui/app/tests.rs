@@ -606,7 +606,10 @@ fn test_app_start_waits_for_deps_install() {
         app_names: names.clone(),
     });
     app.apply_manager_event(ManagerEvent::DepsFailed {
-        reason: "exit 1: boom".into(),
+        reason: crate::runtime::note::Note::new(
+            "deps.exit",
+            serde_json::json!({"code": 1, "tail": "boom"}),
+        ),
     });
     assert_eq!(drain(&mut app), vec![names.clone()]);
     assert_eq!(app.toast.as_ref().unwrap().1, ToastVariant::Error);
@@ -815,7 +818,7 @@ fn test_mouse_capture_toggle_queues_effect() {
     assert!(!app.mouse_capture);
     assert_eq!(
         app.toast.as_ref().map(|t| t.0.as_str()),
-        Some("Mouse capture off — select text freely")
+        Some(atlas_i18n::t!("tui_runtime_app_toast_mouse_off").as_str())
     );
     assert!(matches!(
         app.effects.pop_back(),

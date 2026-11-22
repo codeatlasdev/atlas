@@ -73,7 +73,9 @@ pub struct Snapshot {
 /// Returns Err(reason) when nothing is running (missing, dead pid, or stale file).
 pub fn live_snapshot(root_dir: &Path) -> Result<Snapshot, String> {
     let path = crate::runtime::log_dir(root_dir).join(".tui-status.json");
-    let text = std::fs::read_to_string(&path).map_err(|_| "no status file".to_string())?;
+    // The runner replaces this file every second; a plain read on Windows can be refused while it does (#545).
+    let text =
+        atlas_core::fs::read_to_string_replaced(&path).map_err(|_| "no status file".to_string())?;
     let v: Value =
         serde_json::from_str(&text).map_err(|e| format!("unreadable status file: {e}"))?;
 
@@ -155,33 +157,65 @@ pub fn live_snapshot(root_dir: &Path) -> Result<Snapshot, String> {
 /// budget standing, a suspected leak. Empty when there is nothing notable (over budget, a
 /// suspected leak, or a rising trend), so a healthy project's output stays as it was.
 pub fn memory_parts(m: &crate::runtime::manager::MemoryFacts) -> Vec<String> {
+    memory_parts_in(m, atlas_i18n::lang())
+}
+
+/// [`memory_parts`] in `tag`. The `--status` text is injected into agents' context by the hooks, so it asks for English.
+pub fn memory_parts_in(m: &crate::runtime::manager::MemoryFacts, tag: &str) -> Vec<String> {
     use crate::runtime::memory::{Budget, Direction, fmt_size};
+    use atlas_i18n::t_in;
     let notable = m.budget != Budget::Ok
         || m.leak.is_some()
         || m.trend.is_some_and(|t| t.direction == Direction::Rising);
     let Some(rss) = m.rss.filter(|_| notable) else {
         return Vec::new();
     };
-    let mut parts = vec![format!("memory {}", fmt_size(rss))];
+    let mut parts = vec![t_in!(
+        tag,
+        "tui_runtime_widgets_mem_size",
+        size = fmt_size(rss)
+    )];
     if let Some(t) = m.trend {
-        parts.push(format!("{} {:+} MB/min", t.direction.name(), t.mb_per_min));
+        let direction = match t.direction {
+            Direction::Rising => t_in!(tag, "tui_runtime_widgets_mem_rising"),
+            Direction::Flat => t_in!(tag, "tui_runtime_widgets_mem_flat"),
+            Direction::Falling => t_in!(tag, "tui_runtime_widgets_mem_falling"),
+        };
+        parts.push(t_in!(
+            tag,
+            "tui_runtime_widgets_mem_trend",
+            direction = direction,
+            rate = format!("{:+}", t.mb_per_min)
+        ));
     }
     if m.budget != Budget::Ok {
-        parts.push(format!("budget {}", m.budget.name()));
+        let budget = match m.budget {
+            Budget::Ok => t_in!(tag, "tui_runtime_widgets_mem_budget_ok"),
+            Budget::Warn => t_in!(tag, "tui_runtime_widgets_mem_budget_warn"),
+            Budget::Over => t_in!(tag, "tui_runtime_widgets_mem_budget_over"),
+        };
+        parts.push(t_in!(
+            tag,
+            "tui_runtime_widgets_mem_budget",
+            budget = budget
+        ));
     }
+    // A suspected leak is the engine's sentence: written from its code in `tag` (English when it came from the
+    // status file, which carries no code).
     if let Some(leak) = &m.leak {
-        parts.push(leak.clone());
+        parts.push(leak.render_in(tag));
     }
     parts
 }
 
 /// The memory line of a service in `atlas dev --status`: [`memory_parts`] on one line.
 pub fn memory_line(m: &crate::runtime::manager::MemoryFacts) -> Option<String> {
-    let parts = memory_parts(m);
+    let parts = memory_parts_in(m, atlas_core::lang::DEFAULT);
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
-/// Render the status table when a live atlas run owns `root_dir`.
+/// Render the status table when a live atlas run owns `root_dir`. English on purpose, whatever the display language:
+/// the agent hooks inject this text into the agent's context (`atlas hook`), so it is machine-facing like `--json`.
 /// Returns Err(reason) when nothing is running (missing, dead pid, or stale file).
 pub fn live_status(root_dir: &Path) -> Result<String, String> {
     let snap = live_snapshot(root_dir)?;

@@ -1,0 +1,25 @@
+{
+  "pt-BR": {
+    "search_form_clear": "d0f86d209326",
+    "search_form_files_to_include": "785c54e4b7de",
+    "search_form_files_to_include_or_skip": "5f7b22e497e2",
+    "search_form_files_to_skip": "0a646166ecdc",
+    "search_form_find_in_project": "26bdc43dc153",
+    "search_form_include_src_ts": "d19edd04d02b",
+    "search_form_match_case": "49e0554869bd",
+    "search_form_regular_expression": "74d9145723c6",
+    "search_form_search_query": "73919db83bb3",
+    "search_form_searching": "a3402b129735",
+    "search_form_skip_dist_min_js": "72628bcc1684",
+    "search_form_status": "c1d10d33b896",
+    "search_form_took": "e249d7e04143",
+    "search_form_whole_word": "cb1edb3d2607",
+    "search_parse_failed": "3bbd5a4fe461",
+    "search_results_nothing_matches_query": "d9a63ac90892",
+    "search_results_search_every_file_in_this": "c1c8ca196da4",
+    "search_results_search_results": "d997b5537044",
+    "search_results_showing_the_first_results_narrow": "38a6e3966e06",
+    "search_results_try_fewer_words_turn_off": "65d95039aac3",
+    "search_results_type_to_search_use_to": "c6c0750899a2"
+  }
+}

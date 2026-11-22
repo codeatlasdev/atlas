@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { usePoll } from "#lib/clock.svelte.ts";
-	import { onMount, untrack } from "svelte";
+	import { onMount, tick, untrack } from "svelte";
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import { Button, DropdownMenu, DropdownMenuItem, Spinner, TextArea, toast } from "@codeatlasdev/ui";
 	import { Plus, Minus, Undo2, Sparkles, Ellipsis, GitPullRequest, Square, RefreshCw } from "@lucide/svelte";
@@ -18,11 +18,18 @@
 		saveIdentity,
 		type IdentityScope,
 	} from "#lib/gitIdentity.ts";
+	import VirtualList from "#lib/components/VirtualList.svelte";
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { statusGroups } from "#lib/stores/tree.ts";
 	import { gitStatus } from "#lib/stores/gitStatus.ts";
+	import { classifyGitError } from "#lib/gitErrors.ts";
+	import { commitErrorText, commitNotice } from "#lib/commitMessage.ts";
+	import { gitToast } from "#lib/gitToast.ts";
 	import PathText from "./PathText.svelte";
+	import NotRepoState from "./NotRepoState.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import { operationText } from "#lib/gitText.ts";
 
 	/** Porcelain status letter → `.code` class (anything else reads as modified). */
 	const CODE_KIND: Record<string, string> = {
@@ -37,6 +44,8 @@
 	let { worktreeId }: { worktreeId: string } = $props();
 
 	let st = $state<GitStatus | null>(null);
+	/** The folder is not a git repository: nothing to stage or commit, only `git init` (#505). */
+	let notRepo = $state(false);
 	let message = $state("");
 	let busy = $state<string | null>(null);
 	let failure = $state<string | null>(null);
@@ -55,12 +64,60 @@
 	let showInstruction = $state(false);
 	let gen = $derived(commitMessages.run(worktreeId));
 	let hint = $derived(providerHint(commitMessages.provider));
+	/** A failed command in words, with git's own output next to it (the raw text is what "Fix with AI" sends). */
+	let problem = $derived(failure ? classifyGitError(failure) : null);
 
 	let groups = $derived(statusGroups(st?.entries ?? []));
 	let staged = $derived(groups.staged);
 	let changes = $derived(groups.changes);
 	let untracked = $derived(groups.untracked);
 	let conflicts = $derived(groups.conflicts);
+
+	type Group = "staged" | "changes" | "untracked" | "conflicts";
+	/** The panel's one windowed list: each non-empty group's header, then its entries. */
+	type Row =
+		| { key: string; kind: "group"; title: string; list: GitEntry[]; group: Group }
+		| { key: string; kind: "entry"; e: GitEntry; group: Group };
+	let rows = $derived.by((): Row[] => {
+		const out: Row[] = [];
+		const shown: [string, GitEntry[], Group][] = [
+			[m.git_commit_group_conflicts(), conflicts, "conflicts"],
+			[m.git_commit_group_staged(), staged, "staged"],
+			[m.git_commit_group_changes(), changes, "changes"],
+			[m.git_commit_group_untracked(), untracked, "untracked"],
+		];
+		for (const [title, list, group] of shown) {
+			if (!list.length) continue;
+			out.push({ key: `g:${group}`, kind: "group", title, list, group });
+			for (const e of list) out.push({ key: group + e.path, kind: "entry", e, group });
+		}
+		return out;
+	});
+	let vl: ReturnType<typeof VirtualList<Row>> | undefined = $state();
+	let scroller: HTMLDivElement | undefined = $state();
+
+	/** Arrow keys, Home and End between entries: rows are windowed, so Tab alone would never reach the far ones. */
+	async function stepEntry(key: string, to: "next" | "prev" | "first" | "last") {
+		const forward = to === "next" || to === "first";
+		let i =
+			to === "first"
+				? 0
+				: to === "last"
+					? rows.length - 1
+					: rows.findIndex((r) => r.key === key) + (forward ? 1 : -1);
+		while (rows[i] && rows[i].kind !== "entry") i += forward ? 1 : -1;
+		if (!rows[i]) return;
+		vl?.reveal(i);
+		await tick();
+		scroller?.querySelector<HTMLElement>(`[data-key="${CSS.escape(rows[i].key)}"]`)?.focus();
+	}
+
+	const STEP: Record<string, "next" | "prev" | "first" | "last"> = {
+		ArrowDown: "next",
+		ArrowUp: "prev",
+		Home: "first",
+		End: "last",
+	};
 	let ahead = $derived(st?.ab ? Number(st.ab.split(" ")[0].slice(1)) : 0);
 	let behind = $derived(st?.ab ? Number(st.ab.split(" ")[1].slice(1)) : 0);
 
@@ -73,10 +130,14 @@
 		const detach = commitMessages.attach(worktreeId, (text) => (message = text));
 		// Fed on mount and on every fs event inside this worktree, debounced and shared with the Explorer (#307).
 		const off = gitStatus.watch(worktreeId, ws.worktree(worktreeId)?.path ?? "", {
-			status: (s) => (st = s),
+			status: (s) => {
+				st = s;
+				notRepo = false;
+			},
 			error: (e) => {
-				toast.error(errText(e));
 				st = null;
+				notRepo = classifyGitError(errText(e)).kind === "not-repo";
+				if (!notRepo) gitToast(errText(e));
 			},
 		});
 		return () => {
@@ -122,9 +183,9 @@
 	const stage = (paths: string[]) => run("stage", ["add", "--", ...paths]);
 	const unstage = (paths: string[]) => run("unstage", ["restore", "--staged", "--", ...paths]);
 	const discard = async (e: GitEntry) =>
-		(await confirmDialog(`Discard changes to ${e.path}?`, {
-			description: e.x === "?" ? "The untracked file is deleted." : "This cannot be undone.",
-			confirmLabel: "Discard",
+		(await confirmDialog(m.git_commit_discard_title({ path: e.path }), {
+			description: e.x === "?" ? m.git_commit_discard_untracked() : m.git_commit_discard_tracked(),
+			confirmLabel: m.git_source_control_discard(),
 			destructive: true,
 		})) &&
 		(e.x === "?"
@@ -132,13 +193,13 @@
 			: run("discard", ["checkout", "--", e.path]));
 
 	async function commit(amend = false) {
-		if (!message.trim() && !amend) return toast.error("Write a commit message");
+		if (!message.trim() && !amend) return toast.error(m.git_commit_write_message());
 		// Ask before git does: its answer is a wall of text with a shell recipe in it.
 		if (await identityMissing(gitHere)) return askWho(amend);
 		const args = ["commit", "-F", "-", ...(amend ? ["--amend"] : [])];
 		if (await run("commit", args, message)) {
 			message = "";
-			toast.success(amend ? "Amended" : "Committed");
+			toast.success(amend ? m.git_commit_amended() : m.git_commit_committed());
 		} else if (failure && isIdentityError(failure)) {
 			failure = null;
 			failureOf = null;
@@ -186,17 +247,32 @@
 		else if (ahead > 0 || !st?.upstream) await run("push", ["push"]);
 	}
 
-	let primaryLabel = $derived(
+	type Primary = "stage" | "commit" | "pull" | "push" | "done";
+	let primaryKind = $derived<Primary>(
 		!staged.length && (changes.length || untracked.length)
-			? "Stage all"
+			? "stage"
 			: staged.length
-				? "Commit"
+				? "commit"
 				: behind > 0
-					? `Pull (${behind})`
+					? "pull"
 					: ahead > 0 || !st?.upstream
-						? `Push${ahead ? ` (${ahead})` : ""}`
-						: "Up to date",
+						? "push"
+						: "done",
 	);
+	let primaryLabel = $derived.by(() => {
+		switch (primaryKind) {
+			case "stage":
+				return m.git_source_control_stage_all();
+			case "commit":
+				return m.git_commit_primary_commit();
+			case "pull":
+				return m.git_commit_primary_pull({ count: behind });
+			case "push":
+				return ahead ? m.git_commit_primary_push_count({ count: ahead }) : m.git_source_control_push();
+			case "done":
+				return m.git_commit_primary_up_to_date();
+		}
+	});
 
 	async function toAgent(text: string) {
 		const t = agents.tabsIn(worktreeId)[0];
@@ -206,214 +282,256 @@
 </script>
 
 <aside class="sc">
-	<div class="head">
-		<span class="branch mono">{st?.branch ?? "…"}</span>
-		{#if st?.base && st.base !== "HEAD"}<span class="dim">→ {st.base}</span>{/if}
-		{#if st?.vs_base}<span class="dim">↑{st.vs_base.ahead} ↓{st.vs_base.behind}</span>{/if}
-		<DropdownMenu align="end">
-			{#snippet trigger()}<span class="more"><Ellipsis size={13} /></span>{/snippet}
-			<DropdownMenuItem onclick={() => commit(true)}>Amend last commit</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}>Pull (rebase)</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => run("push", ["push"])}>Push</DropdownMenuItem>
-			<DropdownMenuItem
-				variant="destructive"
-				onclick={async () =>
-					(await confirmDialog("Force push with lease?", {
-						description: "Overwrites the remote branch if nobody else pushed to it.",
-						confirmLabel: "Force push",
-						destructive: true,
-					})) && run("push", ["push", "--force-with-lease"])}
-			>
-				Force push with lease
-			</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => openDiff(worktreeId)}>Open changes</DropdownMenuItem>
-		</DropdownMenu>
-	</div>
-
-	{#if st?.operation}
-		<div class="conflict">
-			<b>{st.operation} in progress</b>
-			{#if conflicts.length}<span>{conflicts.length} conflicted file{conflicts.length > 1 ? "s" : ""}</span
-				>{/if}
-			<div class="row-btns">
-				<Button
-					size="sm"
-					onclick={() =>
-						toAgent(
-							`Resolve the git ${st!.operation} conflicts in: ${conflicts.map((c) => c.path).join(", ")}. Then stage the files and continue the ${st!.operation}.`,
-						)}
+	{#if notRepo}
+		<NotRepoState {worktreeId} />
+	{:else}
+		<div class="head">
+			<span class="branch mono">{st?.branch ?? "…"}</span>
+			{#if st?.base && st.base !== "HEAD"}<span class="dim">→ {st.base}</span>{/if}
+			{#if st?.vs_base}<span class="dim">↑{st.vs_base.ahead} ↓{st.vs_base.behind}</span>{/if}
+			<DropdownMenu align="end">
+				{#snippet trigger()}<span class="more"><Ellipsis size={13} /></span>{/snippet}
+				<DropdownMenuItem onclick={() => commit(true)}
+					>{m.git_source_control_amend_last_commit()}</DropdownMenuItem
 				>
-					Resolve with AI
-				</Button>
-				<Button size="sm" variant="ghost" onclick={() => run("abort", [st!.operation!, "--abort"])}
-					>Abort</Button
+				<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}
+					>{m.git_source_control_pull_rebase()}</DropdownMenuItem
 				>
-			</div>
+				<DropdownMenuItem onclick={() => run("push", ["push"])}
+					>{m.git_source_control_push()}</DropdownMenuItem
+				>
+				<DropdownMenuItem
+					variant="destructive"
+					onclick={async () =>
+						(await confirmDialog(m.git_commit_force_push_title(), {
+							description: m.git_commit_force_push_body(),
+							confirmLabel: m.git_commit_force_push_confirm(),
+							destructive: true,
+						})) && run("push", ["push", "--force-with-lease"])}
+				>
+					{m.git_source_control_force_push_with_lease()}
+				</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => openDiff(worktreeId)}
+					>{m.git_source_control_open_changes()}</DropdownMenuItem
+				>
+			</DropdownMenu>
 		</div>
-	{/if}
 
-	<div class="msg" role="presentation" onkeydown={(e) => e.key === "Enter" && primaryKey(e) && commit()}>
-		<TextArea bind:value={message} placeholder={`Commit message (${kbd("cmd-enter")} to commit)`} rows={3} />
-		{#if gen.phase === "running"}
-			<span class="dim">Writing with {gen.agent || "the agent"}…</span>
-		{:else if gen.error}
-			<span class="err">{gen.error}</span>
-		{:else if gen.notice}
-			<span class="dim">{gen.notice}</span>
-		{/if}
-		{#if hint.show}
-			{#if showInstruction}
-				<input
-					class="instr"
-					aria-label="Instruction for the commit message"
-					placeholder="e.g. mention issue #72"
-					bind:value={instruction}
-					onkeydown={(e) =>
-						e.key === "Enter" && (e.preventDefault(), commitMessages.generate(worktreeId, instruction))}
-				/>
-			{:else}
-				<button class="link" onclick={() => (showInstruction = true)}>Add an instruction…</button>
-			{/if}
-		{/if}
-		<div class="row-btns">
-			<Button size="sm" disabled={!!busy || primaryLabel === "Up to date"} onclick={primary}>
-				{#snippet leading()}{#if busy && busy !== "ai"}<Spinner size={12} />{/if}{/snippet}
-				{primaryLabel}
-			</Button>
-			{#if hint.show}
-				{#if gen.phase === "running"}
-					<Button size="sm" variant="ghost" onclick={() => commitMessages.cancel(worktreeId)}>
-						{#snippet leading()}<Square size={12} />{/snippet}
-						Stop
-					</Button>
-				{:else}
+		{#if st?.operation}
+			<div class="conflict">
+				<b>{operationText(st.operation)}</b>
+				{#if conflicts.length}<span>{m.git_commit_conflicted_files({ count: conflicts.length })}</span>{/if}
+				<div class="row-btns">
 					<Button
 						size="sm"
-						variant="ghost"
-						title="Write the message from {staged.length ? 'the staged diff' : 'all changes'}"
-						data-tour="commit-ai"
-						onclick={() => commitMessages.generate(worktreeId, instruction)}
+						onclick={() =>
+							toAgent(
+								// i18n-ignore: the prompt an agent reads
+								`Resolve the git ${st!.operation} conflicts in: ${conflicts.map((c) => c.path).join(", ")}. Then stage the files and continue the ${st!.operation}.`,
+							)}
 					>
-						{#snippet leading()}{#if message.trim() && gen.agent}<RefreshCw size={12} />{:else}<Sparkles
-									size={12}
-								/>{/if}{/snippet}
-						{message.trim() && gen.agent ? "Regenerate" : "Generate"}
+						{m.git_source_control_resolve_with_ai()}
 					</Button>
+					<Button size="sm" variant="ghost" onclick={() => run("abort", [st!.operation!, "--abort"])}
+						>{m.git_source_control_abort()}</Button
+					>
+				</div>
+			</div>
+		{/if}
+
+		<div class="msg" role="presentation" onkeydown={(e) => e.key === "Enter" && primaryKey(e) && commit()}>
+			<TextArea
+				bind:value={message}
+				placeholder={m.git_commit_message_placeholder({ key: kbd("cmd-enter") })}
+				rows={3}
+			/>
+			{#if gen.phase === "running"}
+				<span class="dim"
+					>{gen.agent ? m.git_commit_writing_with({ agent: gen.agent }) : m.git_commit_writing()}</span
+				>
+			{:else if gen.error}
+				<span class="err">{commitErrorText(gen.error)}</span>
+			{:else if commitNotice(gen)}
+				<span class="dim">{commitNotice(gen)}</span>
+			{/if}
+			{#if hint.show}
+				{#if showInstruction}
+					<input
+						class="instr"
+						aria-label={m.git_source_control_instruction_for_the_commit_message()}
+						placeholder={m.git_source_control_e_g_mention_issue_72()}
+						bind:value={instruction}
+						onkeydown={(e) =>
+							e.key === "Enter" && (e.preventDefault(), commitMessages.generate(worktreeId, instruction))}
+					/>
+				{:else}
+					<button class="link" onclick={() => (showInstruction = true)}
+						>{m.git_source_control_add_an_instruction()}</button
+					>
 				{/if}
 			{/if}
-			<Button size="sm" variant="ghost" onclick={() => pr.openCreate(worktreeId)}>
-				{#snippet leading()}<GitPullRequest size={12} />{/snippet}
-				PR
-			</Button>
-		</div>
-	</div>
-
-	{#if who}
-		<form
-			class="who"
-			aria-label="Who are you?"
-			novalidate
-			onsubmit={(e) => {
-				e.preventDefault();
-				void saveWho();
-			}}
-		>
-			<b>Who is committing?</b>
-			<span class="dim">Git puts a name and an e-mail on every commit. Atlas saves them and commits.</span>
-			<label>
-				Name
-				<input class="instr" autocomplete="name" placeholder="Ada Lovelace" bind:value={who.name} />
-			</label>
-			<label>
-				E-mail
-				<input
-					class="instr"
-					type="email"
-					autocomplete="email"
-					placeholder="you@example.com"
-					bind:value={who.email}
-				/>
-			</label>
-			<fieldset>
-				<legend class="dim">Save it for</legend>
-				<label class="radio">
-					<input type="radio" name="who-scope" value="global" bind:group={who.scope} />
-					All repositories (global)
-				</label>
-				<label class="radio">
-					<input type="radio" name="who-scope" value="local" bind:group={who.scope} />
-					This repository only
-				</label>
-			</fieldset>
-			{#if who.error}<span class="err" role="alert">{who.error}</span>{/if}
 			<div class="row-btns">
-				<Button size="sm" type="submit" disabled={who.saving}>
-					{#snippet leading()}{#if who?.saving}<Spinner size={12} />{/if}{/snippet}
-					{who.amend ? "Save & amend" : "Save & commit"}
+				<Button size="sm" disabled={!!busy || primaryKind === "done"} onclick={primary}>
+					{#snippet leading()}{#if busy && busy !== "ai"}<Spinner size={12} />{/if}{/snippet}
+					{primaryLabel}
 				</Button>
-				<Button size="sm" variant="ghost" onclick={() => (who = null)}>Cancel</Button>
-			</div>
-		</form>
-	{/if}
-
-	{#if failure}
-		<div class="failure">
-			<pre class="ca-selectable">{failure}</pre>
-			<Button
-				size="sm"
-				variant="ghost"
-				onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}>Fix with AI</Button
-			>
-		</div>
-	{/if}
-
-	{#snippet group(title: string, list: GitEntry[], kind: "staged" | "changes" | "untracked" | "conflicts")}
-		{#if list.length}
-			<div class="group">
-				<span>{title} <span class="dim">{list.length}</span></span>
-				{#if kind === "staged"}
-					<button title="Unstage all" onclick={() => unstage(list.map((e) => e.path))}
-						><Minus size={12} /></button
-					>
-				{:else if kind !== "conflicts"}
-					<button title="Stage all" onclick={() => stage(list.map((e) => e.path))}><Plus size={12} /></button>
-				{/if}
-			</div>
-			{#each list as e (kind + e.path)}
-				{@const code =
-					kind === "staged" ? e.x : kind === "untracked" ? "U" : kind === "conflicts" ? "!" : e.y}
-				<div
-					class="entry"
-					role="button"
-					tabindex="0"
-					onclick={() => openFile(worktreeId, e.path)}
-					onkeydown={(ev) => ev.key === "Enter" && openFile(worktreeId, e.path)}
-				>
-					<span class="code {CODE_KIND[code] ?? 'modified'}">{code}</span>
-					<PathText path={e.path} />
-					{#if kind === "staged"}
-						<button title="Unstage" onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
-							><Minus size={12} /></button
+				{#if hint.show}
+					{#if gen.phase === "running"}
+						<Button size="sm" variant="ghost" onclick={() => commitMessages.cancel(worktreeId)}>
+							{#snippet leading()}<Square size={12} />{/snippet}
+							{m.git_source_control_stop()}
+						</Button>
+					{:else}
+						<Button
+							size="sm"
+							variant="ghost"
+							title={staged.length ? m.git_commit_write_from_staged() : m.git_commit_write_from_all()}
+							data-tour="commit-ai"
+							onclick={() => commitMessages.generate(worktreeId, instruction)}
 						>
-					{:else if kind !== "conflicts"}
-						<button title="Discard" onclick={(ev) => (ev.stopPropagation(), discard(e))}
-							><Undo2 size={12} /></button
-						>
-						<button title="Stage" onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}
-							><Plus size={12} /></button
-						>
+							{#snippet leading()}{#if message.trim() && gen.agent}<RefreshCw size={12} />{:else}<Sparkles
+										size={12}
+									/>{/if}{/snippet}
+							{message.trim() && gen.agent ? m.git_commit_regenerate() : m.git_commit_generate()}
+						</Button>
 					{/if}
-				</div>
-			{/each}
-		{/if}
-	{/snippet}
+				{/if}
+				<Button size="sm" variant="ghost" onclick={() => pr.openCreate(worktreeId)}>
+					{#snippet leading()}<GitPullRequest size={12} />{/snippet}
+					{m.git_source_control_pr()}
+				</Button>
+			</div>
+		</div>
 
-	<div class="lists">
-		{@render group("Conflicts", conflicts, "conflicts")}
-		{@render group("Staged", staged, "staged")}
-		{@render group("Changes", changes, "changes")}
-		{@render group("Untracked", untracked, "untracked")}
-	</div>
+		{#if who}
+			<form
+				class="who"
+				aria-label={m.git_source_control_who_are_you()}
+				novalidate
+				onsubmit={(e) => {
+					e.preventDefault();
+					void saveWho();
+				}}
+			>
+				<b>{m.git_source_control_who_is_committing()}</b>
+				<span class="dim">{m.git_source_control_git_puts_a_name_and()}</span>
+				<label>
+					{m.git_new_worktree_dialog_name()}
+					<input
+						class="instr"
+						autocomplete="name"
+						placeholder={m.git_source_control_ada_lovelace()}
+						bind:value={who.name}
+					/>
+				</label>
+				<label>
+					{m.git_source_control_e_mail()}
+					<!-- i18n-ignore: an example address, not prose -->
+					<input
+						class="instr"
+						type="email"
+						autocomplete="email"
+						placeholder="you@example.com"
+						bind:value={who.email}
+					/>
+				</label>
+				<fieldset>
+					<legend class="dim">{m.git_source_control_save_it_for()}</legend>
+					<label class="radio">
+						<input type="radio" name="who-scope" value="global" bind:group={who.scope} />
+						{m.git_source_control_all_repositories_global()}
+					</label>
+					<label class="radio">
+						<input type="radio" name="who-scope" value="local" bind:group={who.scope} />
+						{m.git_source_control_this_repository_only()}
+					</label>
+				</fieldset>
+				{#if who.error}<span class="err" role="alert">{who.error}</span>{/if}
+				<div class="row-btns">
+					<Button size="sm" type="submit" disabled={who.saving}>
+						{#snippet leading()}{#if who?.saving}<Spinner size={12} />{/if}{/snippet}
+						{who.amend ? m.git_commit_save_amend() : m.git_commit_save_commit()}
+					</Button>
+					<Button size="sm" variant="ghost" onclick={() => (who = null)}>{m.common_action_cancel()}</Button>
+				</div>
+			</form>
+		{/if}
+
+		{#if failure && problem}
+			<div class="failure">
+				<span class="ca-selectable">{problem.message}</span>
+				{#if problem.details}
+					<details>
+						<summary>{m.git_source_control_details()}</summary>
+						<pre class="ca-selectable">{problem.details}</pre>
+					</details>
+				{/if}
+				<Button
+					size="sm"
+					variant="ghost"
+					onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}
+					>{m.git_source_control_fix_with_ai()}</Button
+				>
+			</div>
+		{/if}
+
+		<VirtualList bind:this={vl} bind:scroller class="lists" items={rows} key={(r) => r.key} estimate={24}>
+			{#snippet item(r)}
+				{#if r.kind === "group"}
+					<div class="group">
+						<span>{r.title} <span class="dim">{r.list.length}</span></span>
+						{#if r.group === "staged"}
+							<button
+								title={m.git_source_control_unstage_all()}
+								onclick={() => unstage(r.list.map((e) => e.path))}><Minus size={12} /></button
+							>
+						{:else if r.group !== "conflicts"}
+							<button
+								title={m.git_source_control_stage_all()}
+								onclick={() => stage(r.list.map((e) => e.path))}><Plus size={12} /></button
+							>
+						{/if}
+					</div>
+				{:else}
+					{@const e = r.e}
+					{@const code =
+						r.group === "staged" ? e.x : r.group === "untracked" ? "U" : r.group === "conflicts" ? "!" : e.y}
+					<div
+						class="entry"
+						role="button"
+						tabindex="0"
+						data-key={r.key}
+						onclick={() => openFile(worktreeId, e.path)}
+						onkeydown={(ev) => {
+							if (ev.key === "Enter") return openFile(worktreeId, e.path);
+							const to = ev.target === ev.currentTarget ? STEP[ev.key] : undefined;
+							if (!to) return;
+							ev.preventDefault();
+							void stepEntry(r.key, to);
+						}}
+					>
+						<span class="code {CODE_KIND[code] ?? 'modified'}">{code}</span>
+						<PathText path={e.path} />
+						{#if r.group === "staged"}
+							<button
+								title={m.git_source_control_unstage()}
+								onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}><Minus size={12} /></button
+							>
+						{:else if r.group !== "conflicts"}
+							<button
+								title={m.git_source_control_discard()}
+								onclick={(ev) => (ev.stopPropagation(), discard(e))}><Undo2 size={12} /></button
+							>
+							<button
+								title={m.git_source_control_stage()}
+								onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}><Plus size={12} /></button
+							>
+						{/if}
+					</div>
+				{/if}
+			{/snippet}
+		</VirtualList>
+	{/if}
 </aside>
 
 <style>
@@ -478,6 +596,11 @@
 		padding-top: 8px;
 		background: color-mix(in oklab, var(--ca-semantic-warning) 10%, transparent);
 	}
+	.failure summary {
+		cursor: pointer;
+		font-size: 11px;
+		color: var(--ca-text-secondary);
+	}
 	.failure pre {
 		margin: 0;
 		max-height: 160px;
@@ -491,9 +614,8 @@
 		gap: 6px;
 		flex-wrap: wrap;
 	}
-	.lists {
+	.sc :global(.lists) {
 		flex: 1;
-		overflow: auto;
 	}
 	.group {
 		display: flex;

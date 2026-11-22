@@ -8,7 +8,8 @@ run-name: ${{ inputs.build_only && 'Build only' || 'Release' }} ${{ inputs.tag |
 #
 # Build only (`gh workflow run release.yml --ref <branch> -f build_only=true`, docs/release.md): builds and verifies
 # every artifact from the branch, uploads them as workflow artifacts, and creates no tag and no release, so main can
-# be tested end to end before a release. Signing is skipped; `publish` never runs.
+# be tested end to end before a release. The Windows signing jobs are skipped; macOS is Developer ID signed and
+# notarized only for a build-only run of main (never of a branch) and only when the secrets exist; `publish` never runs.
 on:
   push:
     tags: ["v*"]
@@ -78,15 +79,12 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: Install Rust
-        run: rustup show active-toolchain || rustup toolchain install
+      - uses: ./.github/actions/release-toolchain
 
-      # SOURCE_DATE_EPOCH = the commit time, so embedded timestamps do not depend on when the build ran.
-      # No --remap-path-prefix: not verified against the Tauri build in this repo.
       - name: Build
         run: |
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
+          # The debug info goes to a .dSYM next to each binary (archived in Package), not into the shipped file (#318).
+          export CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed
           cargo build --release --locked --target aarch64-apple-darwin -p atlas-cli
 
       # CycloneDX SBOM of the CLI's dependency tree (the shipped binary). Skipped, loudly, when the tool is missing.
@@ -109,22 +107,202 @@ jobs:
         with:
           no-cache: true
 
+      # Developer ID signing and notarization (docs/release.md, "macOS signing and notarization"). On when all six
+      # secrets exist (MACOS_CERTIFICATE_P12_BASE64, MACOS_CERTIFICATE_PASSWORD, MACOS_SIGNING_IDENTITY, APPLE_API_KEY_ID,
+      # APPLE_API_ISSUER, APPLE_API_KEY_P8) and the run is a release or a build-only run of main (a branch's build-only run
+      # never gets the certificate). With none of them, or on a fork, the build stays ad-hoc signed exactly as before and
+      # says so; some but not all is a configuration error and fails here, so a half-set-up release cannot ship ad-hoc.
+      # The certificate lives in a temporary keychain that the last step of the job deletes. Secrets reach the steps only
+      # through env, never a command line: `security import -P` has no stdin form, so the .p12 is re-encrypted first
+      # under a throwaway password and only that one appears in argv.
+      - name: macOS signing setup
+        id: sign
+        shell: bash
+        env:
+          ELIGIBLE: ${{ !inputs.build_only || github.ref == 'refs/heads/main' }}
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          umask 077
+          adhoc() {
+            echo "::notice title=macOS build is ad-hoc signed::$1 Gatekeeper warns on the dmg and the firewall asks again after every update (docs/release.md)."
+            echo "developer-id=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          [ "$ELIGIBLE" = true ] || adhoc "A build-only run of a branch never gets the Developer ID certificate."
+          missing=""
+          have=0
+          for pair in MACOS_CERTIFICATE_P12_BASE64:CERT_P12_BASE64 MACOS_CERTIFICATE_PASSWORD:CERT_PASSWORD MACOS_SIGNING_IDENTITY:SIGNING_IDENTITY \
+                      APPLE_API_KEY_ID:API_KEY_ID APPLE_API_ISSUER:API_ISSUER APPLE_API_KEY_P8:API_KEY_P8; do
+            var=${pair#*:}
+            if [ -n "${!var}" ]; then have=$((have + 1)); else missing="$missing ${pair%%:*}"; fi
+          done
+          [ "$have" -gt 0 ] || adhoc "No Developer ID secret is configured (a fork, or not set up yet)."
+          if [ -n "$missing" ]; then
+            echo "::error::macOS signing is half configured, missing secrets:$missing"
+            exit 1
+          fi
+
+          KC="$RUNNER_TEMP/atlas-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          export KEYCHAIN_PASSWORD
+          printf '%s' "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert-in.p12"
+          # Re-encrypted for `security` in the legacy PKCS#12 form it reads (scripts/macos-keychain-import.sh, tested on
+          # macOS with OpenSSL 3 and LibreSSL; OpenSSL 3's default made the first run fail with "MAC verification failed").
+          bash scripts/macos-keychain-import.sh "$RUNNER_TEMP/cert-in.p12" "$KC"
+          rm -f "$RUNNER_TEMP/cert-in.p12"
+          set -- "$KC"
+          while IFS= read -r k; do set -- "$@" "$k"; done < <(security list-keychains -d user | sed 's/^ *"//; s/"$//')
+          security list-keychains -d user -s "$@"
+          if ! security find-identity -v -p codesigning "$KC" | grep -F "\"$SIGNING_IDENTITY\"" > /dev/null; then
+            echo "::error::the imported certificate is not a valid code-signing identity named like MACOS_SIGNING_IDENTITY; the keychain holds:"
+            security find-identity -p codesigning "$KC"
+            exit 1
+          fi
+          printf '%s' "$API_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+          echo "developer-id=true" >> "$GITHUB_OUTPUT"
+
       - name: Build desktop app
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
-          (cd crates/atlas-desktop && cargo tauri build --target aarch64-apple-darwin --bundles app,dmg --ci)
+          export CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed
+          (cd crates/atlas-desktop && cargo tauri build --target aarch64-apple-darwin --no-bundle --ci)
+
+      # The shipped binaries carry no debug info (#318): the .dSYMs rustc wrote next to them are the symbols (archived in
+      # Package). Taken out BEFORE the app bundle is packed, so the .app, the .dmg and the CLI tarball all hold the
+      # stripped copy. `strip -S` keeps the symbol names and the Mach-O UUID the .dSYM is matched by.
+      - name: Strip binaries and check
+        run: |
+          R=target/aarch64-apple-darwin/release
+          for b in atlas atlas-desktop; do
+            echo "before: $(wc -c < "$R/$b") bytes $R/$b"
+            strip -S "$R/$b"
+          done
+          ls -ld "$R"/*.dSYM || true
+          scripts/symbols.sh verify-stripped "$R/atlas" "$R/atlas-desktop"
+          dwarfdump --uuid "$R/atlas" "$R/atlas-desktop" || true
+          ls -l "$R/atlas" "$R/atlas-desktop"
+
+      # With the Developer ID on, Tauri signs Atlas.app (hardened runtime, crates/atlas-desktop/Entitlements.plist) and the
+      # dmg with APPLE_SIGNING_IDENTITY, then notarizes and staples the app (APPLE_API_KEY / APPLE_API_ISSUER /
+      # APPLE_API_KEY_PATH). The variables are exported only then: Tauri reads an empty APPLE_SIGNING_IDENTITY as an
+      # identity named "", which would break the ad-hoc build. Tauri 2.11's codesign call has no --timestamp and codesign
+      # adds none by default (measured: no `Timestamp=` in `codesign -dvv`), but notarization refuses a signature without
+      # a secure timestamp; a `codesign` first on PATH that adds the flag makes Tauri's signatures notarizable.
+      # Signing happens in this step, on the binaries Strip already took the debug info from.
+      - name: Bundle desktop app
+        env:
+          DEVELOPER_ID: ${{ steps.sign.outputs.developer-id }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ "$DEVELOPER_ID" = true ]; then
+            export APPLE_SIGNING_IDENTITY="$SIGNING_IDENTITY" APPLE_API_KEY="$API_KEY_ID" APPLE_API_ISSUER="$API_ISSUER" \
+              APPLE_API_KEY_PATH="$RUNNER_TEMP/notary.p8"
+            mkdir -p "$RUNNER_TEMP/bin"
+            printf '#!/bin/sh\nexec /usr/bin/codesign --timestamp "$@"\n' > "$RUNNER_TEMP/bin/codesign"
+            chmod +x "$RUNNER_TEMP/bin/codesign"
+            export PATH="$RUNNER_TEMP/bin:$PATH"
+          fi
+          (cd crates/atlas-desktop && cargo tauri bundle --target aarch64-apple-darwin --bundles app,dmg --ci)
+
+      # The CLI is signed here (hardened runtime, secure timestamp, Entitlements-cli.plist) and notarized as a zip; a bare
+      # binary cannot be stapled, so Gatekeeper checks its ticket online on first run. The dmg is notarized and stapled
+      # BEFORE Package copies it, because stapling changes its bytes and Package writes the .sha256. Then every claim
+      # the docs make is checked on the real files: signature, Team ID, hardened runtime, entitlements, Gatekeeper.
+      - name: Developer ID signature, notarization and checks
+        if: ${{ steps.sign.outputs.developer-id == 'true' }}
+        shell: bash
+        env:
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          T=target/aarch64-apple-darwin/release
+          CLI=$T/atlas
+          APP=$T/bundle/macos/Atlas.app
+          set -- "$T"/bundle/dmg/Atlas_*_aarch64.dmg
+          DMG=$1
+          TEAM=${SIGNING_IDENTITY##*(}
+          TEAM=${TEAM%)*}
+
+          codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp \
+            --entitlements crates/atlas-desktop/Entitlements-cli.plist "$CLI"
+
+          notarize() {
+            local out status id
+            out=$(xcrun notarytool submit "$1" --key "$RUNNER_TEMP/notary.p8" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" \
+              --wait --timeout 45m --output-format json) || { echo "$out"; echo "::error::notarytool failed for $1"; return 1; }
+            status=$(jq -r .status <<< "$out")
+            id=$(jq -r .id <<< "$out")
+            echo "notarization of $1: $status ($id)"
+            if [ "$status" != Accepted ]; then
+              xcrun notarytool log "$id" --key "$RUNNER_TEMP/notary.p8" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" || true
+              echo "::error::Apple did not accept $1 ($status)"
+              return 1
+            fi
+          }
+          ditto -c -k --keepParent "$CLI" "$RUNNER_TEMP/atlas-cli.zip"
+          notarize "$RUNNER_TEMP/atlas-cli.zip"
+          notarize "$DMG"
+          xcrun stapler staple "$DMG"
+
+          fail=0
+          check() { if ! "$@"; then echo "::error::check failed: $*"; fail=1; fi; }
+          # Output goes through a variable: `grep -q` closing the pipe early would fail the pipeline under pipefail.
+          has() {
+            local what=$1 pattern=$2 out
+            shift 2
+            out=$("$@" 2>&1) || true
+            grep -E -- "$pattern" <<< "$out" > /dev/null || { echo "::error::$what: $* has no /$pattern/"; fail=1; }
+          }
+          check codesign --verify --deep --strict --verbose=2 "$APP"
+          check codesign --verify --strict --verbose=2 "$CLI"
+          check xcrun stapler validate "$APP"
+          check xcrun stapler validate "$DMG"
+          has "Gatekeeper rejects the app" "source=Notarized Developer ID" spctl -a -vvv -t exec "$APP"
+          has "Gatekeeper rejects the dmg" "source=Notarized Developer ID" spctl -a -vvv -t open --context context:primary-signature "$DMG"
+          for f in "$APP" "$CLI" "$DMG"; do
+            has "wrong Team ID" "TeamIdentifier=$TEAM" codesign -dvv "$f"
+            has "not Developer ID" "Authority=Developer ID Application" codesign -dvv "$f"
+            has "no secure timestamp" "Timestamp=" codesign -dvv "$f"
+          done
+          for f in "$APP" "$CLI"; do has "no hardened runtime" "flags=0x[0-9a-f]+\(.*runtime" codesign -dvv "$f"; done
+          has "app entitlements" "com.apple.security.device.audio-input" codesign -d --entitlements - "$APP"
+          if grep get-task-allow <<< "$(codesign -d --entitlements - "$APP" "$CLI" 2>&1)" > /dev/null; then
+            echo "::error::a notarized build must not carry get-task-allow"
+            fail=1
+          fi
+          exit "$fail"
 
       - name: Package
+        env:
+          DEVELOPER_ID: ${{ steps.sign.outputs.developer-id }}
         run: |
           ATLAS_VERSION=${TAG#v}
           mkdir -p dist
           cp target/aarch64-apple-darwin/release/atlas dist/
           chmod +x dist/atlas
-          # Ad-hoc sign so macOS Gatekeeper doesn't SIGKILL on first run
-          codesign --sign - --force --preserve-metadata=entitlements,requirements,flags dist/atlas
+          # The release's symbols: the .dSYM bundles, named by the build's UUID inside (`atlas version` prints it).
+          if ls -d target/aarch64-apple-darwin/release/*.dSYM >/dev/null 2>&1; then
+            (cd target/aarch64-apple-darwin/release && tar czf "$OLDPWD/dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" ./*.dSYM)
+            # From inside dist/: the .sha256 names the file, not dist/<file> (`shasum -c` runs next to the file).
+            (cd dist && shasum -a 256 "atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" > "atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz.sha256")
+            echo "symbols archive:"; tar tzf "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" | head -8
+            ls -l dist/ "${BUNDLE:-target/aarch64-apple-darwin/release/bundle}"/dmg/*.dmg 2>/dev/null || true
+          else
+            echo "::warning::no .dSYM was produced: this release has no symbols for macOS"
+          fi
+          # Ad-hoc sign so macOS Gatekeeper doesn't SIGKILL on first run (a Developer ID build was signed above)
+          if [ "$DEVELOPER_ID" != true ]; then
+            codesign --sign - --force --preserve-metadata=entitlements,requirements,flags dist/atlas
+          fi
           cd dist
           tar czf "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz" atlas
           shasum -a 256 "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz" > "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz.sha256"
@@ -146,6 +324,13 @@ jobs:
             dist/*.dmg*
             dist/*.cdx.json
 
+      # Runs when an earlier step failed too. Deleting the keychain also drops it from the search list.
+      - name: Remove the signing keychain and keys
+        if: ${{ always() }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/atlas-signing.keychain-db" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP/cert-in.p12" "$RUNNER_TEMP/cert.pem" "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/atlas-cli.zip"
+
   # Linux x86_64: the CLI tarball, and Atlas Desktop as AppImage (what `atlas desktop` installs),
   # .deb and .rpm (both also carry the CLI as /usr/bin/atlas). Built on the oldest supported
   # Ubuntu so the binaries run on any glibc >= 2.35 (Arch, Fedora, Debian 12, Ubuntu 22.04+).
@@ -160,18 +345,9 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System libraries
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev libssl-dev
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -180,21 +356,38 @@ jobs:
 
       - name: Build CLI
         run: |
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           cargo build --release --locked -p atlas-cli
 
-      # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
-      # linuxdeploy (and its plugins) are AppImages; APPIMAGE_EXTRACT_AND_RUN unpacks them instead of mounting through FUSE, which the runner does not provide.
+      # The binary and the frontend only; the packages are made below, from the stripped binaries (`cargo tauri bundle`
+      # compiles nothing).
       - name: Build desktop app
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
-          (cd crates/atlas-desktop && cargo tauri build --ci)
+          (cd crates/atlas-desktop && cargo tauri build --ci --no-bundle)
+
+      # The debug info of the shipped binaries, one <build-id>.debug each (scripts/symbols.sh; docs/release.md, "Symbols"),
+      # then taken out of the binaries themselves: the AppImage, .deb, .rpm and the tarball carry the stripped copy (#318).
+      # The Package step below checksums every tarball in dist/.
+      - name: Symbols
+        run: |
+          V=${TAG#v}
+          T=x86_64-unknown-linux-gnu
+          mkdir -p dist symbols
+          ls -l target/release/atlas target/release/atlas-desktop
+          for b in atlas atlas-desktop; do scripts/symbols.sh split "target/release/$b" symbols; done
+          scripts/symbols.sh verify-stripped target/release/atlas target/release/atlas-desktop
+          ls -l target/release/atlas target/release/atlas-desktop symbols
+          tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
+          tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
+
+      # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
+      # linuxdeploy (and its plugins) are AppImages; APPIMAGE_EXTRACT_AND_RUN unpacks them instead of mounting through FUSE, which the runner does not provide.
+      - name: Bundle desktop app
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          (cd crates/atlas-desktop && cargo tauri bundle --ci)
 
       - name: Package
         run: |
@@ -240,23 +433,26 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System libraries
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl pkg-config libssl-dev
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: libssl-dev
 
       - name: Build CLI
         run: |
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           cargo build --release --locked -p atlas-cli
+
+      - name: Symbols
+        run: |
+          V=${TAG#v}
+          T=aarch64-unknown-linux-gnu
+          mkdir -p dist symbols
+          ls -l target/release/atlas
+          scripts/symbols.sh split target/release/atlas symbols
+          scripts/symbols.sh verify-stripped target/release/atlas
+          ls -l target/release/atlas symbols
+          tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
+          (cd dist && sha256sum "atlas-$V-$T-symbols.tar.gz" > "atlas-$V-$T-symbols.tar.gz.sha256")
+          tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
 
       - name: Package
         run: |
@@ -305,19 +501,10 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System tools
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            clang lld llvm nasm libayatana-appindicator3-dev
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
-          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: clang lld llvm nasm libayatana-appindicator3-dev
+          targets: x86_64-pc-windows-msvc
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -327,8 +514,6 @@ jobs:
       - name: Build CLI
         run: |
           command -v cargo-xwin >/dev/null || cargo install cargo-xwin --locked
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           cargo xwin build --release --locked --target x86_64-pc-windows-msvc -p atlas-cli
 
       # Only the app binary here (--no-bundle): the NSIS installer is packed later, from the signed files.
@@ -336,8 +521,6 @@ jobs:
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           (cd crates/atlas-desktop && cargo tauri build --ci --runner cargo-xwin \
             --target x86_64-pc-windows-msvc --no-bundle)
 
@@ -348,6 +531,30 @@ jobs:
           T=x86_64-pc-windows-msvc
           mkdir -p stage
           cp "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe" stage/
+
+      # The PDBs of the two binaries: what resolves a Windows crash report's frames (frame - load_bias is the RVA).
+      # Their own artifact: the signing chain below only knows the exes.
+      - name: Stage symbols
+        run: |
+          V=${TAG#v}
+          T=x86_64-pc-windows-msvc
+          mkdir -p symbols dist
+          cp "target/$T/release/"*.pdb symbols/ 2>/dev/null || echo "::warning::no PDB was produced: this release has no symbols for Windows"
+          # The exes carry no DWARF/CodeView sections of their own: the debug info is the PDB next to them.
+          scripts/symbols.sh verify-stripped "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe"
+          ls -l "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe" symbols
+          if ls symbols/*.pdb >/dev/null 2>&1; then
+            tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
+            (cd dist && sha256sum "atlas-$V-$T-symbols.tar.gz" > "atlas-$V-$T-symbols.tar.gz.sha256")
+            tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
+          fi
+
+      - name: Upload symbols
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-symbols
+          path: dist/*
+          if-no-files-found: ignore
 
       - name: Upload binaries
         id: upload
@@ -414,19 +621,10 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System tools
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            nsis libayatana-appindicator3-dev
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
-          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: nsis libayatana-appindicator3-dev
+          targets: x86_64-pc-windows-msvc
 
       - name: Download binaries
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -439,8 +637,6 @@ jobs:
       - name: Bundle installer
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           (cd crates/atlas-desktop && cargo tauri bundle --ci \
             --target x86_64-pc-windows-msvc --bundles nsis \
             --config '{"bundle":{"resources":{"../../target/x86_64-pc-windows-msvc/release/atlas.exe":"atlas.exe"}}}')
@@ -510,19 +706,10 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System tools
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            clang lld llvm nasm
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
-          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: clang lld llvm nasm
+          targets: x86_64-pc-windows-msvc
 
       - name: Download installer
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -534,8 +721,6 @@ jobs:
         run: |
           command -v cargo-xwin >/dev/null || cargo install cargo-xwin --locked
           T=x86_64-pc-windows-msvc
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           NSIS="$(ls "$PWD"/payload/*-setup.exe)"
           ATLAS_SETUP_PAYLOAD="$NSIS" cargo xwin build --release --locked --target "$T" -p atlas-setup
 
@@ -669,6 +854,9 @@ jobs:
           packaging/arch/render.sh "$V" "/tmp/pkg/atlas_${V}_amd64.deb" > /tmp/pkg/PKGBUILD
           chown -R builder /tmp/pkg
           su builder -c 'cd /tmp/pkg && makepkg --nodeps --noconfirm'
+          # The AUR takes the PKGBUILD with its .SRCINFO (publish-aur): a PKGBUILD that does not describe itself fails here.
+          su builder -c 'cd /tmp/pkg && makepkg --printsrcinfo' | tee /tmp/srcinfo
+          grep -qP '^\tdepends = ripgrep$' /tmp/srcinfo
           cp /tmp/pkg/*.pkg.tar.zst dist/
           cp /tmp/pkg/PKGBUILD dist/PKGBUILD
           cd dist
@@ -699,23 +887,35 @@ jobs:
           - name: Arch Linux
             slug: arch
             image: archlinux:latest
+            pkg: dist/*.pkg.tar.zst
             setup: pacman -Syu --noconfirm --needed git sway grim mesa dbus ttf-dejavu xorg-xwayland procps-ng && cp "$(command -v sway)" /usr/local/bin/sway
             install: pacman -U --noconfirm dist/*.pkg.tar.zst
+            remove: sudo pacman -R codeatlas-atlas-bin
+            owned: pacman -Q codeatlas-atlas-bin
           - name: Fedora
             slug: fedora
             image: fedora:latest
+            pkg: dist/*.rpm
             setup: dnf install -y git sway grim mesa-dri-drivers dbus-daemon dejavu-sans-fonts xorg-x11-server-Xwayland procps-ng findutils && cp "$(command -v sway)" /usr/local/bin/sway
             install: dnf install -y dist/*.rpm
+            remove: sudo dnf remove atlas
+            owned: rpm -q atlas
           - name: Ubuntu 24.04
             slug: ubuntu
             image: ubuntu:24.04
+            pkg: dist/*.deb
             setup: apt-get update && apt-get install -y --no-install-recommends ca-certificates git sway grim dbus libgl1-mesa-dri libegl1 xwayland fonts-dejavu-core procps
             install: apt-get install -y ./dist/*.deb
+            remove: sudo apt remove atlas
+            owned: dpkg -l atlas | grep -q '^ii'
           - name: Debian stable
             slug: debian
             image: debian:stable
+            pkg: dist/*.deb
             setup: apt-get update && apt-get install -y --no-install-recommends ca-certificates git sway grim dbus libgl1-mesa-dri libegl1 xwayland fonts-dejavu-core procps
             install: apt-get install -y ./dist/*.deb
+            remove: sudo apt remove atlas
+            owned: dpkg -l atlas | grep -q '^ii'
     container: ${{ matrix.image }}
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -736,6 +936,12 @@ jobs:
           pattern: atlas-x86_64-unknown-linux-gnu*
           merge-multiple: true
           path: dist/
+
+      # #267: the package says what it needs (WebKitGTK, the GStreamer plugins, the tray library, ripgrep, git), read with
+      # the format's own tool, before the install resolves anything: a dependency left out of the package fails here by
+      # name, even when this container happens to have it.
+      - name: The package declares its runtime dependencies
+        run: scripts/linux-pkg-deps.sh ${{ matrix.pkg }}
 
       # The package manager resolves the runtime libraries (WebKitGTK, GTK) the package declares: a missing
       # dependency fails here, not on a user's machine.
@@ -769,6 +975,18 @@ jobs:
         run: |
           scripts/linux-launch-check.sh --out check/package --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 "$(command -v atlas-desktop)"
 
+      # #277: a package install is removed through its package manager, which uninstall names in its list and then runs
+      # (root here, so no sudo). Last of the steps that need the package. A scratch HOME without XDG_CONFIG_HOME or
+      # ZDOTDIR keeps it off the runner's own files.
+      - name: atlas uninstall removes the package
+        run: |
+          H=$(mktemp -d)
+          env -u XDG_CONFIG_HOME -u ZDOTDIR HOME="$H" atlas uninstall --dry-run | tee uninstall-list.txt
+          grep -F "${{ matrix.remove }}" uninstall-list.txt
+          env -u XDG_CONFIG_HOME -u ZDOTDIR HOME="$H" atlas uninstall --yes
+          if command -v atlas-desktop; then echo "atlas-desktop is still installed" >&2; exit 1; fi
+          if ${{ matrix.owned }}; then echo "the package is still installed" >&2; exit 1; fi
+
       - name: Screenshots and logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -780,16 +998,102 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Windows: the shipped installers are executed on a native runner, not just built (#312). Atlas-Setup.exe and the
+  # plain NSIS installer (what `atlas desktop` and `atlas update` run) install silently, the installed app opens a window
+  # and paints, and both uninstall. scripts/windows-launch-check.ps1 says what each tag means; the negative control
+  # proves the check can fail.
+  verify-windows:
+    name: Verify Windows
+    needs: build-windows
+    # Explicit for the reason publish's `if` gives: build-windows sits behind the optional SignPath jobs, and without an
+    # `if` a skipped job anywhere upstream skips this one too (the first build-only run of this job was skipped that way).
+    if: ${{ !cancelled() && needs.build-windows.result == 'success' }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      BUILD_ONLY: ${{ inputs.build_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.REF }}
+          persist-credentials: false
+
+      - name: Download the Windows assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: atlas-x86_64-pc-windows-msvc
+          path: dist/
+
+      - name: The check fails on a program that is not an app
+        shell: pwsh
+        run: scripts/windows-launch-check.ps1 -Dist dist -Out check/negative -Negative
+
+      # A build-only run names its files after a throwaway version that the binaries do not carry.
+      - name: Install, open and uninstall what a user downloads
+        shell: pwsh
+        run: |
+          $v = if ($env:BUILD_ONLY -eq 'true') { '' } else { $env:TAG.TrimStart('v') }
+          scripts/windows-launch-check.ps1 -Dist dist -Out check/windows -Version $v
+
+      - name: Screenshots and logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verify-windows
+          path: check/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # macOS: the .dmg is mounted, its app's signature verified and the app opened from it and from the .app.tar.gz that
+  # `atlas desktop` installs (#312). scripts/macos-launch-check.sh says what each tag means.
+  verify-macos:
+    name: Verify macOS
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      BUILD_ONLY: ${{ inputs.build_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.REF }}
+          persist-credentials: false
+
+      - name: Download the macOS assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: atlas-aarch64-apple-darwin
+          path: dist/
+
+      - name: The check fails on a program that is not an app
+        run: scripts/macos-launch-check.sh --negative --out check/negative
+
+      - name: Mount, verify and open what a user downloads
+        run: |
+          VERSION_ARGS=()
+          if [ "$BUILD_ONLY" != true ]; then VERSION_ARGS=(--version "${TAG#v}"); fi
+          scripts/macos-launch-check.sh --out check/macos ${VERSION_ARGS[@]+"${VERSION_ARGS[@]}"} dist
+
+      - name: Screenshots and logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verify-macos
+          path: check/
+          if-no-files-found: ignore
+          retention-days: 14
+
   publish:
     name: Publish Release
-    needs: [build, build-linux, build-linux-arm64, build-arch, build-windows, verify-linux]
+    needs: [build, build-linux, build-linux-arm64, build-arch, build-windows, verify-linux, verify-windows, verify-macos]
     # Explicit: without an `if`, a skipped job anywhere upstream (the optional SignPath jobs feeding build-windows)
     # skips publish too, and v1.5.0-alpha.25's first full run built everything and published nothing.
-    if: ${{ !cancelled() && !inputs.build_only && needs.build.result == 'success' && needs.verify-linux.result == 'success' && needs.build-linux.result == 'success' && needs.build-linux-arm64.result == 'success' && needs.build-arch.result == 'success' && needs.build-windows.result == 'success' }}
+    if: ${{ !cancelled() && !inputs.build_only && needs.build.result == 'success' && needs.verify-linux.result == 'success' && needs.verify-windows.result == 'success' && needs.verify-macos.result == 'success' && needs.build-linux.result == 'success' && needs.build-linux-arm64.result == 'success' && needs.build-arch.result == 'success' && needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write   # the only job that may create the release
+      pull-requests: read   # scripts/release-contributors.ts reads each commit's PR author and reviewers
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -852,10 +1156,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # The release body: this version's CHANGELOG.md section, then install/update steps.
+      # The release body: this version's CHANGELOG.md section, who worked on it, then install/update steps, within
+      # GitHub's size cap (scripts/release-notes.ts shortens a section that would not fit; 1.5.0-alpha.26's was cut
+      # mid-entry). scripts/release-contributors.ts fails the step if a commit identity maps to nobody.
       - name: Release notes
         env:
           MAKE_LATEST: ${{ steps.flags.outputs.make_latest }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           V=${TAG#v}
           case "$V" in
@@ -864,17 +1171,17 @@ jobs:
             *-rc.*) CH="a **release-candidate** build: the next Stable, being soaked. Only the version number should change when it is promoted." ;;
             *) CH="" ;;
           esac
-          : > notes.md
+          : > header.md
           if [ -n "$CH" ]; then
             # GitHub's "Latest" badge follows the default channel (alpha pre-GA), which is not the Stable channel.
             if [ "$MAKE_LATEST" = true ]; then
-              printf '> This is %s GitHub marks it "Latest" because it is what the default update channel offers while Atlas is in alpha; it is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> notes.md
+              printf '> This is %s GitHub marks it "Latest" because it is what the default update channel offers while Atlas is in alpha; it is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> header.md
             else
-              printf '> This is %s It is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> notes.md
+              printf '> This is %s It is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> header.md
             fi
           fi
-          awk -v v="$V" '/^## /{p = index($0, "[" v "]") > 0; next} p' CHANGELOG.md >> notes.md
-          cat >> notes.md <<'EOF'
+          bun scripts/release-contributors.ts "$V" "$TAG" > footer.md
+          cat >> footer.md <<'EOF'
 
           ## Install
 
@@ -895,7 +1202,7 @@ jobs:
           ## Desktop app
 
           ```bash
-          atlas desktop   # installs Atlas Desktop on first run (macOS: /Applications; Linux: ~/.local/bin; Windows: %LOCALAPPDATA%\Atlas), then opens it
+          atlas desktop   # installs Atlas Desktop on first run (macOS: /Applications; Linux: the distro package on Arch, Debian, Ubuntu, Fedora and openSUSE after your confirmation, else ~/.local/bin; Windows: %LOCALAPPDATA%\Atlas), then opens it
           ```
 
           Or download a package below:
@@ -917,6 +1224,7 @@ jobs:
           atlas update    # updates the CLI and an installed Atlas.app together
           ```
           EOF
+          bun scripts/release-notes.ts "$V" header.md footer.md > notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
@@ -970,3 +1278,59 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: SHA256SUMS
+
+  # #267: the rendered PKGBUILD of a published release goes to the AUR as `codeatlas-atlas-bin`, so Arch users get it from
+  # their AUR helper and `pacman -Syu`. It needs the maintainer's AUR account, which is not in this repository: without the
+  # `AUR_SSH_PRIVATE_KEY` secret the job says so and succeeds (setup: docs/release.md "AUR"). Runs after `publish`: the
+  # PKGBUILD's source is the release's own .deb, which only exists once the release does. It writes to the AUR, never to
+  # this repository.
+  publish-aur:
+    name: Publish to the AUR
+    needs: [publish]
+    if: ${{ !cancelled() && !inputs.build_only && needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: archlinux:base-devel
+    steps:
+      - name: Tools
+        run: pacman -Syu --noconfirm --needed git openssh
+
+      - name: Download the rendered PKGBUILD
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: atlas-x86_64-unknown-linux-gnu-arch
+          path: arch/
+
+      # The host key is pinned (the three fingerprints aurweb publishes on https://aur.archlinux.org/ include this
+      # Ed25519 one, SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4), never fetched at run time. makepkg refuses to
+      # run as root, so the push is done by an unprivileged user. An unchanged PKGBUILD (a re-run) pushes nothing.
+      - name: Push PKGBUILD and .SRCINFO
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "::notice::AUR_SSH_PRIVATE_KEY is not set: the AUR package was not updated (docs/release.md, AUR)"
+            exit 0
+          fi
+          useradd -m builder
+          install -d -m 700 -o builder -g builder /home/builder/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /home/builder/.ssh/id_ed25519
+          echo 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN' > /home/builder/.ssh/known_hosts
+          chown builder:builder /home/builder/.ssh/id_ed25519 /home/builder/.ssh/known_hosts
+          chmod 600 /home/builder/.ssh/id_ed25519
+          cp arch/PKGBUILD /home/builder/PKGBUILD
+          chown builder:builder /home/builder/PKGBUILD
+          cat > /home/builder/push.sh <<'PUSH'
+          set -euo pipefail
+          cd ~
+          git -c init.defaultBranch=master clone ssh://aur@aur.archlinux.org/codeatlas-atlas-bin.git aur
+          cp PKGBUILD aur/PKGBUILD
+          cd aur
+          makepkg --printsrcinfo > .SRCINFO
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then echo "the AUR already has this PKGBUILD"; exit 0; fi
+          git -c user.name="Atlas release" -c user.email="noreply@users.noreply.github.com" \
+            commit -m "Update to $(sed -n 's/^pkgver=//p' PKGBUILD)"
+          git push origin HEAD:master
+          PUSH
+          su builder -c 'bash ~/push.sh'

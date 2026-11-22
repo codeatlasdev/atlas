@@ -38,7 +38,7 @@ async fn run_task(client: &HostClient, id: &str, prompt: &str) -> String {
         .await
         .unwrap();
     let task = v["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(client, id, &task, "done", Duration::from_secs(20)).await;
+    wait_task_state(client, id, &task, "done", atlas_core::scaling::HANG).await;
     task
 }
 
@@ -203,6 +203,11 @@ async fn an_approval_is_audited_asked_and_decided_with_who_answered() {
     let dir = tmp.path().join("hostd");
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Asker").await;
+    // A crewmate in bypass runs what the rails let through; this one asks.
+    client
+        .call("crewmate_update", json!({"id": id, "approval": "ask"}))
+        .await
+        .unwrap();
     let pane = format!("crew:{id}:task-appr");
 
     // The prompt is held for the connected client; answer it as the desktop would.
@@ -223,13 +228,15 @@ async fn an_approval_is_audited_asked_and_decided_with_who_answered() {
         )
         .await
         .unwrap();
-    assert_eq!(
-        serde_json::from_str::<Value>(&held.await.unwrap()).unwrap(),
-        json!({"decision": "deny"})
+    let reply = serde_json::from_str::<Value>(&held.await.unwrap()).unwrap();
+    assert_eq!(reply["decision"], "deny", "{reply}");
+    assert!(
+        reply["message"].as_str().unwrap().contains("owner denied"),
+        "{reply}"
     );
 
     let mut asked = Vec::new();
-    for _ in 0..100 {
+    for _ in 0..1200 {
         asked = audit(&client, &id, Some("approval_decision")).await;
         if !asked.is_empty() {
             break;
@@ -238,14 +245,23 @@ async fn an_approval_is_audited_asked_and_decided_with_who_answered() {
     }
     let decided = &asked[0];
     assert_eq!(
-        (decided["decision"].as_str(), decided["by"].as_str()),
-        (Some("deny"), Some("desktop"))
+        (
+            decided["decision"].as_str(),
+            decided["source"].as_str(),
+            decided["device"].as_str()
+        ),
+        (Some("deny"), Some("person"), Some("desktop"))
     );
     assert_eq!(
-        decided["tool_name"], "Bash",
+        decided["tool"], "Bash",
         "the decision names the tool it was about"
     );
     assert_eq!(decided["task_id"], "task-appr");
+    assert_eq!(
+        decided["req"],
+        req.as_str(),
+        "it pairs with the prompt that was asked"
+    );
     let q = &audit(&client, &id, Some("approval_asked")).await[0];
     assert_eq!(q["tool_input"]["command"], "ls");
     assert_eq!(q["req"], req.as_str());
@@ -278,11 +294,11 @@ async fn configuration_changes_pause_and_the_crewmates_life_are_on_record() {
     let cfg = audit(&client, &id, Some("config_changed")).await;
     let approval = cfg
         .iter()
-        .find(|e| e["field"] == "approval")
-        .expect("approval change");
+        .find(|e| e["field"] == "mode")
+        .expect("mode change");
     assert_eq!(
         (approval["from"].as_str(), approval["to"].as_str()),
-        (Some("auto"), Some("ask"))
+        (Some("bypass"), Some("ask"))
     );
     let trig = cfg
         .iter()
@@ -469,7 +485,7 @@ async fn crewmate_audit_fixture_is_real_payload() {
         .await
         .unwrap();
     held.await.unwrap();
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if !audit(&client, &id, Some("approval_decision"))
             .await
             .is_empty()
@@ -523,6 +539,9 @@ async fn crewmate_audit_fixture_is_real_payload() {
             e["task_id"] = json!("task-fixture");
         }
         e["ts"] = json!(0);
+        if e["wait_ms"].is_number() {
+            e["wait_ms"] = json!(0);
+        }
         e["seq"] = json!(0);
     }
     // Keys sorted at every level, so the order does not depend on serde_json's `preserve_order`.

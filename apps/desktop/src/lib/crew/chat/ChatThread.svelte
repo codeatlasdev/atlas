@@ -3,6 +3,7 @@
 	 * ChatThread — the scrolling list of tasks, oldest first: date separators, the "NEW" unread divider, the
 	 * empty / loading lines, and the "Jump to present" pill when scrolled up. Each task is a TaskMessage.
 	 */
+	import { onMount } from "svelte";
 	import { ArrowDown } from "@lucide/svelte";
 	import type { Crewmate, CrewmateTask } from "#lib/crew.ts";
 	import { groupTasks } from "#lib/crew/crewLogic.ts";
@@ -11,6 +12,7 @@
 	import { fmtDate, needsDateSeparator } from "./taskView.ts";
 	import { triggerIcon } from "#lib/crew/settings/triggerIcons.ts";
 	import "./chat.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		/** Tasks oldest first. */
@@ -28,23 +30,26 @@
 	let { tasks, loading, crewmate, hostKey, chat, unreadIdx, now, onterminal }: Props = $props();
 
 	const grouped = $derived(groupTasks(tasks));
+
+	// The thread loads after the chat opens (CrewmateView), so the tasks that arrived first had no list to follow.
+	onMount(() => chat.followBottom(true));
 </script>
 
 <div
 	class="thread"
 	bind:this={chat.threadEl}
 	onscroll={() => chat.onThreadScroll()}
-	aria-label="Task history"
+	aria-label={m.crew_chat_thread_task_history()}
 >
 	{#if loading && tasks.length === 0}
-		<div class="loading">Loading…</div>
+		<div class="loading">{m.common_state_loading()}</div>
 	{:else if tasks.length === 0}
-		<div class="empty-thread">No tasks yet. Send one below.</div>
+		<div class="empty-thread">{m.crew_chat_thread_empty()}</div>
 	{:else}
 		{#each tasks as t, i (t.id)}
 			{#if i === unreadIdx}
 				<div class="unread-divider" role="separator">
-					<span class="unread-label">NEW</span>
+					<span class="unread-label">{m.crew_chat_thread_new()}</span>
 				</div>
 			{/if}
 			{#if needsDateSeparator(tasks, !!grouped[i]?.groupStart, i)}
@@ -67,7 +72,7 @@
 {#if chat.jumpVisible}
 	<div class="jump-present" role="status">
 		<button class="jump-btn" onclick={() => chat.jumpToBottom()}
-			>Jump to present <ArrowDown size={12} aria-hidden="true" /></button
+			>{m.crew_chat_thread_jump_to_present()} <ArrowDown size={12} aria-hidden="true" /></button
 		>
 	</div>
 {/if}

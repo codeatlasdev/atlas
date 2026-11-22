@@ -7,6 +7,7 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
+use atlas_core::clock::ManualClock;
 use atlas_host::{HostClient, paths};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -77,7 +78,13 @@ async fn a_long_replay_arrives_whole_in_lines_under_the_limit() {
         .await
         .unwrap();
     let (mut kinds, mut got) = (Vec::new(), String::new());
-    while let Ok(Ok(e)) = tokio::time::timeout(Duration::from_millis(500), ev.recv()).await {
+    // Until `END`, the last thing the program prints: a quiet window ended this loop early on a loaded runner,
+    // and the program then waits in `sleep 30`, so nothing else ends the stream.
+    while !got.contains("END") {
+        let e = tokio::time::timeout(Duration::from_secs(10), ev.recv())
+            .await
+            .expect("replay never reached END")
+            .unwrap();
         let k = e["ev"].as_str().unwrap_or_default().to_string();
         if k != "pty_replay" && k != "pty_output" {
             continue;
@@ -662,7 +669,7 @@ async fn upgrade_hands_live_ptys_to_a_new_hostd_without_killing_the_program() {
     let pty = create(json!(["sh", "-c", "echo before; read x; echo after:$x"])).await;
     // A finished pty must survive the handoff as exited, with its replay.
     let done = create(json!(["sh", "-c", "echo gone"])).await;
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    wait_exited(&c, &done).await;
     let child_pid = c.call("pty_info", json!({"pty": pty})).await.unwrap()["pid"]
         .as_u64()
         .unwrap();
@@ -759,10 +766,78 @@ async fn upgrade_hands_live_ptys_to_a_new_hostd_without_killing_the_program() {
         .as_str()
         .unwrap()
         .to_string();
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    // `echo fresh` ends by itself; its output is what is waited for, not a fixed time.
+    let mut text = Value::Null;
+    for _ in 0..200 {
+        text = c2.call("pty_read", json!({"pty": p3})).await.unwrap()["text"].clone();
+        if text == "fresh" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(text, "fresh");
+}
+
+/// Regression: #500. `atlas update` and the app both noticed the old daemon and called `upgrade` at
+/// once; the second call rebound the first's handoff socket, so the daemon was handed over twice
+/// (`hostd.log`: two `took over 8 pty(s)` lines for one update) and every client lost its host
+/// twice. One daemon, however many callers: one successor.
+#[tokio::test]
+async fn concurrent_upgrades_of_one_daemon_hand_over_once() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let old_pid = c.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap();
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": dir, "argv": ["sh", "-c", "read x; echo got:$x"]}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let other = HostClient::connect_dir(dir, "test").await.unwrap();
+
+    let (a, b) = tokio::join!(
+        c.call("upgrade", json!({"exe": BIN})),
+        other.call("upgrade", json!({"exe": BIN})),
+    );
+    // The loser is told the handoff is already done, never that it failed.
+    let (a, b) = (a.unwrap(), b.unwrap());
+    let handed: Vec<_> = [&a, &b].iter().map(|r| r["handed_off"].as_u64()).collect();
+    assert!(
+        handed.contains(&Some(1)) && handed.contains(&Some(0)),
+        "one call moves the terminal, the other is a no-op: {a} / {b}"
+    );
+
+    let c2 = connect_retry(dir, old_pid).await;
+    let new_pid = c2.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap();
+    let _kill_new = Pid(new_pid as u32);
+    // Let any second (wrong) successor finish its takeover before counting.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let log = std::fs::read_to_string(paths::log(dir)).unwrap();
     assert_eq!(
-        c2.call("pty_read", json!({"pty": p3})).await.unwrap()["text"],
-        "fresh"
+        log.matches("took over").count(),
+        1,
+        "one update, one handoff:\n{log}"
+    );
+    let now = connect_retry(dir, old_pid).await;
+    let info = now.call("info", json!({})).await.unwrap();
+    assert_eq!(info["pid"].as_u64(), Some(new_pid), "{info}");
+    let list = now.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        list["ptys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["pty"] == pty.as_str() && p["exited"].is_null()),
+        "{list}"
     );
 }
 
@@ -881,6 +956,17 @@ fn spawn_with(dir: &Path, env: &[(&str, &str)]) -> Daemon {
     Daemon(cmd.spawn().unwrap())
 }
 
+/// Wait until the terminal has exited, as its own info says.
+async fn wait_exited(c: &HostClient, pty: &str) {
+    for _ in 0..200 {
+        if !c.call("pty_info", json!({"pty": pty})).await.unwrap()["exited"].is_null() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("{pty} never exited");
+}
+
 async fn wait_for(what: &str, mut ok: impl FnMut() -> bool) {
     for _ in 0..200 {
         if ok() {
@@ -904,16 +990,62 @@ async fn connect_when_up(dir: &Path) -> HostClient {
     panic!("hostd never accepted a client in {}", dir.display());
 }
 
+/// A daemon that runs in this process on a clock only the test moves, and the task that runs it (finished = it
+/// exited). Returns once its first look at idleness is done, so each [`ManualClock::tick`] after it is a look of its
+/// own. #596: with a real 1 s limit the daemon could idle out before a loaded runner had connected to it.
+async fn daemon_that_idles(
+    dir: &Path,
+    limit: Duration,
+) -> (
+    HostClient,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+    ManualClock,
+) {
+    let d = dir.to_path_buf();
+    let clock = ManualClock::new();
+    let opts = atlas_host::server::ServeOpts {
+        no_mobile_relay: true,
+        mobile_loopback: true,
+        idle: Some(limit),
+        clock: clock.clock(),
+        desktop: Some(atlas_core::desktop_ctl::Endpoint {
+            token: dir.join("no-desktop.token"),
+            socket: dir.join("no-desktop.sock"),
+        }),
+        ..Default::default()
+    };
+    let task = tokio::spawn(async move { atlas_host::server::serve_with(&d, opts).await });
+    let c = connect_when_up(dir).await;
+    clock.armed_past(1).await;
+    (c, task, clock)
+}
+
+/// Let `limit` pass on the daemon's clock, one look at a time, up to `looks` times; true when it exited meanwhile.
+/// Each look is awaited as the event (the daemon re-arms after handling it), never as a duration.
+async fn idle_for(
+    clock: &ManualClock,
+    task: &mut tokio::task::JoinHandle<anyhow::Result<()>>,
+    limit: Duration,
+    looks: usize,
+) -> bool {
+    for _ in 0..looks {
+        tokio::select! {
+            exited = &mut *task => { exited.unwrap().unwrap(); return true; }
+            () = clock.tick(limit) => {}
+        }
+    }
+    task.is_finished()
+}
+
+// The real binary reads `ATLAS_HOSTD_IDLE_SECS` and leaves cleanly. Nothing connects first: a connect that a
+// loaded runner made after the limit had passed was the old race, and the in-process test below owns "a client
+// resets the clock" on a clock it moves.
 #[tokio::test]
 async fn idle_hostd_with_no_terminal_and_no_client_exits_and_cleans_up() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let mut d = spawn_with(dir, &[("ATLAS_HOSTD_IDLE_SECS", "1")]);
-    // Connect once, then hang up: a client resets the clock, and its absence restarts it.
-    drop(connect_when_up(dir).await);
-    let t0 = std::time::Instant::now();
     wait_for("idle exit", || matches!(d.0.try_wait(), Ok(Some(_)))).await;
-    assert!(t0.elapsed() < Duration::from_secs(10), "{:?}", t0.elapsed());
     assert!(d.0.try_wait().unwrap().unwrap().success());
     assert!(!paths::socket(dir).exists(), "socket removed");
     assert!(!paths::pid(dir).exists(), "pid file removed");
@@ -923,12 +1055,11 @@ async fn idle_hostd_with_no_terminal_and_no_client_exits_and_cleans_up() {
 async fn hostd_with_a_connected_client_or_a_live_pty_does_not_idle_exit() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
-    let mut d = spawn_with(dir, &[("ATLAS_HOSTD_IDLE_SECS", "1")]);
-    let c = connect_when_up(dir).await;
-    // Connected client: well past the limit, still up.
-    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let limit = Duration::from_secs(4);
+    let (c, mut task, clock) = daemon_that_idles(dir, limit).await;
+    // Connected client: many limits past, still up.
     assert!(
-        d.0.try_wait().unwrap().is_none(),
+        !idle_for(&clock, &mut task, limit, 5).await,
         "exited with a client connected"
     );
 
@@ -944,17 +1075,23 @@ async fn hostd_with_a_connected_client_or_a_live_pty_does_not_idle_exit() {
         .unwrap()
         .to_string();
     drop(c);
-    tokio::time::sleep(Duration::from_millis(2500)).await;
-    assert!(d.0.try_wait().unwrap().is_none(), "exited with a live pty");
+    assert!(
+        !idle_for(&clock, &mut task, limit, 5).await,
+        "exited with a live pty"
+    );
 
-    // Once the pty is gone the clock runs and it exits.
+    // Once the pty is gone and the client with it, the clock runs and it exits and cleans up: `limit` after the
+    // daemon has seen both go (a look or two later), however long that takes in real time.
     let c = HostClient::connect_dir(dir, "test").await.unwrap();
     c.call("pty_kill", json!({"pty": pty})).await.unwrap();
     drop(c);
-    wait_for("idle exit after the pty ended", || {
-        matches!(d.0.try_wait(), Ok(Some(_)))
+    tokio::time::timeout(atlas_core::scaling::HANG, async {
+        while !idle_for(&clock, &mut task, limit, 1).await {}
     })
-    .await;
+    .await
+    .expect("idle exit after the pty ended");
+    assert!(!paths::socket(dir).exists(), "socket removed");
+    assert!(!paths::pid(dir).exists(), "pid file removed");
 }
 
 #[tokio::test]
@@ -995,6 +1132,7 @@ fn hostd_cmd(dir: &Path, args: &[&str]) -> std::process::Output {
         .arg("--dir")
         .arg(dir)
         .env_remove("ATLAS_UPDATE_PROGRESS")
+        .env("ATLAS_LANG", "en")
         .stdin(Stdio::null())
         .output()
         .unwrap()
@@ -1102,7 +1240,7 @@ async fn check_reports_a_stale_daemon_with_its_terminals_and_exits_3() {
     );
     assert!(
         out.contains(
-            "language features, fast terminal rendering and agent status are off until it restarts"
+            "language features, fast terminal rendering, and agent status are off until it restarts"
         ),
         "{out}"
     );
@@ -1598,14 +1736,22 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
     assert_eq!(info["queued"]["cap_bytes"], CAP);
     assert!(info["queued"]["dropped"].as_u64().unwrap() >= 1, "{info}");
 
-    // Reading the stuck socket now: its backlog ends with the reason it was dropped.
+    // Reading the stuck socket now: its backlog ends with the reason it was dropped. Read to that line (the
+    // event), not until the socket has been quiet for a while: hostd's writer feeds the backlog out as this
+    // side drains it, and a loaded runner can pause it longer than any quiet window.
     let mut all = Vec::new();
     let mut buf = vec![0u8; 256 * 1024];
-    loop {
-        match tokio::time::timeout(Duration::from_millis(500), stuck.read(&mut buf)).await {
-            Ok(Ok(n)) if n > 0 => all.extend_from_slice(&buf[..n]),
-            _ => break,
-        }
+    while !String::from_utf8_lossy(&all).contains(r#""ev":"pty_dropped""#) {
+        let n = tokio::time::timeout(Duration::from_secs(30), stuck.read(&mut buf))
+            .await
+            .unwrap_or_else(|_| panic!("no pty_dropped among {} bytes", all.len()))
+            .unwrap();
+        assert!(
+            n > 0,
+            "the socket closed after {} bytes without a pty_dropped",
+            all.len()
+        );
+        all.extend_from_slice(&buf[..n]);
     }
     let text = String::from_utf8_lossy(&all);
     let dropped = text
@@ -1675,6 +1821,7 @@ async fn hostd_mobile_pair_prints_the_daemons_live_invite() {
         .args(["hostd", "--dir"])
         .arg(dir)
         .env("ATLAS_MOBILE_RELAY", "0")
+        .env("ATLAS_MOBILE_LOOPBACK", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -1723,6 +1870,7 @@ async fn hostd_mobile_pair_prints_the_daemons_live_invite() {
     let down = tokio::process::Command::new(BIN)
         .args(["hostd", "--mobile-pair", "--dir"])
         .arg(dir)
+        .env("ATLAS_LANG", "en")
         .output()
         .await
         .unwrap();

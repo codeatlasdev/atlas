@@ -10,6 +10,7 @@
 	import { hostState, openHostPrompt } from "#lib/stores/hostStatus.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { addProject } from "./projects.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { onDiscover }: { onDiscover: () => void } = $props();
 	let chip = $derived(chipFor(hostState));
@@ -19,9 +20,13 @@
 
 <footer>
 	{#if updates.pill}
-		<button class="pill" onclick={updates.showWhatsNew} aria-label="Update to {updates.release?.version}">
+		<button
+			class="pill"
+			onclick={updates.showWhatsNew}
+			aria-label={m.shell_commands_update_to({ version: updates.release?.version ?? "" })}
+		>
 			<Sparkles size={13} />
-			<span>Update to {updates.release?.version}</span>
+			<span>{m.shell_commands_update_to({ version: updates.release?.version ?? "" })}</span>
 		</button>
 	{/if}
 	{#if chip}
@@ -41,18 +46,30 @@
 		</Tip>
 	{/if}
 	<SpaceDots />
-	<button class="add" onclick={addProject}><Plus size={14} /> Add project…</button>
+	<button class="add" onclick={addProject}><Plus size={14} /> {m.shell_home_no_project_add_project()}</button>
 	<div class="tools">
-		<Tip label="Find projects" side="top">
+		<Tip label={m.sidebar_discover_dialog_find_projects()} side="top">
 			{#snippet child(props)}
-				<IconButton {...props} variant="text" size="sm" aria-label="Find projects" onclick={onDiscover}>
+				<IconButton
+					{...props}
+					variant="text"
+					size="sm"
+					aria-label={m.sidebar_discover_dialog_find_projects()}
+					onclick={onDiscover}
+				>
 					<Search size={14} />
 				</IconButton>
 			{/snippet}
 		</Tip>
-		<Tip label="Settings" command="zed::OpenSettings" side="top">
+		<Tip label={m.sidebar_footer_settings()} command="zed::OpenSettings" side="top">
 			{#snippet child(props)}
-				<IconButton {...props} variant="text" size="sm" aria-label="Settings" onclick={() => updates.show()}>
+				<IconButton
+					{...props}
+					variant="text"
+					size="sm"
+					aria-label={m.sidebar_footer_settings()}
+					onclick={() => updates.show()}
+				>
 					<Settings size={14} />
 				</IconButton>
 			{/snippet}

@@ -69,10 +69,9 @@ struct Seen {
     argv: Vec<String>,
 }
 
-/// Run one turn of `kind` with `secrets` as the crewmate's env, approval `ask` (`yolo == false`)
-/// unless `yolo`, and return what its process was started with.
-async fn run_kind(kind: &str, secrets: &[(&str, &str)], yolo: bool) -> Seen {
-    run_kind_on(kind, secrets, yolo, Where::Local).await
+/// Run one turn of `kind` with `secrets` as the crewmate's env and return what its process was started with.
+async fn run_kind(kind: &str, secrets: &[(&str, &str)]) -> Seen {
+    run_kind_on(kind, secrets, Where::Local).await
 }
 
 /// Where a test runs its turn: as a child of this process, or as the crewmate's user through a real
@@ -84,7 +83,7 @@ enum Where {
     Helper,
 }
 
-async fn run_kind_on(kind: &str, secrets: &[(&str, &str)], yolo: bool, at: Where) -> Seen {
+async fn run_kind_on(kind: &str, secrets: &[(&str, &str)], at: Where) -> Seen {
     let tmp = tempfile::tempdir().unwrap();
     let bin = fake_cli(tmp.path(), kind);
     let _lock = crate::crew::runner::TEST_BIN_LOCK
@@ -131,7 +130,6 @@ async fn run_kind_on(kind: &str, secrets: &[(&str, &str)], yolo: bool, at: Where
         pane_key: PANE_KEY,
         extra_env: &extra_env,
         work_dir: work.to_str().unwrap(),
-        yolo,
         tools: None,
         cancel: &TurnCancel::new(),
         exec: &exec,
@@ -158,52 +156,39 @@ async fn run_kind_on(kind: &str, secrets: &[(&str, &str)], yolo: bool, at: Where
 // Regression: omp set ATLAS_HOOK_PORT/TOKEN/PANE_KEY BEFORE the crewmate's secrets, so a secret with
 // one of those names pointed the approval extension at an endpoint of the crewmate's choosing (claude
 // already set them after: "ATLAS_* always win"). Every engine must give hostd's values.
-async fn hostd_env_beats_crewmate_secrets(kind: &str, yolo: bool) {
+async fn hostd_env_beats_crewmate_secrets(kind: &str) {
     let secrets: Vec<(&str, &str)> = OWNED.iter().map(|k| (*k, "from-a-secret")).collect();
-    let seen = run_kind(kind, &secrets, yolo).await;
+    let seen = run_kind(kind, &secrets).await;
     let at = |k: &str| seen.env.get(k).map(String::as_str);
     assert_eq!(
         at("ATLAS_HOOK_PORT"),
         Some(HOOK_PORT.to_string().as_str()),
-        "{kind} (yolo={yolo})"
+        "{kind}"
     );
-    assert_eq!(
-        at("ATLAS_HOOK_TOKEN"),
-        Some(HOOK_TOKEN),
-        "{kind} (yolo={yolo})"
-    );
-    assert_eq!(at("ATLAS_PANE_KEY"), Some(PANE_KEY), "{kind} (yolo={yolo})");
-    assert_eq!(at("ATLAS_CREWMATE_ID"), Some("c1"), "{kind} (yolo={yolo})");
-    assert_eq!(
-        at("ATLAS_HOOK_DECISION_SECS"),
-        Some("1800"),
-        "{kind} (yolo={yolo})"
-    );
+    assert_eq!(at("ATLAS_HOOK_TOKEN"), Some(HOOK_TOKEN), "{kind}");
+    assert_eq!(at("ATLAS_PANE_KEY"), Some(PANE_KEY), "{kind}");
+    assert_eq!(at("ATLAS_CREWMATE_ID"), Some("c1"), "{kind}");
+    assert_eq!(at("ATLAS_HOOK_DECISION_SECS"), Some("1800"), "{kind}");
 }
 
 #[tokio::test]
-async fn omp_ask_hostd_env_beats_crewmate_secrets() {
-    hostd_env_beats_crewmate_secrets("omp", false).await;
-}
-
-#[tokio::test]
-async fn omp_auto_hostd_env_beats_crewmate_secrets() {
-    hostd_env_beats_crewmate_secrets("omp", true).await;
+async fn omp_hostd_env_beats_crewmate_secrets() {
+    hostd_env_beats_crewmate_secrets("omp").await;
 }
 
 #[tokio::test]
 async fn claude_hostd_env_beats_crewmate_secrets() {
-    hostd_env_beats_crewmate_secrets("claude", false).await;
+    hostd_env_beats_crewmate_secrets("claude").await;
 }
 
 #[tokio::test]
 async fn codex_hostd_env_beats_crewmate_secrets() {
-    hostd_env_beats_crewmate_secrets("codex", true).await;
+    hostd_env_beats_crewmate_secrets("codex").await;
 }
 
 #[tokio::test]
 async fn opencode_hostd_env_beats_crewmate_secrets() {
-    hostd_env_beats_crewmate_secrets("opencode", true).await;
+    hostd_env_beats_crewmate_secrets("opencode").await;
 }
 
 // ── The atlas MCP server reaches every engine ───────────────────────────────────────────────────────
@@ -226,7 +211,7 @@ fn expected_mcp_env() -> BTreeMap<String, String> {
 
 #[tokio::test]
 async fn codex_gets_the_atlas_mcp_server_with_its_env_and_auto_approval() {
-    let seen = run_kind("codex", &[], true).await;
+    let seen = run_kind("codex", &[]).await;
     // The overrides as codex parses them: `-c key=value`, value TOML.
     let overrides: BTreeMap<&str, &str> = seen
         .argv
@@ -263,7 +248,7 @@ async fn codex_gets_the_atlas_mcp_server_with_its_env_and_auto_approval() {
 
 #[tokio::test]
 async fn opencode_gets_the_atlas_mcp_server_in_its_inline_config() {
-    let seen = run_kind("opencode", &[], true).await;
+    let seen = run_kind("opencode", &[]).await;
     let config: serde_json::Value = serde_json::from_str(
         seen.env
             .get("OPENCODE_CONFIG_CONTENT")
@@ -293,7 +278,7 @@ async fn opencode_gets_the_atlas_mcp_server_in_its_inline_config() {
 // A crewmate secret named OPENCODE_CONFIG_CONTENT must not replace the config that carries the tools.
 #[tokio::test]
 async fn a_crewmate_secret_cannot_replace_opencodes_inline_config() {
-    let seen = run_kind("opencode", &[("OPENCODE_CONFIG_CONTENT", "{}")], true).await;
+    let seen = run_kind("opencode", &[("OPENCODE_CONFIG_CONTENT", "{}")]).await;
     assert!(
         seen.env["OPENCODE_CONFIG_CONTENT"].contains("atlas"),
         "the secret replaced the atlas MCP config: {}",
@@ -306,9 +291,9 @@ async fn a_crewmate_secret_cannot_replace_opencodes_inline_config() {
 // real engine module through `run_turn` with `Exec::isolated` against a real helper on a socket, so the
 // env precedence, the MCP config and the cancel handling are the ones of the local path by construction.
 
-async fn hostd_env_beats_secrets_through_the_helper(kind: &str, yolo: bool) {
+async fn hostd_env_beats_secrets_through_the_helper(kind: &str) {
     let secrets: Vec<(&str, &str)> = OWNED.iter().map(|k| (*k, "from-a-secret")).collect();
-    let seen = run_kind_on(kind, &secrets, yolo, Where::Helper).await;
+    let seen = run_kind_on(kind, &secrets, Where::Helper).await;
     let at = |k: &str| seen.env.get(k).map(String::as_str);
     assert_eq!(
         at("ATLAS_HOOK_PORT"),
@@ -325,29 +310,29 @@ async fn hostd_env_beats_secrets_through_the_helper(kind: &str, yolo: bool) {
 // named ATLAS_HOOK_PORT could win. One `TurnCtx::command` now serves both executors.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_isolated_claude_turn_still_gets_hostds_env_over_a_secret_of_the_same_name() {
-    hostd_env_beats_secrets_through_the_helper("claude", false).await;
+    hostd_env_beats_secrets_through_the_helper("claude").await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_isolated_omp_turn_still_gets_hostds_env_over_a_secret_of_the_same_name() {
-    hostd_env_beats_secrets_through_the_helper("omp", false).await;
+    hostd_env_beats_secrets_through_the_helper("omp").await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_isolated_codex_turn_still_gets_hostds_env_over_a_secret_of_the_same_name() {
-    hostd_env_beats_secrets_through_the_helper("codex", true).await;
+    hostd_env_beats_secrets_through_the_helper("codex").await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_isolated_opencode_turn_still_gets_hostds_env_over_a_secret_of_the_same_name() {
-    hostd_env_beats_secrets_through_the_helper("opencode", true).await;
+    hostd_env_beats_secrets_through_the_helper("opencode").await;
 }
 
 // #223 predates the MCP server for codex and opencode: an isolated codex/opencode crewmate had none of
 // the crew tools (ask_user, set_ui, capture, locate), so a UI task could never attach captures.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_isolated_codex_turn_gets_the_atlas_mcp_server_with_auto_approval() {
-    let seen = run_kind_on("codex", &[], true, Where::Helper).await;
+    let seen = run_kind_on("codex", &[], Where::Helper).await;
     let overrides: BTreeMap<&str, &str> = seen
         .argv
         .windows(2)
@@ -370,7 +355,6 @@ async fn an_isolated_opencode_turn_gets_the_atlas_mcp_server_and_a_secret_cannot
     let seen = run_kind_on(
         "opencode",
         &[("OPENCODE_CONFIG_CONTENT", "{}")],
-        true,
         Where::Helper,
     )
     .await;
@@ -406,7 +390,8 @@ struct Hanging {
     _lock: tokio::sync::MutexGuard<'static, ()>,
 }
 
-async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Hanging {
+/// `None` when `timeout` (a test's short turn timeout) passed before the engine got to start its tool.
+async fn try_start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Option<Hanging> {
     let lock = crate::crew::runner::TEST_BIN_LOCK
         .get_or_init(|| tokio::sync::Mutex::new(()))
         .lock()
@@ -419,7 +404,7 @@ async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Ha
     rig.engine(
         "claude",
         &format!(
-            "(/bin/sleep 60 & echo $! > \"{}\"; wait) &\nwait",
+            "(/bin/sleep 600 & echo $! > \"{}\"; wait) &\nwait",
             pidfile.display()
         ),
     );
@@ -448,7 +433,6 @@ async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Ha
                 pane_key: PANE_KEY,
                 extra_env: &env,
                 work_dir: &work,
-                yolo: true,
                 tools: None,
                 cancel: &cancel,
                 exec: &exec,
@@ -463,28 +447,50 @@ async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Ha
         {
             break pid;
         }
+        if turn.is_finished() {
+            return None;
+        }
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(15),
+            start.elapsed() < atlas_core::scaling::HANG,
             "the isolated engine never started its tool"
         );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     };
-    assert!(!gone(pid), "the tool must be running before the cancel");
-    Hanging {
+    // With a short turn timeout the turn may already be over: that is what the test then waits for.
+    assert!(
+        timeout.is_some() || !gone(pid),
+        "the tool must be running before the cancel"
+    );
+    Some(Hanging {
         turn,
         cancel,
         pid,
         _rig: rig,
         _tmp: tmp,
         _lock: lock,
+    })
+}
+
+/// [`try_start_hanging_isolated_turn`], again for as long as a short `timeout` beats a starved machine to the
+/// start of the tool (the 3 s are for the turn, not a budget for the engine to start in).
+async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Hanging {
+    for _ in 0..20 {
+        if let Some(h) = try_start_hanging_isolated_turn(timeout).await {
+            return h;
+        }
+        assert!(
+            timeout.is_some(),
+            "the isolated turn ended before it started its tool"
+        );
     }
+    panic!("the isolated engine never started its tool within the {timeout:?} turn timeout");
 }
 
 async fn wait_gone(pid: u32, what: &str) {
     let start = std::time::Instant::now();
     while !gone(pid) {
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(10),
+            start.elapsed() < atlas_core::scaling::HANG,
             "{what}: the tool process {pid} outlived the turn"
         );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -562,7 +568,6 @@ async fn an_isolated_codex_turn_writes_its_reply_file_where_the_crewmate_can_and
         pane_key: PANE_KEY,
         extra_env: &env,
         work_dir: &work.to_string_lossy(),
-        yolo: true,
         tools: None,
         cancel: &TurnCancel::new(),
         exec: &exec,

@@ -1,0 +1,55 @@
+name: Apt packages
+description: >-
+  Installs apt packages on a Linux runner from a cache of the .deb files (keyed by OS, architecture and package list, from
+  an older runner image too), and, when the cache is cold, from azure.archive.ubuntu.com and then the image's own sources, with a
+  time limit on every call (scripts/ci-apt.sh, #604). Expects the repository checked out. A composite step cannot have `timeout-minutes`
+  (actions/runner#1979): the caller puts one on the step that uses this action, and the script bounds each of its
+  own steps.
+
+inputs:
+  packages:
+    description: Space-separated package names.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        # `base` is what the cache is for (OS, arch, package list; `v1` is the manual bump when the cache format changes).
+        # The image version is only in the key a cache is saved under: it changes with every runner image, and a restore
+        # that needed it would miss on every new image until `main` had saved (scripts/ci-apt.sh uses an older image's
+        # files as a head start: apt fetches only what is missing or newer).
+        base="apt-v1-${ImageOS:-linux}-$(uname -m)-$(printf '%s' "$PACKAGES" | sha256sum | cut -c1-16)"
+        echo "base=$base" >> "$GITHUB_OUTPUT"
+        echo "key=$base-${ImageVersion:-none}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the packages
+      id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/apt-debs
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: ${{ steps.key.outputs.base }}-
+
+    - name: Install
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        CACHE_DIR: ${{ runner.temp }}/apt-debs
+      run: |
+        read -ra pkgs <<<"$PACKAGES"
+        "$GITHUB_WORKSPACE/scripts/ci-apt.sh" "$CACHE_DIR" "${pkgs[@]}"
+
+    # Saved only from main and release branches (same rule as the cargo cache): root installs these files with dpkg
+    # later, so a pull request never writes them.
+    - name: Save the packages
+      if: ${{ steps.cache.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/apt-debs
+        key: ${{ steps.key.outputs.key }}

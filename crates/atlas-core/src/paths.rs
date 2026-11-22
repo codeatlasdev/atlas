@@ -222,6 +222,26 @@ pub fn linux_app(home: &Path) -> PathBuf {
 /// Windows.
 pub const LINUX_APP_BIN: &str = "atlas-desktop";
 
+/// Linux: the previous AppImage, kept beside [`linux_app`] while an install swaps the new one in.
+pub const LINUX_APP_PREV: &str = ".atlas-desktop.prev";
+/// Linux: the new AppImage, staged beside [`linux_app`] until its rename into place.
+pub const LINUX_APP_STAGING: &str = ".atlas-desktop.new";
+
+/// Linux: the menu id of the launcher entry and icon `atlas desktop` writes (the macOS bundle id).
+pub const LINUX_MENU_ID: &str = "br.com.codeatlas.atlas";
+/// Linux: the menu id before 1.6; an install removes its entry and icon, uninstall too.
+pub const LINUX_LEGACY_MENU_ID: &str = "dev.codeatlas.atlas";
+
+/// Linux: where `atlas desktop` writes the launcher entry and the icon for menu `id`, under
+/// `<home>/.local/share`.
+pub fn linux_menu_files(home: &Path, id: &str) -> (PathBuf, PathBuf) {
+    let share = home.join(".local/share");
+    (
+        share.join(format!("applications/{id}.desktop")),
+        share.join(format!("icons/hicolor/128x128/apps/{id}.png")),
+    )
+}
+
 /// Linux: Atlas Desktop installed by a distro package (.deb, .rpm, Arch). Its package manager
 /// owns it: atlas opens it but never replaces it.
 pub fn packaged_app() -> Option<PathBuf> {

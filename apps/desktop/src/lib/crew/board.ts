@@ -5,6 +5,7 @@
  */
 import type { Crewmate, CrewmateTask } from "#lib/crew.ts";
 import { crewmateKey } from "#lib/crew/crewmateKey.ts";
+import { m } from "#lib/i18n/m.ts";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -166,9 +167,9 @@ export function boardColumns(entries: BoardEntry[], now: number, opts?: BoardFil
 	done.sort((a, b) => endTs(b.task) - endTs(a.task));
 
 	return [
-		{ id: "queued", label: "Queued", cards: queued },
-		{ id: "working", label: "Working", cards: working },
-		{ id: "needs_you", label: "Needs you", cards: needsYou },
-		{ id: "done", label: "Done", cards: done },
+		{ id: "queued", label: m.crew_workspace_board_queued(), cards: queued },
+		{ id: "working", label: m.crew_chat_header_working(), cards: working },
+		{ id: "needs_you", label: m.crew_chat_header_needs_you(), cards: needsYou },
+		{ id: "done", label: m.crew_workspace_board_column_done(), cards: done },
 	];
 }

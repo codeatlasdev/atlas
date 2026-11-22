@@ -1,0 +1,9 @@
+{
+	"docs_banner_machine": "Banner at the top of a translated docs page whose front matter says `translation: machine` (AI-translated, not reviewed by a person); followed by a link to the English page.",
+	"docs_banner_outdated": "Banner at the top of a translated docs page when the English source changed after the translation; followed by two links (English page, GitHub diff).",
+	"docs_banner_read_english": "Link in the docs banners (untranslated, outdated, machine-translated) that opens the English version of the same docs page.",
+	"docs_banner_see_changes": "Link in the outdated-translation banner that opens the GitHub diff of the English source since the translation.",
+	"docs_banner_untranslated": "Banner above a docs page that has no translation; the page body below is shown in English on purpose.",
+	"docs_meta_description": "Meta description of a docs page when the page has none of its own; {title} is the page title.",
+	"docs_page_title": "Browser tab title of a docs page; {title} is the page title, then the site section name."
+}

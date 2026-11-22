@@ -10,6 +10,7 @@ members = [
     "crates/atlas-lsp",
     "crates/atlas-term",
     "crates/atlas-setup",
+    "crates/atlas-i18n",
 ]
 # `cargo build|test` without `--workspace` skips the GUI crates (Tauri/WebKit, the Metal terminal), so the CLI,
 # TUI, runtime and MCP server build anywhere without system GUI libraries. CI and `bun run check` pass
@@ -21,6 +22,7 @@ default-members = [
     "crates/atlas-skills",
     "crates/atlas-host",
     "crates/atlas-lsp",
+    "crates/atlas-i18n",
 ]
 
 [workspace.package]
@@ -38,12 +40,16 @@ tokio = { version = "1.53", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_norway = "0.9"
-clap = { version = "4.6", features = ["derive"] }
+clap = { version = "4.6", features = ["derive", "string"] }
 tracing = "0.1"
 thiserror = "2.0"
 anyhow = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = { version = "0.10", features = ["serde"] }
+# Dates, times and time zones (replaces chrono + chrono-tz, unmaintained: RUSTSEC-2026-0543/0555, #540). croner 4 reads
+# jiff 0.2 (its `jiff` feature), so this stays on 0.2 until croner moves to jiff 1. `jiff-tzdb` is the zone database
+# bundled in the binary, which `atlas_core::time::zone` reads: like chrono-tz, a named zone does not depend on the
+# machine's tzdata (a Ubuntu 24.04 server has none of `US/Pacific`, `EST5EDT`, `Zulu` without `tzdata-legacy`).
+jiff = "0.2"
+jiff-tzdb = "0.1"
 semver = "1.0"
 dirs = "7"
 tempfile = "3.27"
@@ -80,3 +86,9 @@ debug = false
 inherits = "dev"
 debug = "full"
 
+
+[profile.release]
+# File and line in release backtraces and a debug file to publish per release (#318): crash reports carry raw
+# addresses plus the build id, and `scripts/symbols.sh` resolves them against the symbols extracted from the shipped
+# binary (docs/release.md, "Symbols"). Line tables only: no variable or type info, a fraction of `debug = "full"`.
+debug = "line-tables-only"

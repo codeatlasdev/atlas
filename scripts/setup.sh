@@ -31,9 +31,28 @@ done
 if [[ "$(uname -s)" == Linux ]] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
   die "WebKitGTK 4.1 development files not found (needed by Atlas Desktop). Install them:
   Arch:          sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module libappindicator-gtk3 librsvg xdotool
-  Debian/Ubuntu: sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-  Fedora:        sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel
+  Debian/Ubuntu: sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libasound2-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  Fedora:        sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel alsa-lib-devel
   (the CLI alone builds without them: cargo build --release -p atlas-cli)"
+fi
+
+# Agent guards (docs/contributing.md "Agent guards"): the git-level backstop. core.hooksPath is shared by every worktree of
+# this clone and replaces .git/hooks, so a stale lefthook shim there (no lefthook config exists) stops warning on every commit.
+# Never overwrites a hooks path somebody else chose.
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  hooks_path="$(git config --get core.hooksPath || true)"
+  if [[ -z $hooks_path ]]; then
+    git config core.hooksPath scripts/git-hooks
+    say "✓ git hooks: core.hooksPath = scripts/git-hooks (pre-push refuses main, release/*, force-push, deletes; override: docs/contributing.md)"
+  elif [[ $hooks_path != scripts/git-hooks ]]; then
+    say "ℹ core.hooksPath is '$hooks_path': the pre-push guard is not active. Call scripts/git-hooks/pre-push from it, or: git config core.hooksPath scripts/git-hooks"
+  fi
+  # In the primary checkout of a clone that has worktrees, agents belong in the worktrees: say how to enforce it.
+  if [[ "$(git rev-parse --git-dir)" == "$(git rev-parse --git-common-dir)" ]] \
+    && [[ "$(git worktree list --porcelain | grep -c '^worktree ')" -gt 1 ]] \
+    && [[ "$(git config --get atlas.agentWrites || true)" != deny ]]; then
+    say "ℹ This is the primary checkout of a clone with worktrees. To keep agents out of it: git config atlas.agentWrites deny"
+  fi
 fi
 
 front=apps/desktop

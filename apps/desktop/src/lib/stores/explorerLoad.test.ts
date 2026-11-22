@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
+import { hostRejection } from "#lib/hostText.ts";
 import { loadFolder, foldersToReload } from "./explorerLoad.ts";
 
 const e = (name, kind = "file") => ({ name, kind, size: 0, mtime: 0 });
@@ -48,4 +49,23 @@ test("after a reconnect, the root and every expanded folder reload; collapsed on
 	expect(foldersToReload({ "": true, src: true, lib: false, "src/ui": true })).toEqual(["", "src", "src/ui"]);
 	// A folder that failed to load while the host was down is reloaded even though it has no entries yet.
 	expect(foldersToReload({ "": true }, new Set(["pending"]))).toEqual(["", "pending"]);
+});
+
+// Regression (R10 review): a remote crew server still connecting rejected with the coded `hostd.remote_connecting`,
+// which `isHostFailure` took for an outage of the local host (the one toast with "Restart terminal host").
+test("a remote host that is still connecting is the folder's own error, not a local outage", async () => {
+	const seen = { host: [], other: [] };
+	const r = await loadFolder(
+		async () => {
+			throw await hostRejection({
+				code: "hostd.remote_connecting",
+				args: { host: "ssh:box" },
+				message: "ssh:box is still connecting; try again in a few seconds",
+			});
+		},
+		{ onHost: (m) => seen.host.push(m), onOther: (m) => seen.other.push(m) },
+	);
+	expect(r).toEqual({ ok: false, retry: false });
+	expect(seen.host).toEqual([]);
+	expect(seen.other).toEqual(["ssh:box is still connecting; try again in a few seconds"]);
 });

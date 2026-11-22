@@ -1,0 +1,122 @@
+{
+	"tui_runtime_widgets_event_paused_by": "{subject} pausado por {by}",
+	"tui_runtime_widgets_events_empty": "nenhum evento ainda",
+	"tui_runtime_widgets_events_title": "Eventos",
+	"tui_runtime_widgets_health_degraded": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "nenhum degradado",
+				"countExact=*, countPlural=one": "{count} degradado",
+				"countExact=*, countPlural=*": "{count} degradados"
+			}
+		}
+	],
+	"tui_runtime_widgets_health_done": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "nenhum concluído",
+				"countExact=*, countPlural=one": "{count} concluído",
+				"countExact=*, countPlural=*": "{count} concluídos"
+			}
+		}
+	],
+	"tui_runtime_widgets_health_running": "{running}/{total} em execução",
+	"tui_runtime_widgets_health_stopped": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "nenhum parado",
+				"countExact=*, countPlural=one": "{count} parado",
+				"countExact=*, countPlural=*": "{count} parados"
+			}
+		}
+	],
+	"tui_runtime_widgets_health_unhealthy": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "nenhum não saudável",
+				"countExact=*, countPlural=one": "{count} não saudável",
+				"countExact=*, countPlural=*": "{count} não saudáveis"
+			}
+		}
+	],
+	"tui_runtime_widgets_level_all": "tudo",
+	"tui_runtime_widgets_level_error": "erro",
+	"tui_runtime_widgets_level_warn": "aviso+",
+	"tui_runtime_widgets_log_new_lines": "↓ {count} novas · {key}",
+	"tui_runtime_widgets_log_no_matches": "Nenhuma ocorrência em {tab}",
+	"tui_runtime_widgets_mem_budget": "orçamento {budget}",
+	"tui_runtime_widgets_mem_budget_ok": "ok",
+	"tui_runtime_widgets_mem_budget_over": "excedido",
+	"tui_runtime_widgets_mem_budget_warn": "alerta",
+	"tui_runtime_widgets_mem_falling": "caindo",
+	"tui_runtime_widgets_mem_flat": "estável",
+	"tui_runtime_widgets_mem_rising": "subindo",
+	"tui_runtime_widgets_mem_size": "memória {size}",
+	"tui_runtime_widgets_mem_trend": "{direction} {rate} MB/min",
+	"tui_runtime_widgets_palette_no_match": "nada encontrado",
+	"tui_runtime_widgets_phase_detecting": "detectando",
+	"tui_runtime_widgets_phase_failed": "falhou",
+	"tui_runtime_widgets_phase_install": "instalando",
+	"tui_runtime_widgets_phase_launch": "iniciando",
+	"tui_runtime_widgets_phase_running": "em execução",
+	"tui_runtime_widgets_range_all": "todo o período",
+	"tui_runtime_widgets_range_end_before_start": "o fim vem antes do início",
+	"tui_runtime_widgets_range_from": "a partir de {time}",
+	"tui_runtime_widgets_range_last_hours": "últimas {hours}h",
+	"tui_runtime_widgets_range_last_minutes": "últimos {minutes}min",
+	"tui_runtime_widgets_range_not_a_time": "não é uma hora: \"{input}\"",
+	"tui_runtime_widgets_range_since_restart": "desde o reinício",
+	"tui_runtime_widgets_range_since_start": "desde o início",
+	"tui_runtime_widgets_range_type_a_time": "digite um horário: 14:05 ou 14:05-14:20",
+	"tui_runtime_widgets_search_filter": "filtrar",
+	"tui_runtime_widgets_search_find": "localizar",
+	"tui_runtime_widgets_sidebar_all_ok": "Tudo funcionando",
+	"tui_runtime_widgets_sidebar_exit": "saída {code}",
+	"tui_runtime_widgets_sidebar_failed": "{name} falhou",
+	"tui_runtime_widgets_sidebar_issues": "Problemas",
+	"tui_runtime_widgets_sidebar_mobile": "Mobile",
+	"tui_runtime_widgets_sidebar_no_services": "Nenhum serviço",
+	"tui_runtime_widgets_sidebar_off": "fora",
+	"tui_runtime_widgets_sidebar_operations": "Operações",
+	"tui_runtime_widgets_sidebar_services": "Serviços",
+	"tui_runtime_widgets_sidebar_tunnel": "Túnel",
+	"tui_runtime_widgets_sidebar_tunnel_kill": "Encerrar o túnel ao sair",
+	"tui_runtime_widgets_sidebar_tunnel_off": "desligado (abre sob demanda)",
+	"tui_runtime_widgets_tab_all": "Tudo"
+}

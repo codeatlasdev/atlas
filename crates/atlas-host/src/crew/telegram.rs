@@ -18,6 +18,8 @@ use serde_json::{Value, json};
 use crate::paths::Loaded;
 use crate::server::Hub;
 
+mod voice_notes;
+
 // ─── config ──────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -83,6 +85,7 @@ fn card_images_of(
             |a| match crate::crew::attachments::read(store, crewmate_id, &task, &a.name) {
                 Ok((a, bytes)) => Some((a.name, bytes)),
                 Err(e) => {
+                    // i18n-ignore: log
                     eprintln!(
                         "atlas telegram: image {} of task {task_id} not sent: {e}",
                         a.name
@@ -159,6 +162,8 @@ pub(crate) struct TelegramBridge {
     hub_weak: OnceLock<Weak<Hub>>,
     config: Mutex<TelegramConfig>,
     link: Mutex<Option<LinkCode>>,
+    /// Voice notes echoed and waiting for Send, Edit or Cancel (`voice_notes`).
+    voice: Mutex<voice_notes::VoiceState>,
 }
 
 impl TelegramBridge {
@@ -176,6 +181,7 @@ impl TelegramBridge {
             Ok(Loaded::Missing) => (TelegramConfig::default(), None),
             Ok(Loaded::Corrupt(aside)) => (TelegramConfig::default(), Some(aside)),
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!("atlas crew: cannot read telegram.json: {e}");
                 (TelegramConfig::default(), None)
             }
@@ -187,6 +193,7 @@ impl TelegramBridge {
             hub_weak: OnceLock::new(),
             config: Mutex::new(config),
             link: Mutex::new(None),
+            voice: Mutex::new(Default::default()),
         }
     }
 
@@ -242,6 +249,11 @@ impl TelegramBridge {
             status["corrupt_aside"] = json!(aside.display().to_string());
         }
         status
+    }
+
+    /// Whether `chat_id` is one of the owner's linked chats.
+    pub(crate) fn is_linked(&self, chat_id: i64) -> bool {
+        self.config.lock().chats.contains(&chat_id)
     }
 
     /// True if at least one chat is linked.
@@ -431,6 +443,7 @@ impl TelegramBridge {
                             }
                         }
                         Ok(v) => {
+                            // i18n-ignore: log
                             eprintln!(
                                 "atlas telegram: API error: {}",
                                 v["description"].as_str().unwrap_or("?")
@@ -439,6 +452,7 @@ impl TelegramBridge {
                             backoff = (backoff * 2).min(MAX_BACKOFF);
                         }
                         Err(e) => {
+                            // i18n-ignore: log
                             eprintln!("atlas telegram: parse error: {e}");
                             tokio::time::sleep(backoff).await;
                             backoff = (backoff * 2).min(MAX_BACKOFF);
@@ -446,6 +460,7 @@ impl TelegramBridge {
                     }
                 }
                 Ok(Err(e)) => {
+                    // i18n-ignore: log
                     eprintln!("atlas telegram: request error: {e}");
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(MAX_BACKOFF);
@@ -474,6 +489,12 @@ impl TelegramBridge {
 
         // Format: "a:{req}:{1|0}"
         let parts: Vec<&str> = data.splitn(3, ':').collect();
+        // Format: "v:{note}:{s|e|c}", a tap on the echo of a voice note (`voice_notes`).
+        if parts.len() == 3 && parts[0] == "v" {
+            self.handle_voice_tap(chat_id, msg_id, parts[1], parts[2])
+                .await;
+            return;
+        }
         // Format: "r:{task}:{o|r}", the answer to a refusal (`send_refusal`).
         if parts.len() == 3 && parts[0] == "r" {
             self.answer_refusal(chat_id, msg_id, parts[1], parts[2] == "o")
@@ -563,6 +584,7 @@ impl TelegramBridge {
                     Some(lc) if !code.is_empty() => {
                         lc.wrong += 1;
                         if lc.wrong >= MAX_WRONG_CODES {
+                            // i18n-ignore: log
                             eprintln!(
                                 "atlas telegram: {MAX_WRONG_CODES} wrong link codes; the code is invalidated, start a new link"
                             );
@@ -597,11 +619,30 @@ impl TelegramBridge {
             return;
         }
 
+        // A voice note: transcribed here, echoed, and only a tap on Send makes a task of it.
+        if msg["voice"].is_object() || msg["audio"].is_object() {
+            self.handle_voice(chat_id, msg).await;
+            return;
+        }
+
+        // After a tap on Edit, the next plain message is the corrected text of that note.
+        if self.take_correction(chat_id, text).await {
+            return;
+        }
+
         // `/ui <message>`: the same message, for a task that changes what people see (`Task.ui`).
         let (ui, text) = strip_ui(text);
         // A UI task needs its message: a task with an empty prompt is never useful, so say how and queue nothing.
         if ui && text.is_empty() {
             self.reply(chat_id, UI_USAGE).await;
+            return;
+        }
+
+        // /mode: every crewmate's permission mode; `/mode [<crewmate>] <ask|edits|bypass>` changes one. Only a linked
+        // chat gets here (the one above returns for any other), and that chat is the owner's.
+        if text == "/mode" || text.starts_with("/mode ") {
+            self.handle_mode(chat_id, text["/mode".len()..].trim())
+                .await;
             return;
         }
 
@@ -633,7 +674,8 @@ impl TelegramBridge {
                     .await;
                 return;
             }
-            self.create_task(chat_id, name, prompt, &[], ui).await;
+            self.create_task(chat_id, name, prompt, &[], ui, false)
+                .await;
             return;
         }
 
@@ -642,12 +684,82 @@ impl TelegramBridge {
             let crewmates = hub.crew.store.list_crewmates();
             if crewmates.len() == 1 {
                 let name = crewmates[0].name.clone();
-                self.create_task(chat_id, &name, text, &[], ui).await;
+                self.create_task(chat_id, &name, text, &[], ui, false).await;
             } else {
                 self.reply(chat_id, "Which crewmate? Use /task <name> <text>")
                     .await;
             }
         }
+    }
+
+    /// `/mode` (no arguments): each crewmate and its permission mode. `/mode [<crewmate>] <ask|edits|bypass>`:
+    /// change one (the only crewmate when none is named), through the same command the apps use, so it is audited
+    /// with this chat as the device, broadcast, and a call that waits is decided again at once.
+    async fn handle_mode(&self, chat_id: i64, args: &str) {
+        use crate::crew::store::Mode;
+        use atlas_i18n::t;
+        let Some(hub) = self.hub() else {
+            return;
+        };
+        let label = |m: Mode| match m {
+            Mode::Ask => t!("cmd_hostd_mode_ask"),
+            Mode::Edits => t!("cmd_hostd_mode_edits"),
+            Mode::Bypass => t!("cmd_hostd_mode_bypass"),
+        };
+        let crewmates = hub.crew.store.list_crewmates();
+        if args.is_empty() {
+            let text = if crewmates.is_empty() {
+                t!("cmd_hostd_telegram_mode_none")
+            } else {
+                crewmates
+                    .iter()
+                    .map(|c| {
+                        t!(
+                            "cmd_hostd_telegram_mode_line",
+                            name = c.name.as_str(),
+                            mode = label(c.mode)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            self.reply(chat_id, &text).await;
+            return;
+        }
+        // The last word is the mode; what comes before it names the crewmate.
+        let (name, word) = match args.rsplit_once(char::is_whitespace) {
+            Some((n, w)) => (n.trim(), w),
+            None => ("", args),
+        };
+        let Ok(mode) = Mode::parse(word) else {
+            self.reply(chat_id, &t!("cmd_hostd_telegram_mode_usage"))
+                .await;
+            return;
+        };
+        let target = if name.is_empty() {
+            (crewmates.len() == 1).then(|| &crewmates[0])
+        } else {
+            crewmates.iter().find(|c| c.name.eq_ignore_ascii_case(name))
+        };
+        let Some(c) = target else {
+            let text = if name.is_empty() {
+                t!("cmd_hostd_telegram_mode_usage")
+            } else {
+                t!("cmd_hostd_telegram_mode_not_found", name = name)
+            };
+            self.reply(chat_id, &text).await;
+            return;
+        };
+        let device = format!("telegram:{chat_id}");
+        let text = match crate::crew::approval::set_approval(&hub, &c.id, mode.as_str(), &device) {
+            Ok(_) => t!(
+                "cmd_hostd_telegram_mode_set",
+                name = c.name.as_str(),
+                mode = label(mode)
+            ),
+            Err(why) => t!("cmd_hostd_telegram_mode_refused", why = String::from(why)),
+        };
+        self.reply(chat_id, &text).await;
     }
 
     /// A photo message: the largest size Telegram made of it becomes the image of a task whose prompt is the
@@ -702,7 +814,8 @@ impl TelegramBridge {
                     name: format!("telegram-{}.jpg", msg["message_id"].as_i64().unwrap_or(0)),
                     bytes,
                 };
-                self.create_task(chat_id, &name, prompt, &[image], ui).await;
+                self.create_task(chat_id, &name, prompt, &[image], ui, false)
+                    .await;
             }
             Err(e) => {
                 self.reply(
@@ -717,6 +830,14 @@ impl TelegramBridge {
     /// The bytes of a Telegram file: `getFile` for its path, then the file endpoint. Through the same base URL
     /// and `/bot<token>/` segment as every other call (`api_url`, `file_url`), never more than the image cap.
     async fn download_file(&self, file_id: &str) -> Result<Vec<u8>, String> {
+        self.download_limited(file_id, crate::crew::attachments::MAX_BYTES)
+            .await
+    }
+
+    /// [`download_file`](Self::download_file) with the cap of the caller (a voice note may be 20 MB). Err starts
+    /// with `over ` when the file is larger than `max`.
+    async fn download_limited(&self, file_id: &str, max: usize) -> Result<Vec<u8>, String> {
+        let over = || format!("over {} MiB", max / (1024 * 1024));
         let token = self.config.lock().token.clone();
         if token.is_empty() {
             return Err("no token".into());
@@ -738,13 +859,8 @@ impl TelegramBridge {
             .filter(|_| info["ok"] == true)
             .ok_or_else(|| "getFile refused".to_string())?;
         // Telegram says how big it is before it is downloaded: refuse an oversize file without fetching it.
-        if info["result"]["file_size"].as_u64().unwrap_or(0)
-            > crate::crew::attachments::MAX_BYTES as u64
-        {
-            return Err(format!(
-                "over {} MiB",
-                crate::crew::attachments::MAX_BYTES / (1024 * 1024)
-            ));
+        if info["result"]["file_size"].as_u64().unwrap_or(0) > max as u64 {
+            return Err(over());
         }
         let mut resp = client
             .get(file_url(&self.api_base, &token, path))
@@ -757,11 +873,8 @@ impl TelegramBridge {
         let mut bytes = Vec::new();
         while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
             bytes.extend_from_slice(&chunk);
-            if bytes.len() > crate::crew::attachments::MAX_BYTES {
-                return Err(format!(
-                    "over {} MiB",
-                    crate::crew::attachments::MAX_BYTES / (1024 * 1024)
-                ));
+            if bytes.len() > max {
+                return Err(over());
             }
         }
         Ok(bytes)
@@ -774,6 +887,7 @@ impl TelegramBridge {
         prompt: &str,
         images: &[crate::crew::attachments::Incoming],
         ui: bool,
+        dictated: bool,
     ) {
         let Some(hub) = self.hub() else {
             return;
@@ -795,6 +909,7 @@ impl TelegramBridge {
         }
         let mut task = crate::crew::store::Task::new("telegram", prompt);
         task.ui = ui;
+        task.dictated = dictated;
         let task_id = task.id.clone();
         if let Err(e) =
             crate::crew::attachments::attach(&hub.crew.store, &crewmate.id, &mut task, images)
@@ -1022,7 +1137,7 @@ mod tests {
             cfg.chats = vec![42];
         }
         b.send_message("done");
-        let (mut s, _) = tokio::time::timeout(Duration::from_secs(5), api.accept())
+        let (mut s, _) = tokio::time::timeout(atlas_core::scaling::HANG, api.accept())
             .await
             .expect("the bridge never called the Telegram API")
             .unwrap();

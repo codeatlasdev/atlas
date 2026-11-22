@@ -4,7 +4,7 @@
  * reported. Pure, so the checklist rules are bun-testable.
  */
 import {
-	installSteps,
+	installPhases,
 	parseInstallLine,
 	parseInstallUser,
 	type InstallPhase,
@@ -24,7 +24,7 @@ export const initialInstallProgress = (): InstallProgress => ({ done: new Set(),
 /** Every phase ticked, nothing spinning: the install finished. `browsers` is ticked only if the install reached it. */
 export function completeInstall(p: InstallProgress): InstallProgress {
 	const ran = p.done.has("browsers") || p.active === "browsers";
-	return { ...p, done: new Set(installSteps(ran).map((s) => s.phase)), active: null };
+	return { ...p, done: new Set(installPhases(ran)), active: null };
 }
 
 /** Fold one installer output line into the progress; lines that are not markers leave it unchanged. */
@@ -37,15 +37,11 @@ export function applyInstallLine(p: InstallProgress, line: string): InstallProgr
 	return { ...p, done: p.active ? new Set([...p.done, p.active]) : p.done, active: phase };
 }
 
-/** Which password prompt an install failure calls for: the Mac's key is not authorized yet, sudo needs a password, or neither. */
-export function authModeForError(err: string): "authorize" | "sudo" | "none" {
-	if (err.includes("Permission denied (publickey)")) return "authorize";
-	if (
+/** Whether a (string) failure of the browsers commands is sudo asking for a password, so the page asks for it and retries. */
+export function needsSudoPassword(err: string): boolean {
+	return (
 		err.includes("asks for a password") ||
 		err.includes("passwordless sudo") ||
 		err.includes("sudo password rejected")
-	) {
-		return "sudo";
-	}
-	return "none";
+	);
 }

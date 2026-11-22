@@ -21,6 +21,16 @@ VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(alpha|be
 CHANNEL_BY_LABEL = {None: "stable", "alpha": "alpha", "beta": "beta", "rc": "beta"}
 
 
+# The targets release.yml builds (one `atlas-<target>` artifact each: build, build-linux, build-linux-arm64,
+# build-windows). A target nothing builds has no place here: a test pins this list to the workflow's artifacts.
+PLATFORMS = (
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+)
+
+
 def channel_of(version):
     m = VERSION_RE.match(version)
     if not m:
@@ -43,21 +53,28 @@ def get_sha256(filepath):
             return f.read().strip().split()[0]
     return ""
 
+# The platforms release.yml builds Atlas Desktop for (`build`, `build-linux`, `build-windows`). Mirrored by
+# `DESKTOP_PLATFORMS` in crates/atlas-cli/src/commands/desktop.rs, which is what `atlas desktop` checks before it asks
+# for an asset: a test pins the two together. Every other platform ships the CLI only (#268).
+DESKTOP_PLATFORMS = ("aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc")
+
+
 def desktop_files(version, platform_key):
-    """(manifest key, asset name) of the Atlas Desktop assets of a platform. `desktop` is what
-    `atlas desktop` installs (`asset_name` in crates/atlas-cli/src/commands/desktop.rs); the rest are
-    for people who download a package by hand."""
+    """(manifest key, asset name) of the Atlas Desktop assets of a platform; none where no desktop is built.
+    `desktop` is what `atlas desktop` installs (`asset_name` in crates/atlas-cli/src/commands/desktop.rs); the
+    rest are for people who download a package by hand."""
+    if platform_key not in DESKTOP_PLATFORMS:
+        return ()
     if platform_key.endswith("-apple-darwin"):
         return (("desktop", f"Atlas-{version}-{platform_key}.app.tar.gz"),
                 ("desktop_dmg", f"Atlas-{version}-{platform_key}.dmg"))
     if platform_key.endswith("-pc-windows-msvc"):
         # The per-user NSIS installer: `atlas desktop` runs it silently, people double-click it.
         return (("desktop", f"Atlas-{version}-{platform_key}-setup.exe"),)
-    deb_arch, rpm_arch = {"x86_64": ("amd64", "x86_64"), "aarch64": ("arm64", "aarch64")}[platform_key.split("-")[0]]
     return (("desktop", f"Atlas-{version}-{platform_key}.AppImage"),
-            ("desktop_deb", f"atlas_{version}_{deb_arch}.deb"),
-            ("desktop_rpm", f"atlas-{version}-1.{rpm_arch}.rpm"),
-            ("desktop_arch", f"codeatlas-atlas-bin-{version.replace('-', '', 1)}-1-{rpm_arch}.pkg.tar.zst"))
+            ("desktop_deb", f"atlas_{version}_amd64.deb"),
+            ("desktop_rpm", f"atlas-{version}-1.x86_64.rpm"),
+            ("desktop_arch", f"codeatlas-atlas-bin-{version.replace('-', '', 1)}-1-x86_64.pkg.tar.zst"))
 
 def desktop_assets(dir_path, version, platform_key):
     """The Atlas Desktop assets of a platform that exist in `dir_path`."""
@@ -76,18 +93,9 @@ def main():
     version = sys.argv[1]
     artifacts_dir = sys.argv[2]
 
-    platforms = [
-        ("aarch64-apple-darwin", "atlas-aarch64-apple-darwin"),
-        ("x86_64-apple-darwin", "atlas-x86_64-apple-darwin"),
-        ("universal-apple-darwin", "atlas-universal-apple-darwin"),
-        ("x86_64-unknown-linux-gnu", "atlas-x86_64-unknown-linux-gnu"),
-        ("aarch64-unknown-linux-gnu", "atlas-aarch64-unknown-linux-gnu"),
-        ("x86_64-pc-windows-msvc", "atlas-x86_64-pc-windows-msvc"),
-    ]
-
     assets = {}
-    for platform_key, artifact_dir in platforms:
-        dir_path = os.path.join(artifacts_dir, artifact_dir)
+    for platform_key in PLATFORMS:
+        dir_path = os.path.join(artifacts_dir, f"atlas-{platform_key}")
         if not os.path.isdir(dir_path):
             continue
 
@@ -121,10 +129,8 @@ def main():
         "prerelease": channel != "stable",
         "commit": commit(),
         "date": datetime.now(timezone.utc).isoformat(),
-        "min_os": "14.0",
         "assets": assets,
         "changelog": f"https://github.com/codeatlasdev/atlas/releases/tag/v{version}",
-        "required_update": False,
     }
     promoted_from = os.environ.get("ATLAS_PROMOTED_FROM")
     if promoted_from:

@@ -70,19 +70,19 @@ test("a branch checked out in another worktree says where, and is flagged to jum
 	expect(row.description).toContain("repo-busy");
 });
 
-test("relDate renders the last commit age compactly and survives garbage", () => {
+test("relDate renders the last commit age in the shared relative format and survives garbage", () => {
 	const now = Date.parse("2026-01-10T12:00:00Z");
 	expect(relDate("2026-01-10T11:59:40Z", now)).toBe("now");
-	expect(relDate("2026-01-10T11:30:00Z", now)).toBe("30m ago");
-	expect(relDate("2026-01-10T07:00:00Z", now)).toBe("5h ago");
-	expect(relDate("2026-01-07T12:00:00Z", now)).toBe("3d ago");
-	expect(relDate("2025-10-10T12:00:00Z", now)).toBe("3mo ago");
-	expect(relDate("2023-01-10T12:00:00Z", now)).toBe("3y ago");
+	expect(relDate("2026-01-10T11:30:00Z", now)).toBe("30 min ago");
+	expect(relDate("2026-01-10T07:00:00Z", now)).toBe("5 hr ago");
+	expect(relDate("2026-01-07T12:00:00Z", now)).toBe("3 days ago");
+	expect(relDate("2025-10-10T12:00:00Z", now)).toBe("3 mo ago");
+	expect(relDate("2023-01-10T12:00:00Z", now)).toBe("3 yr ago");
 	expect(relDate("not a date", now)).toBe("");
 });
 
 test("createRow offers a new branch only for a valid name that does not exist yet", () => {
-	expect(createRow(real, "feature/login", "main")?.label).toBe("Create branch “feature/login”");
+	expect(createRow(real, "feature/login", "main")?.label).toBe('Create branch "feature/login"');
 	expect(createRow(real, "feature/login", "main")?.description).toBe("from main");
 	expect(createRow(real, "feat", "main")).toBeNull(); // exists locally
 	expect(createRow(real, "origin/feat", "main")).toBeNull(); // exists as remote

@@ -1,0 +1,34 @@
+{
+	"native_notify_alert_copy_details": "Copiar detalhes",
+	"native_notify_alert_crashed": "O processo web da página travou duas vezes seguidas, então o Atlas não tem nada para mostrar.",
+	"native_notify_alert_details": "Os detalhes estão em:\n  {stderr}\n  {app}\n\nInclua-os ao relatar o problema: {url}",
+	"native_notify_alert_ended": "O processo web da página terminou duas vezes seguidas, então o Atlas não tem nada para mostrar.",
+	"native_notify_alert_not_ready": "A página não iniciou em {secs} segundos, então o Atlas não tem nada para mostrar.",
+	"native_notify_alert_out_of_memory": "O processo web da página ficou sem memória duas vezes seguidas, então o Atlas não tem nada para mostrar.",
+	"native_notify_alert_quit": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Sair",
+				"os=windows": "Sair",
+				"os=*": "Sair"
+			}
+		}
+	],
+	"native_notify_alert_reopen": "Reabrir",
+	"native_notify_alert_terminated": "O processo web da página foi encerrado pelo app duas vezes seguidas, então o Atlas não tem nada para mostrar.",
+	"native_notify_alert_title": "O Atlas não conseguiu exibir a janela",
+	"native_notify_capture_failed": "Falha ao capturar",
+	"native_notify_dock_agent_gone": "Esse agente não está mais rodando. Escolha outro.",
+	"native_notify_dock_keys_clash": "As teclas de chamar e de ocultar são iguais. Escolha duas teclas diferentes.",
+	"native_notify_dock_not_built": "O dock de agentes não está disponível.",
+	"native_notify_no_home": "Não foi possível localizar a pasta pessoal",
+	"native_notify_no_permission": "O Atlas precisa da permissão de Gravação de Tela para capturar a tela. Conceda em {@common_os_system_settings} > Privacidade e Segurança > Gravação do Áudio do Sistema e da Tela e reinicie o Atlas.",
+	"native_notify_service_failed": "{name} falhou",
+	"native_notify_shell_not_executable": "{path} não é um arquivo executável"
+}

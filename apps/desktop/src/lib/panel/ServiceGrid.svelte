@@ -11,6 +11,7 @@
 	import { gridStep, shellIn } from "./panel.ts";
 	import { isGreen } from "./serviceState.ts";
 	import { flipPlan, orderChanged, type Box } from "./flip.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	type Cmd = "start_service" | "stop_service" | "restart_service";
 
@@ -39,9 +40,9 @@
 	/** Restarting a running service interrupts it: ask first, the way R does from the keyboard. */
 	async function act(cmd: Cmd, name: string, viaKey: boolean) {
 		if (cmd === "restart_service" && viaKey) {
-			const ok = await confirmDialog(`Restart ${name}?`, {
-				description: "The service stops and starts again. Connections in flight are dropped.",
-				confirmLabel: "Restart",
+			const ok = await confirmDialog(m.panel_service_grid_restart_title({ name }), {
+				description: m.panel_service_grid_restart_description(),
+				confirmLabel: m.panel_service_grid_restart(),
 			});
 			if (!ok) return;
 		}
@@ -52,7 +53,11 @@
 
 	function terminal(def: ServiceDef | undefined) {
 		const w = space.worktree;
-		if (w) void ws.newTerminal(w.id, { argv: shellIn(def?.dir ?? null), label: def?.name ?? "Terminal" });
+		if (w)
+			void ws.newTerminal(w.id, {
+				argv: shellIn(def?.dir ?? null),
+				label: def?.name ?? m.panel_service_grid_terminal(),
+			});
 	}
 
 	async function keynav(e: KeyboardEvent, i: number) {
@@ -108,7 +113,7 @@
 	class="grid"
 	bind:this={grid}
 	role="group"
-	aria-label="Services"
+	aria-label={m.panel_kpis_services()}
 	style:grid-template-columns="repeat(auto-fill, minmax(min(300px, 100%), 1fr))"
 	data-tour="service-card"
 >

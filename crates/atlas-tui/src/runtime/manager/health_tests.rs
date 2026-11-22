@@ -14,7 +14,8 @@ use super::*;
 use crate::config::{OnUnhealthy, ProjectConfig, ReadyProbe, ServiceDef};
 use crate::runtime::service::ServiceState;
 
-/// 0 = accept and never answer (hung event loop); otherwise the status code to send.
+/// 0 = accept and never answer (hung event loop), holding the connection until the client drops
+/// it, so only the probe's own timeout can end a call; otherwise the status code to send.
 /// `ready_status` answers `/ready`, `status` everything else.
 struct Server {
     port: u16,
@@ -49,7 +50,7 @@ impl Server {
                     };
                     h.fetch_add(1, Ordering::AcqRel);
                     if code == 0 {
-                        tokio::time::sleep(Duration::from_secs(60)).await;
+                        while sock.read(&mut buf).await.is_ok_and(|n| n > 0) {}
                         return;
                     }
                     let _ = sock
@@ -135,20 +136,23 @@ async fn a_hung_live_service_turns_unhealthy_not_failed_after_the_threshold() {
     up(&mut m).await;
 
     srv.status.store(0, Ordering::Release); // hang
-    m.check_health().await;
+    // The hung server never ends a call: only the probe timeout does. Without it the call waits for
+    // ever and the hang ceiling fails the test (not a stopwatch: a slow runner cannot fail it).
+    let hang = atlas_core::scaling::HANG;
+    let bounded = "bounded by the probe timeout, not by the OS connect/read default";
+    tokio::time::timeout(hang, m.check_health())
+        .await
+        .expect(bounded);
     assert_eq!(
         state(&m),
         ServiceState::Running,
         "1 miss < threshold 2: still grace"
     );
-    let t0 = std::time::Instant::now();
-    m.check_health().await;
+    tokio::time::timeout(hang, m.check_health())
+        .await
+        .expect(bounded);
     assert_eq!(state(&m), ServiceState::Unhealthy, "threshold reached");
     assert_ne!(state(&m), ServiceState::Failed);
-    assert!(
-        t0.elapsed() < Duration::from_secs(5),
-        "bounded by timeout (1s), not by the OS connect/read default"
-    );
 
     let rep = m.unhealthy_report("svc").expect("captured context");
     assert_eq!(rep.misses, 2);
@@ -313,9 +317,10 @@ async fn a_hung_ready_endpoint_is_bounded_by_its_timeout_and_degrades() {
     );
     m.start_service("svc").await;
     m.update_state("svc", ServiceState::Running);
-    let t0 = std::time::Instant::now();
-    m.check_health().await;
-    assert!(t0.elapsed() < Duration::from_secs(5));
+    // The hung `/ready` holds the connection open: only the probe timeout ends the call.
+    tokio::time::timeout(atlas_core::scaling::HANG, m.check_health())
+        .await
+        .expect("a hung ready endpoint is bounded by its timeout");
     assert_eq!(state(&m), ServiceState::Degraded);
     assert!(m.probe_error("svc").unwrap().contains("timed out"));
     m.stop_service("svc").await;
@@ -421,8 +426,8 @@ async fn on_unhealthy_restart_respawns_the_hung_process_and_notify_does_not() {
         // Either way the user was told.
         let mut alerted = false;
         while let Ok(ev) = rx.try_recv() {
-            if let ManagerEvent::CriticalAlert { message, .. } = ev {
-                alerted |= message.contains("unhealthy");
+            if let ManagerEvent::CriticalAlert { note, .. } = ev {
+                alerted |= note.message.contains("unhealthy");
             }
         }
         assert!(
@@ -482,7 +487,7 @@ async fn a_child_that_prints_the_same_error_repeatedly_becomes_degraded() {
     let (mut m, _rx) = manager(dir.path(), &cfg(script, srv.port, |_| {}));
     m.start_service("svc").await;
     m.update_state("svc", ServiceState::Running);
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG; // hang detector
     while state(&m) != ServiceState::Degraded && std::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(100)).await;
         m.check_health().await;

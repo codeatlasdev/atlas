@@ -18,6 +18,7 @@
 mod file_watch;
 mod github;
 pub(crate) mod github_events;
+pub(crate) mod github_hook;
 mod service;
 pub(crate) mod webhook;
 
@@ -27,8 +28,8 @@ pub(crate) use github::TEST_GITHUB_POLL;
 
 use std::sync::{Arc, Weak};
 
-use crate::crew::now_s;
 use crate::crew::store::{Task, TaskState, Trigger, TriggerKind};
+use crate::crew::{now_s, schedule};
 use crate::server::Hub;
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -162,10 +163,12 @@ pub(crate) fn author_allowed(authors: &[String], association: Option<&str>) -> b
     authors.iter().any(|a| a == "anyone" || *a == assoc)
 }
 
-/// Whether a task runs with the agent's bypass flags: the crewmate is `auto` and the task is not one
-/// started by a stranger's text from a trigger that did not opt in (`allow_auto`).
-pub(crate) fn yolo_for(approval: crate::crew::store::Approval, task: &Task) -> bool {
-    approval == crate::crew::store::Approval::Auto && !task.no_auto
+/// Whether a task is launched with its agent's bypass flags. Only an engine that cannot ask (codex, opencode:
+/// `can_ask` false) ever is: the crewmate is in `bypass` and the task is not one started by a stranger's text from
+/// a trigger that did not opt in (`allow_auto`). An engine that can ask is always launched in ask mode and hostd
+/// decides each call (`crew::approval`), so no dotfile or flag can escalate it behind hostd's back.
+pub(crate) fn yolo_for(mode: crate::crew::store::Mode, task: &Task, can_ask: bool) -> bool {
+    mode == crate::crew::store::Mode::Bypass && !task.no_auto && !can_ask
 }
 
 /// Tick `Schedule` and `Interval` triggers. Call every ~30 s from a background
@@ -210,6 +213,7 @@ pub(crate) fn tick_schedule(hub: &Arc<Hub>, now_s: u64) {
             let crewmate_id = crewmate.id.clone();
             let stored = hub.crew.store.append_task(&crewmate_id, &task);
             if let Err(e) = &stored {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: crewmate {crewmate_id} task {}: trigger {trigger_id} due but the task cannot be stored: {e}",
                     task.id
@@ -223,6 +227,7 @@ pub(crate) fn tick_schedule(hub: &Arc<Hub>, now_s: u64) {
                         t.last_fired = Some(now_s);
                     }
                     if let Err(e) = hub.crew.store.save_crewmate(&fresh) {
+                        // i18n-ignore: log
                         eprintln!(
                             "atlas crew: crewmate {crewmate_id}: cannot save last_fired of trigger {trigger_id}: {e}"
                         );
@@ -306,6 +311,7 @@ pub(crate) fn on_task_finished(
         let mut changed = false;
         for i in indices {
             if lineage.contains(&crewmate.id) {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: crewmate {}: chain trigger {} refused: it already ran in this chain ({})",
                     crewmate.id,
@@ -330,6 +336,7 @@ pub(crate) fn on_task_finished(
             task.chain = lineage.clone();
             let stored = hub.crew.store.append_task(&crewmate.id, &task);
             if let Err(e) = &stored {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: crewmate {} task {}: chain trigger due but the task cannot be stored: {e}",
                     crewmate.id, task.id
@@ -343,6 +350,7 @@ pub(crate) fn on_task_finished(
             }
         }
         if changed && let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: crewmate {}: cannot save last_fired of chain triggers: {e}",
                 crewmate.id
@@ -355,7 +363,8 @@ pub(crate) fn on_task_finished(
 ///
 /// Spawns:
 /// - A 30 s ticker for `Schedule` / `Interval` triggers.
-/// - A 2 min poller for `Github` triggers.
+/// - A 2 min poller for `Github` triggers (it stands down for repos the App's webhook covers).
+/// - A 5 min reconciliation of the App's webhook deliveries (`github_hook::reconcile_loop`).
 /// - A file-watcher task per `File` trigger (rescans every 2 min).
 /// - A 30 s poller for `Service` triggers.
 pub(crate) fn start(hub_weak: Weak<Hub>) {
@@ -377,6 +386,11 @@ pub(crate) fn start(hub_weak: Weak<Hub>) {
         let w = hub_weak.clone();
         tokio::spawn(github::run(w));
     }
+    // ── Github webhook reconciliation ────────────────────────────────────────
+    {
+        let w = hub_weak.clone();
+        tokio::spawn(github_hook::reconcile_loop(w));
+    }
     // ── File ─────────────────────────────────────────────────────────────────
     {
         let w = hub_weak.clone();
@@ -393,34 +407,13 @@ pub(crate) fn start(hub_weak: Weak<Hub>) {
 
 /// Evaluate a cron expression in an optional IANA timezone; returns true when the
 /// next occurrence since `last_fired` (or epoch) has passed `now_s`.
-fn should_fire_cron(
+pub(crate) fn should_fire_cron(
     cron_expr: &str,
     last_fired: Option<u64>,
     tz: Option<&str>,
     now_s: u64,
 ) -> bool {
-    let Ok(cron) = croner::Cron::new(cron_expr).parse() else {
-        return false;
-    };
-    let since = last_fired.unwrap_or(0);
-    if let Some(tz_str) = tz
-        && let Ok(zone) = tz_str.parse::<chrono_tz::Tz>()
-    {
-        let since_dt = chrono::DateTime::from_timestamp(since as i64, 0)
-            .unwrap_or_else(chrono::Utc::now)
-            .with_timezone(&zone);
-        return cron
-            .find_next_occurrence(&since_dt, false)
-            .ok()
-            .map(|next| next.timestamp() as u64 <= now_s)
-            .unwrap_or(false);
-    }
-    let since_dt =
-        chrono::DateTime::from_timestamp(since as i64, 0).unwrap_or_else(chrono::Utc::now);
-    cron.find_next_occurrence(&since_dt, false)
-        .ok()
-        .map(|next| next.timestamp() as u64 <= now_s)
-        .unwrap_or(false)
+    schedule::parse_cron(cron_expr).is_ok_and(|cron| schedule::is_due(&cron, last_fired, tz, now_s))
 }
 
 /// Compute the unix-seconds timestamp of the next fire for a `Schedule` or `Interval`
@@ -433,26 +426,8 @@ pub(crate) fn compute_next_fire(
 ) -> Option<u64> {
     match kind {
         TriggerKind::Schedule { cron } => {
-            let Ok(c) = croner::Cron::new(cron).parse() else {
-                return None;
-            };
-            let since = last_fired.unwrap_or(now_s);
-            if let Some(tz_str) = tz
-                && let Ok(zone) = tz_str.parse::<chrono_tz::Tz>()
-            {
-                let since_dt = chrono::DateTime::from_timestamp(since as i64, 0)
-                    .unwrap_or_else(chrono::Utc::now)
-                    .with_timezone(&zone);
-                return c
-                    .find_next_occurrence(&since_dt, false)
-                    .ok()
-                    .map(|dt| dt.timestamp() as u64);
-            }
-            let since_dt =
-                chrono::DateTime::from_timestamp(since as i64, 0).unwrap_or_else(chrono::Utc::now);
-            c.find_next_occurrence(&since_dt, false)
-                .ok()
-                .map(|dt| dt.timestamp() as u64)
+            let c = schedule::parse_cron(cron).ok()?;
+            schedule::next_fire_after(&c, last_fired.unwrap_or(now_s), tz)
         }
         TriggerKind::Interval { every_secs } => {
             let last = last_fired.unwrap_or(now_s);
@@ -490,6 +465,7 @@ pub(crate) fn fire(
     event: Event<'_>,
 ) {
     if hub.crew.is_paused() {
+        // i18n-ignore: log
         eprintln!("atlas crew: paused: trigger {trigger_id} of {crewmate_id} not fired");
         return;
     }
@@ -522,6 +498,7 @@ pub(crate) fn fire(
         task.no_auto = !allow_auto;
     }
     if let Err(e) = hub.crew.store.append_task(crewmate_id, &task) {
+        // i18n-ignore: log
         eprintln!(
             "atlas crew: crewmate {crewmate_id} task {}: trigger {trigger_id} fired but the task cannot be stored: {e}",
             task.id
@@ -532,6 +509,7 @@ pub(crate) fn fire(
         t.last_fired = Some(now_s());
     }
     if let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
+        // i18n-ignore: log
         eprintln!(
             "atlas crew: crewmate {crewmate_id}: cannot save last_fired of trigger {trigger_id}: {e}"
         );

@@ -11,6 +11,15 @@ use crate::server::Hub;
 /// The longest prompt a task takes (docs/crew.md): characters, not bytes.
 pub(crate) const MAX_PROMPT_CHARS: usize = 20_000;
 
+/// What marks a task as more than its words: `crewmate_task`'s `ui` and `dictated`.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Marks {
+    /// A UI task: it needs the agent's own captures to be `done`.
+    pub ui: bool,
+    /// The prompt was (partly) dictated: the agent is told to expect homophones (`voice::NOTE`).
+    pub dictated: bool,
+}
+
 /// `CrewmateTask`
 pub(crate) fn send_task(
     hub: &Hub,
@@ -19,7 +28,7 @@ pub(crate) fn send_task(
     source: String,
     tz: Option<String>,
     images: Vec<Sent>,
-    ui: bool,
+    marks: Marks,
 ) -> Result<Value, String> {
     let store = &hub.crew.store;
     // Whatever refuses the task also drops the pieces its images were uploaded in.
@@ -42,7 +51,8 @@ pub(crate) fn send_task(
     }
     let mut task = Task::new(source, prompt);
     task.tz = tz;
-    task.ui = ui;
+    task.ui = marks.ui;
+    task.dictated = marks.dictated;
     let incoming = match attachments::resolve(store, &id, &images) {
         Ok(v) => v,
         Err(e) => return refuse(e),
@@ -126,6 +136,13 @@ pub(crate) fn answer(
     } else {
         return Err("key or text required".into());
     };
+    // A question takes one answer, and only while the agent is blocked on it: the answer is recorded on the task
+    // (the one source of truth the cards read) only when the agent will get it.
+    if !hub.crew.ask_waiting(&ask_id) {
+        return Err(format!(
+            "ask {ask_id} is not waiting for an answer (it already got one, or the agent stopped waiting)"
+        ));
+    }
     let holder = hub
         .crew
         .store
@@ -139,6 +156,9 @@ pub(crate) fn answer(
             .crew
             .store
             .update_task(&id, &task_id, |t| match &mut t.ask {
+                Some(ask) if ask.id == ask_id && ask.answered.is_some() => {
+                    Err(format!("ask {ask_id} already has an answer"))
+                }
                 Some(ask) if ask.id == ask_id => {
                     ask.answered = Some(answer.clone());
                     Ok(())
@@ -150,7 +170,9 @@ pub(crate) fn answer(
     if recorded.is_none() {
         return Err(format!("ask {ask_id} not found for crewmate {id}"));
     }
-    hub.crew.answer_ask(&ask_id, answer);
+    if !hub.crew.answer_ask(&ask_id, answer) {
+        return Err(format!("ask {ask_id}: the agent stopped waiting for it"));
+    }
     Ok(json!({}))
 }
 
@@ -183,6 +205,14 @@ pub(crate) fn action_answer(
         attachments::discard_uploads(&hub.crew.store, &id, &images);
         return Err("only a refused or unproven task takes images with its answer".into());
     }
+    // A card takes one answer, from a runner that is waiting for it: an answer nobody will read is an error, and
+    // has none of the side effects below (a secret stored, an automation added, images kept). (#524)
+    if !matches!(task.action, Some(TaskAction::ConnectGithub { .. }))
+        && !hub.crew.action_waiting(&task_id)
+    {
+        attachments::discard_uploads(&hub.crew.store, &id, &images);
+        return Err(NOT_WAITING.into());
+    }
     match &task.action {
         Some(TaskAction::ProvideSecret { name, .. }) => {
             let name = name.clone();
@@ -190,7 +220,7 @@ pub(crate) fn action_answer(
                 .store
                 .set_secret(&id, &name, &value)
                 .map_err(|e| format!("set_secret: {e}"))?;
-            hub.crew.answer_action(&task_id, name);
+            deliver_action(hub, &task_id, name)?;
         }
         Some(TaskAction::ConnectGithub { .. }) => {
             return Err("use crew_github_connect_resume for connect_github actions".into());
@@ -226,7 +256,7 @@ pub(crate) fn action_answer(
                     .append_task(&id, &stored)
                     .map_err(|e| format!("append_task: {e}"))?;
             }
-            hub.crew.answer_action(&task_id, value);
+            deliver_action(hub, &task_id, value)?;
         }
         Some(TaskAction::AddTrigger {
             trigger: trigger_kind,
@@ -257,13 +287,25 @@ pub(crate) fn action_answer(
                     .map_err(|e| format!("save_crewmate: {e}"))?;
                 hub.broadcast(events::crewmate_updated(&id));
             }
-            hub.crew.answer_action(&task_id, value);
+            deliver_action(hub, &task_id, value)?;
         }
-        _ => {
-            hub.crew.answer_action(&task_id, value);
-        }
+        _ => deliver_action(hub, &task_id, value)?,
     }
     Ok(json!({}))
+}
+
+/// What a client is told when it answers a card that no runner waits on any more.
+const NOT_WAITING: &str =
+    "this task is not waiting for an answer (it already got one, or it ended)";
+
+/// Hand the answer to the runner waiting for it; it is an error when none took it (an answer dropped silently left
+/// the owner believing it had been read).
+fn deliver_action(hub: &Hub, task_id: &str, value: String) -> Result<(), String> {
+    if hub.crew.answer_action(task_id, value) {
+        Ok(())
+    } else {
+        Err(NOT_WAITING.into())
+    }
 }
 
 /// `CrewmateUsage`

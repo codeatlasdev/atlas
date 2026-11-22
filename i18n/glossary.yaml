@@ -1,0 +1,246 @@
+# One entry per product concept, read by i18n:check, i18n:translate and every agent that translates.
+#   dnt: true     never translated: the term stays exactly as written in every locale
+#   <locale>: x   the fixed rendering in that locale (a warning when a translation does not use it)
+#   gender:       per locale, the grammatical gender of a kept term (pt-BR: f = "a branch"); shown to the translator
+#   advice:       per locale, a wording decision no pattern can check; shown to the translator
+#   os:           per locale, the noun an OS-specific concept takes on each platform (mac | windows | linux). A message
+#                 that needs one selects on `os` (a variants message with an `os` selector); i18n:check rejects Mac,
+#                 macOS, Finder, Windows and Explorer in any message that does not (platform-noun), and shortcut
+#                 glyphs or `Cmd+` chords in any catalog value (shortcut): a shortcut is a {key} placeholder.
+#   note:         why, for the people maintaining this file
+# A term with a capital matches only that case (Crew is the feature, crew is a noun); an all-lowercase term
+# matches any case. A homograph the rule trips over ("log in" the verb) is waived in the key's description with
+# `i18n-allow dnt:log`, `i18n-allow glossary:agent` or `i18n-allow pt-pt:<word>`.
+- term: Atlas
+  dnt: true
+- term: Crew
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the product feature (docs/crew.md); "o Crew", and the noun crew (one server's team of crewmates) is "o crew" too
+- term: crewmate
+  dnt: true
+  gender:
+    pt-BR: m
+  note: an agent of the Crew; stays English in pt-BR ("o crewmate")
+- term: crew server
+  dnt: true
+  gender:
+    pt-BR: m
+  note: a machine of the Crew; stays English in pt-BR ("o crew server")
+- term: engine
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the coding agent backend a crewmate runs (Claude Code, Codex, omp, OpenCode); stays English and masculine in pt-BR ("o engine", "um engine", "os engines"), docs/crew.md. A generic software engine (gesture, theme, release engine) is "motor"
+- term: hostd
+  dnt: true
+- term: worktree
+  dnt: true
+  gender:
+    pt-BR: f
+  note: git term; Brazilian developers say it in English ("a worktree")
+- term: branch
+  dnt: true
+  gender:
+    pt-BR: f
+  note: '"a branch"'
+- term: issue
+  dnt: true
+  gender:
+    pt-BR: f
+  note: '"a issue", as developers write it'
+- term: commit
+  dnt: true
+  gender:
+    pt-BR: m
+- term: merge
+  dnt: true
+  gender:
+    pt-BR: m
+- term: pull request
+  dnt: true
+  gender:
+    pt-BR: m
+- term: deploy
+  dnt: true
+  gender:
+    pt-BR: m
+- term: prompt
+  dnt: true
+  gender:
+    pt-BR: m
+- term: token
+  dnt: true
+  gender:
+    pt-BR: m
+- term: log
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the noun; waive the verb "log in" with i18n-allow
+- term: build
+  dnt: true
+  gender:
+    pt-BR: m
+- term: runner
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the background `atlas dev` process that owns the services (docs/runtime.md); "o runner"
+- term: TUI
+  dnt: true
+  gender:
+    pt-BR: f
+  note: '"a TUI" (the terminal interface); a client TUI is "anexada" to a runner'
+- term: gate
+  dnt: true
+  gender:
+    pt-BR: m
+  note: '"o gate" (the local `bun run check`, the load gate, the UI gate)'
+- term: health check
+  dnt: true
+  gender:
+    pt-BR: m
+  note: '"o health check"; the HTTP health probe is "sonda de saúde"'
+- term: toast
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the transient message in the corner of the app; "o toast"
+- term: dock
+  dnt: true
+  gender:
+    pt-BR: m
+  note: a side or bottom region around the panes ("o dock"); the macOS Dock is "o Dock"
+- term: scrollback
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the terminal history buffer, "o scrollback"; the action of scrolling is "rolagem"
+- term: backoff
+  dnt: true
+  gender:
+    pt-BR: m
+  note: '"o backoff" of restarts and reconnects'
+- term: first mate
+  dnt: true
+  gender:
+    pt-BR: m
+  note: a crewmate role in the Crew ("o first mate"); stays English in pt-BR
+- term: hover
+  dnt: true
+  note: the LSP hover action; developers say it in English in IDE contexts ("hover e ir para a definição")
+- term: Setup
+  advice:
+    pt-BR: 'The Setup tab label ("Setup"), the worktree.setup key name and onboarding heading ("Atlas Crew setup") stay "Setup" verbatim. Generic prose uses "configuração" or "configurar": "A configuração leva dois minutos." is correct.'
+- term: Dashboard
+  dnt: true
+  note: the Dashboard tab label; stays "Dashboard" verbatim in pt-BR
+- term: health
+  advice:
+    pt-BR: 'Technical compounds stay English: "health check", "health URL", "healthcheck", "healthy". A standalone UI panel heading or prose label translates as "Saúde" ("Saúde ao longo do tempo").'
+- term: release
+  advice:
+    pt-BR: 'A product version of Atlas is "versão" ("Publicar uma versão", "notas de versão", "pré-lançamento", "versão retirada"). Keep "release" (feminine: "a release") only for a deploy release (`atlas deploy`), the build mode and profile ("build de release"), the GitHub Release and workflow names, "release candidate", and compounds already in the docs ("branch de release", "workflow de release").'
+- term: pairing
+  advice:
+    pt-BR: '"pareamento" and "parear", never "emparelhar".'
+- term: attach
+  advice:
+    pt-BR: 'Verb and state: "anexar", "anexado", "desanexar" (a TUI "anexada" to a runner); never "fazer attach". Quoted UI labels such as "Detach" stay as shown on screen.'
+- term: maintainer
+  advice:
+    pt-BR: '"mantenedor", "mantenedores"; never "maintainer" in prose. Group and role names in code (`atlas-maintainers`) stay.'
+- term: developer
+  advice:
+    pt-BR: 'Say "quem desenvolve", the plural "desenvolvedores" or "pessoa desenvolvedora"; "Modo de Desenvolvedor" is the Windows name.'
+- term: agent
+  pt-BR: agente
+- term: project
+  pt-BR: projeto
+- term: service
+  pt-BR: serviço
+- term: settings
+  pt-BR: configurações
+  note: never "definições" (pt-PT)
+- term: run
+  advice:
+    pt-BR: 'The run button and menu item say "Executar". Prose in docs may say "rodar".'
+- term: your computer
+  os:
+    en:
+      mac: your Mac
+      windows: this PC
+      linux: this computer
+    pt-BR:
+      mac: seu Mac
+      windows: este PC
+      linux: este computador
+  note: common_os_your_computer
+- term: file manager
+  os:
+    en:
+      mac: Finder
+      windows: File Explorer
+      linux: the file manager
+    pt-BR:
+      mac: Finder
+      windows: Explorador de Arquivos
+      linux: gerenciador de arquivos
+  note: common_os_file_manager
+- term: trash
+  os:
+    en:
+      mac: Trash
+      windows: Recycle Bin
+      linux: Trash
+    pt-BR:
+      mac: Lixeira
+      windows: Lixeira
+      linux: Lixeira
+  note: common_os_trash
+- term: system settings
+  os:
+    en:
+      mac: System Settings
+      windows: Settings
+      linux: system settings
+    pt-BR:
+      mac: Ajustes do Sistema
+      windows: Configurações
+      linux: configurações do sistema
+  note: common_os_system_settings
+- term: alt key
+  os:
+    en:
+      mac: Option
+      windows: Alt
+      linux: Alt
+    pt-BR:
+      mac: Option
+      windows: Alt
+      linux: Alt
+  note: the key name in prose; shortcuts are placeholders. common_os_alt_key
+- term: enter key
+  os:
+    en:
+      mac: Return
+      windows: Enter
+      linux: Enter
+    pt-BR:
+      mac: Return
+      windows: Enter
+      linux: Enter
+  note: common_os_enter_key
+- term: menu bar
+  os:
+    en:
+      mac: the menu bar
+      windows: the system tray
+      linux: the system tray
+    pt-BR:
+      mac: a barra de menus
+      windows: a bandeja
+      linux: a bandeja
+  note: where the app lives in the background; on Windows the OS calls it the notification area. common_os_menu_bar

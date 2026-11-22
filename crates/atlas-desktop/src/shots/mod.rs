@@ -35,6 +35,7 @@ pub mod timer;
 pub mod video;
 pub mod windows;
 
+use atlas_i18n::t;
 use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -193,12 +194,15 @@ impl Shots {
     }
 }
 
-/// The strokes the dock owns, which a capture key must not reuse.
-fn dock_strokes(app: &AppHandle) -> Vec<(&'static str, String)> {
+/// The strokes the dock owns, which a capture key must not reuse, each under the name of its action.
+fn dock_strokes(app: &AppHandle) -> Vec<(String, String)> {
     app.try_state::<crate::dock::DockState>()
         .map(|d| {
             let p = d.prefs();
-            vec![("Message an agent", p.summon), ("Hide the dock", p.toggle)]
+            vec![
+                (t!("native_capture_dock_summon"), p.summon),
+                (t!("native_capture_dock_toggle"), p.toggle),
+            ]
         })
         .unwrap_or_default()
 }
@@ -229,6 +233,7 @@ pub fn start(app: &AppHandle) {
     app.manage(Shots::load());
     let prefs = app.state::<Shots>().prefs.lock().clone();
     if let Err(e) = apply_hotkeys(app, &prefs) {
+        // i18n-ignore: log
         eprintln!("shots: hotkeys: {e}");
     }
 }
@@ -366,6 +371,7 @@ pub fn feed(app: &AppHandle, event: Event) {
             }
         });
     if let Err(e) = spawned {
+        // i18n-ignore: log
         eprintln!("shots: cannot start the capture worker: {e}");
     }
 }
@@ -402,7 +408,7 @@ pub fn shots_presets() -> Vec<prefs::Preset> {
 pub fn shots_prefs_set(app: AppHandle, prefs: CapturePrefs) -> Result<CapturePrefs, String> {
     let state = app.state::<Shots>();
     let dock = dock_strokes(&app);
-    let others: Vec<(&str, &str)> = dock.iter().map(|(n, s)| (*n, s.as_str())).collect();
+    let others: Vec<(&str, &str)> = dock.iter().map(|(n, s)| (n.as_str(), s.as_str())).collect();
     prefs.validate(&others)?;
     let before = state.prefs.lock().clone();
     apply_hotkeys(&app, &prefs).inspect_err(|_| {
@@ -423,7 +429,7 @@ pub fn shots_prefs_set(app: AppHandle, prefs: CapturePrefs) -> Result<CapturePre
     state.history.lock().trim(prefs.history as usize);
     state.save_history();
     *state.prefs.lock() = prefs.clone();
-    crate::tray::refresh_capture(&app, &prefs.keys);
+    crate::menu::relabel_all(&app, &prefs.keys);
     Ok(prefs)
 }
 
@@ -584,6 +590,24 @@ pub fn shots_permission_request() -> Result<Permission, String> {
     unavailable()
 }
 
+/// The microphone grant of this app as macOS reports it (dictation reads the same state as the recorder).
+#[cfg(target_os = "macos")]
+pub fn microphone_access() -> recopts::MicAccess {
+    record_mac::mic_access()
+}
+
+/// Ask for the microphone (the system prompt, once per install) and wait for the answer.
+#[cfg(target_os = "macos")]
+pub fn microphone_request() -> bool {
+    record_mac::request_mic()
+}
+
+/// Open System Settings on Privacy & Security > Microphone.
+#[cfg(target_os = "macos")]
+pub fn open_microphone_settings() -> Result<(), String> {
+    mac::open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+}
+
 #[tauri::command]
 pub fn shots_open_settings() -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -633,12 +657,14 @@ pub async fn shots_overlay_previous(app: AppHandle) {
 
 #[tauri::command]
 pub async fn shots_pick_folder(app: AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().pick_folder(move |p| {
-        let _ = tx.send(p.map(|p| p.to_string()));
-    });
-    rx.await.map_err(|e| e.to_string())
+    crate::native_ui::pick_path(
+        app,
+        crate::native_ui::PathDialog {
+            directory: true,
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -659,23 +685,33 @@ pub fn shots_history_remove(state: State<'_, Shots>, path: String) {
 }
 
 #[tauri::command]
-pub fn shots_history_reveal(path: String) -> Result<(), String> {
+pub fn shots_history_reveal(state: State<'_, Shots>, path: String) -> Result<(), String> {
+    // The page's `path` is untrusted: only a capture of the history, resolved, reaches the OS.
+    let file = state
+        .history
+        .lock()
+        .launchable(std::path::Path::new(&path))?;
     #[cfg(target_os = "macos")]
-    return mac::reveal(std::path::Path::new(&path));
+    return mac::reveal(&file);
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = path;
+        let _ = file;
         unavailable()
     }
 }
 
 #[tauri::command]
-pub fn shots_history_open(path: String) -> Result<(), String> {
+pub fn shots_history_open(state: State<'_, Shots>, path: String) -> Result<(), String> {
+    // As `shots_history_reveal`: the page could otherwise open any app or script on this Mac.
+    let file = state
+        .history
+        .lock()
+        .launchable(std::path::Path::new(&path))?;
     #[cfg(target_os = "macos")]
-    return mac::open(std::path::Path::new(&path));
+    return mac::open(&file);
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = path;
+        let _ = file;
         unavailable()
     }
 }

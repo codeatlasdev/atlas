@@ -6,6 +6,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use crate::git_path::{diff_header, unquote};
 use crate::sys::CommandExt as _;
 
 // ---------- diff and status parsers ----------
@@ -126,9 +127,8 @@ pub fn parse(diff: &str, staged: bool) -> Vec<FileDiff> {
     let (mut old_no, mut new_no) = (0u32, 0u32);
     for l in diff.lines() {
         if let Some(rest) = l.strip_prefix("diff --git ") {
-            let b = rest.rsplit_once(" b/").map(|(_, b)| b).unwrap_or(rest);
             files.push(FileDiff {
-                path: b.to_string(),
+                path: diff_header(rest).1,
                 old_path: None,
                 status: "modified",
                 staged,
@@ -145,7 +145,7 @@ pub fn parse(diff: &str, staged: bool) -> Vec<FileDiff> {
                 f.status = "deleted";
             } else if let Some(p) = l.strip_prefix("rename from ") {
                 f.status = "renamed";
-                f.old_path = Some(p.to_string());
+                f.old_path = Some(unquote(p));
             } else if l.starts_with("Binary files ") || l == "GIT binary patch" {
                 f.binary = true;
             }
@@ -242,6 +242,12 @@ pub async fn base_for<Fut: Future<Output = Result<String, String>>>(
     "HEAD".into()
 }
 
+/// The values [`operation`] returns. The desktop words each one (`operationText`); any other value shows as it came.
+pub const OPERATIONS: [&str; 2] = ["merge", "rebase"];
+/// The `status` of a [`FileDiff`]. The desktop words each one (`statusText`); `untracked` is the status of a new
+/// file's diff, which the desktop shell builds itself.
+pub const FILE_STATUSES: [&str; 5] = ["modified", "added", "deleted", "renamed", "untracked"];
+
 /// `merge` or `rebase` while one is in progress in the checkout at `dir`. The git dir is `.git`, or what a linked
 /// worktree's `.git` file (`gitdir: <path>`) points to: a file read, not a `rev-parse` process.
 pub fn operation(dir: &std::path::Path) -> Option<&'static str> {
@@ -323,7 +329,7 @@ pub fn split_files(diff: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for line in diff.split_inclusive('\n') {
         if let Some(rest) = line.strip_prefix("diff --git ") {
-            out.push((header_path(rest.trim_end()), String::new()));
+            out.push((diff_header(rest.trim_end()).1, String::new()));
         }
         if let Some((_, sec)) = out.last_mut() {
             sec.push_str(line);
@@ -332,28 +338,8 @@ pub fn split_files(diff: &str) -> Vec<(String, String)> {
     out
 }
 
-/// The new path of `a/<old> b/<new>`. Both halves are the same unless renamed; with spaces in the name the
-/// halves are found by their ` b/` marker, taking the one that makes the two sides symmetric first.
-fn header_path(rest: &str) -> String {
-    let body = rest.strip_prefix("a/").unwrap_or(rest);
-    let mut at = 0;
-    while let Some(i) = body[at..].find(" b/") {
-        let split = at + i;
-        let (old, new) = (&body[..split], &body[split + 3..]);
-        if old == new {
-            return new.trim_matches('"').to_string();
-        }
-        at = split + 1;
-    }
-    // A rename: the new path is after the last ` b/`.
-    body.rsplit_once(" b/")
-        .map_or(body, |(_, n)| n)
-        .trim_matches('"')
-        .to_string()
-}
-
 /// The old path of a renamed or copied file section (its lines may be the old file's content as context).
-fn renamed_from(section: &str) -> Option<&str> {
+fn renamed_from(section: &str) -> Option<String> {
     section
         .lines()
         .take_while(|l| !l.starts_with("@@ "))
@@ -361,7 +347,7 @@ fn renamed_from(section: &str) -> Option<&str> {
             l.strip_prefix("rename from ")
                 .or_else(|| l.strip_prefix("copy from "))
         })
-        .map(|p| p.trim_matches('"'))
+        .map(unquote)
 }
 
 /// True for paths whose content must never leave the machine.
@@ -465,7 +451,7 @@ pub fn digest(diff: &str, scope: &'static str) -> Digest {
     };
     let mut shown: Vec<(String, String)> = Vec::new();
     for (path, section) in split_files(diff) {
-        if is_secret(&path) || renamed_from(&section).is_some_and(is_secret) {
+        if is_secret(&path) || renamed_from(&section).is_some_and(|p| is_secret(&p)) {
             d.withheld.push(path);
         } else if is_noise(&path) || is_binary(&section) {
             d.summarized.push(path);
@@ -661,35 +647,19 @@ fn split_subject(subject: &str) -> (String, String) {
     )
 }
 
-/// How an agent CLI is run to answer one prompt and exit: `argv`, prompt on stdin, no tools, no saved session.
-/// Flags verified against each CLI's `--help` (omp 18.11, claude 2.1, codex 0.162).
-pub fn provider_argv(agent: &str) -> Option<Vec<&'static str>> {
-    Some(match agent {
-        "omp" => vec![
-            "omp",
-            "-p",
-            "--no-session",
-            "--no-tools",
-            "--no-skills",
-            "--no-rules",
-            "--no-extensions",
-            "--no-lsp",
-            "--no-title",
-        ],
-        "claude" => vec!["claude", "-p", "--no-session-persistence", "--tools", ""],
-        "codex" => vec![
-            "codex",
-            "exec",
-            "--ephemeral",
-            "--skip-git-repo-check",
-            "-s",
-            "read-only",
-            "--color",
-            "never",
-            "-",
-        ],
-        _ => return None,
-    })
+/// How an agent CLI is run to answer one prompt and exit: `argv`, prompt on stdin, no tools, no saved session
+/// (`one_shot` in `data/agents.json`; `None` for an agent with no verified invocation). Flags verified against
+/// each CLI's `--help` (omp 18.11, claude 2.1, codex 0.162).
+pub fn provider_argv(agent: &str) -> Option<&'static [String]> {
+    crate::agents::get(agent)?.one_shot.as_deref()
+}
+
+/// The built-in agents that can write a commit message (have a `one_shot`), in the registry's order.
+pub fn provider_ids() -> impl Iterator<Item = &'static str> {
+    crate::agents::all()
+        .iter()
+        .filter(|a| a.one_shot.is_some())
+        .map(|a| a.id.as_str())
 }
 
 // ---------- provider selection and the run ----------
@@ -710,32 +680,42 @@ pub fn resolve_provider(
     default_agent: Option<&str>,
     installed: &[&str],
 ) -> Provider {
-    let known = |id: &str| {
-        installed
-            .iter()
-            .copied()
-            .find(|i| *i == id)
-            .and_then(|i| provider_argv(i).map(|a| a[0]))
-    };
-    let pick = |id: &str| ["omp", "claude", "codex"].into_iter().find(|k| *k == id);
+    // An agent is a candidate when it can run one-shot and is installed.
+    let known = |id: &str| provider_ids().find(|k| *k == id && installed.contains(k));
     match setting {
         Some("off") => Provider::Off,
         Some(id) if id != "auto" && !id.is_empty() => {
-            match pick(id).filter(|k| known(k).is_some()) {
-                Some(k) => Provider::Agent(k),
-                None => Provider::None,
-            }
+            known(id).map_or(Provider::None, Provider::Agent)
         }
         _ => default_agent
-            .and_then(pick)
-            .filter(|k| known(k).is_some())
-            .or_else(|| {
-                ["omp", "claude", "codex"]
-                    .into_iter()
-                    .find(|k| known(k).is_some())
-            })
+            .and_then(known)
+            .or_else(|| provider_ids().find(|k| installed.contains(k)))
             .map_or(Provider::None, Provider::Agent),
     }
+}
+
+/// The stable codes `commit_msg_generate` and [`run_provider`] send as the whole message of an error for the failures
+/// the app words itself, because a sentence from Rust is English and the desktop shows the language of the person.
+/// The desktop maps each to a message (`commitErrorText`); anything else is an agent's own output and shows as it
+/// came. The list is the fixture `__fixtures__/commit-msg-errors.json` that the desktop test reads.
+pub mod commit_error {
+    /// The folder is on an SSH host: the agent would have to run there.
+    pub const SSH_HOST: &str = "commit_msg.ssh_host";
+    /// Settings > Git turned the feature off.
+    pub const PROVIDER_OFF: &str = "commit_msg.provider_off";
+    /// Nothing staged and nothing changed.
+    pub const NO_CHANGES: &str = "commit_msg.no_changes";
+    /// Every changed file looks like a secret, so nothing was sent.
+    pub const ALL_SECRET: &str = "commit_msg.all_secret";
+    /// The agent ended well and printed no message.
+    pub const EMPTY_MESSAGE: &str = "commit_msg.empty_message";
+    pub const ALL: [&str; 5] = [
+        SSH_HOST,
+        PROVIDER_OFF,
+        NO_CHANGES,
+        ALL_SECRET,
+        EMPTY_MESSAGE,
+    ];
 }
 
 /// One event of a run, as the frontend reads it from `commit-msg://<request>`.
@@ -852,7 +832,7 @@ pub async fn run_provider(
     match result {
         Ok(st) if st.success() && !message.is_empty() => Event::Done { message },
         Ok(st) if st.success() => Event::Error {
-            message: "the provider returned no message".into(),
+            message: commit_error::EMPTY_MESSAGE.into(),
         },
         Ok(st) => {
             // claude prints its auth failure on stdout; omp prints progress on stderr: show whichever says why.
@@ -1486,18 +1466,16 @@ mod commit_msg_tests {
     // no tools, no session saved. A wrong flag turns into a hanging or file-editing agent, so they are pinned here.
     #[test]
     fn each_provider_runs_non_interactively_with_no_tools_and_no_saved_session() {
+        let has = |argv: &[String], f: &str| argv.iter().any(|a| a == f);
         let omp = provider_argv("omp").unwrap();
         assert_eq!(omp[0], "omp");
         for f in ["-p", "--no-session", "--no-tools"] {
-            assert!(omp.contains(&f), "omp lacks {f}: {omp:?}");
+            assert!(has(omp, f), "omp lacks {f}: {omp:?}");
         }
         let claude = provider_argv("claude").unwrap();
         assert_eq!(claude[0], "claude");
-        assert!(claude.contains(&"-p") && claude.contains(&"--no-session-persistence"));
-        let at = claude
-            .iter()
-            .position(|a| *a == "--tools")
-            .expect("--tools");
+        assert!(has(claude, "-p") && has(claude, "--no-session-persistence"));
+        let at = claude.iter().position(|a| a == "--tools").expect("--tools");
         assert_eq!(
             claude[at + 1],
             "",
@@ -1506,11 +1484,32 @@ mod commit_msg_tests {
         let codex = provider_argv("codex").unwrap();
         assert_eq!(&codex[..2], ["codex", "exec"]);
         for f in ["--ephemeral", "--skip-git-repo-check", "-"] {
-            assert!(codex.contains(&f), "codex lacks {f}: {codex:?}");
+            assert!(has(codex, f), "codex lacks {f}: {codex:?}");
         }
-        let at = codex.iter().position(|a| *a == "-s").expect("-s");
+        let at = codex.iter().position(|a| a == "-s").expect("-s");
         assert_eq!(codex[at + 1], "read-only");
         assert_eq!(provider_argv("nope"), None);
+    }
+
+    // OpenCode is installed and launchable but has no verified tools-off one-shot run: the diff must never be
+    // handed to it, whatever the setting says. (Incident class: the picker offered agents resolve_provider ignored.)
+    #[test]
+    fn an_agent_without_a_one_shot_run_is_never_a_commit_provider() {
+        assert_eq!(
+            provider_ids().collect::<Vec<_>>(),
+            ["omp", "claude", "codex"]
+        );
+        assert_eq!(provider_argv("opencode"), None);
+        let all = ["omp", "claude", "codex", "opencode"];
+        assert_eq!(
+            resolve_provider(Some("opencode"), Some("omp"), &all),
+            Provider::None
+        );
+        assert_eq!(
+            resolve_provider(None, Some("opencode"), &["opencode", "codex"]),
+            Provider::Agent("codex")
+        );
+        assert_eq!(resolve_provider(None, None, &["opencode"]), Provider::None);
     }
 
     // ----- provider selection -----
@@ -1685,24 +1684,27 @@ mod commit_msg_tests {
         assert!(matches!(done, Event::Error { message } if message.contains("unknown flag")));
     }
 
-    // Cancel mid-stream: the child is killed (not left running) and the result is Cancelled, no message.
+    // Cancel mid-stream: the child is killed (not left running, not waited for) and the result is Cancelled, no
+    // message. The provider lives for 30 s and says so in `finished` if it gets to the end: a cancel that waited for
+    // it would return `Done` and leave that file, however fast or slow the machine is; no stopwatch is involved.
     #[cfg(unix)]
     #[test]
     fn cancel_kills_the_provider_mid_stream() {
         let d = tempfile::tempdir().unwrap();
         let marker = d.path().join("finished");
+        let pidfile = d.path().join("pid");
         let argv = fake(
             d.path(),
             &format!(
-                "cat >/dev/null; printf 'feat: start'; sleep 30; touch {}",
-                marker.display()
+                "cat >/dev/null; echo $$ > {pid}; printf 'feat: start'; sleep 30; touch {}",
+                marker.display(),
+                pid = pidfile.display()
             ),
         );
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
-        let started = std::time::Instant::now();
         let done = rt.block_on(async {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let seen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1722,15 +1724,22 @@ mod commit_msg_tests {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
             let _ = tx.send(());
-            run.await.unwrap()
+            tokio::time::timeout(crate::scaling::HANG, run)
+                .await
+                .expect("cancel hung")
+                .unwrap()
         });
         assert_eq!(done, Event::Cancelled);
+        assert!(!marker.exists(), "cancel waited for the provider to finish");
+        let pid: u32 = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(10),
-            "cancel must not wait for the 30 s sleep"
+            !crate::sys::pid_alive(pid),
+            "the provider kept running after cancel"
         );
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        assert!(!marker.exists(), "the provider kept running after cancel");
     }
 
     // Contract with the frontend: the events serialize with a `kind` tag in snake_case; the committed fixture is the
@@ -1762,6 +1771,40 @@ mod commit_msg_tests {
         let value = serde_json::to_value(&events).unwrap();
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../apps/desktop/src/lib/__fixtures__/commit-msg-events.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    // Contract with the frontend: the codes of `commit_error` are the whole `message` of an error event, and
+    // `commitErrorText` (desktop) words each one. The empty-message code is what the real run below produces.
+    #[cfg(unix)]
+    #[test]
+    fn error_codes_match_the_frontend_fixture() {
+        let d = tempfile::tempdir().unwrap();
+        let (done, _) = run(fake(d.path(), "cat >/dev/null"), "x");
+        assert!(
+            matches!(&done, Event::Error { message } if message == commit_error::EMPTY_MESSAGE),
+            "{done:?}"
+        );
+        let value = serde_json::to_value(commit_error::ALL).unwrap();
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/commit-msg-errors.json");
         let mut buf = Vec::new();
         let mut ser = serde_json::Serializer::with_formatter(
             &mut buf,
@@ -2126,6 +2169,68 @@ mod status_json_tests {
             (Some("merge"), Some("feat"))
         );
         assert_eq!(v["entries"][0]["conflict"], true);
+    }
+
+    // Contract with the frontend: the values of `OPERATIONS` and `FILE_STATUSES` are what `operationText` and
+    // `statusText` (desktop) word. Every value the REAL producers make below is in the lists; the lists are the
+    // fixture `__fixtures__/git-review-values.json` the desktop test reads.
+    #[test]
+    fn operation_and_file_status_values_match_the_frontend_fixture() {
+        let t = tempfile::tempdir().unwrap();
+        let main = t.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        ok(&main, &["init", "-q", "."]);
+        commit(&main, "f.txt", "base\n");
+        commit(&main, "gone.txt", "x\n");
+        commit(&main, "moved.txt", "same content\nline two\nline three\n");
+        ok(&main, &["branch", "other"]);
+        commit(&main, "f.txt", "main\n");
+        ok(&main, &["checkout", "-q", "other"]);
+        commit(&main, "f.txt", "other\n");
+        // A conflicting rebase and a conflicting merge, as real git leaves them.
+        assert!(git_in(&main, &["rebase", "main"]).is_err(), "must conflict");
+        let mut seen = vec![operation(&main).expect("a rebase is in progress")];
+        ok(&main, &["rebase", "--abort"]);
+        ok(&main, &["checkout", "-q", "main"]);
+        assert!(git_in(&main, &["merge", "other"]).is_err(), "must conflict");
+        seen.push(operation(&main).expect("a merge is in progress"));
+        ok(&main, &["merge", "--abort"]);
+        seen.sort();
+        assert_eq!(seen, OPERATIONS.to_vec());
+
+        // A modified, an added, a deleted and a renamed file, in one real `git diff -M`.
+        std::fs::write(main.join("f.txt"), "edited\n").unwrap();
+        std::fs::write(main.join("added.txt"), "new\n").unwrap();
+        ok(&main, &["rm", "-q", "gone.txt"]);
+        ok(&main, &["mv", "moved.txt", "renamed.txt"]);
+        ok(&main, &["add", "-A"]);
+        let diff = git_in(&main, &["diff", "--cached", "--no-color", "-U3", "-M"]).unwrap();
+        let mut statuses: Vec<&str> = parse(&diff, true).iter().map(|f| f.status).collect();
+        statuses.sort();
+        assert_eq!(statuses, ["added", "deleted", "modified", "renamed"]);
+        assert!(statuses.iter().all(|s| FILE_STATUSES.contains(s)));
+
+        let value = json!({"operations": OPERATIONS, "statuses": FILE_STATUSES});
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/git-review-values.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 
     // The parser behind it, on the verbatim headers of `git status --porcelain=v2 -z --branch`.

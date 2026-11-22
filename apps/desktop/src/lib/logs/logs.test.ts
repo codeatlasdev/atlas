@@ -593,86 +593,118 @@ describe("performance (200k lines)", () => {
 		),
 	);
 
-	test("append of 200k lines + full view build stays well under a second", () => {
+	// Load-independent guards (a wall-clock budget failed under load with nothing regressed): the cost model in view.ts is
+	// stated in operations (append O(k), the view meets each new line once), so the tests count them. The matcher is a
+	// fake that counts the lines the filter asks it about.
+	const counting = (accept = () => true) => {
+		const seen = { lines: 0 };
+		const matcher = {
+			lastIndex: 0,
+			test(l) {
+				seen.lines++;
+				return accept(l);
+			},
+		};
+		return { seen, filter: { ...NO_FILTER, matcher, hideNonMatching: true } };
+	};
+
+	test("append of 200k lines + full view build is linear: the ring never copies its buffer, the filter meets each line once", () => {
 		const ring = new Ring(N, 1000);
-		const t0 = performance.now();
+		const { seen, filter } = counting();
+		const buffer = ring.items;
 		for (let i = 0; i < N; i += 2000) ring.push(lines.slice(i, i + 2000));
+		expect(ring.items).toBe(buffer); // appended in place (until a trim), not rebuilt per batch
 		const view = new View();
-		view.add(NO_FILTER, ring, 0);
-		const ms = performance.now() - t0;
-		console.log(`append+view 200k: ${ms.toFixed(1)}ms`);
+		view.add(filter, ring, 0);
+		expect(seen.lines).toBe(N);
 		expect(view.length).toBe(N);
-		expect(ms).toBeLessThan(1000);
 	});
 
 	test("incremental add of a 2000-line batch onto a full 200k ring is O(batch)", () => {
 		const ring = ringOf(lines, N);
-		const f = {
-			only: null,
-			minLevel: "info",
-			matcher: compileQuery("failed", false, false),
-			hideNonMatching: true,
-			win: NO_WINDOW,
-		};
+		const { seen, filter } = counting((l) => /failed/.test(l));
 		const view = new View();
-		view.add(f, ring, 0);
+		view.add(filter, ring, 0);
+		expect(seen.lines).toBe(N);
+		const before = view.length;
 		const from = ring.base + ring.length;
 		ring.push(lines.slice(0, 2000));
-		const t0 = performance.now();
-		view.add(f, ring, from);
-		const ms = performance.now() - t0;
-		console.log(`incremental add 2000 onto 200k: ${ms.toFixed(2)}ms`);
-		expect(ms).toBeLessThan(20);
+		seen.lines = 0;
+		view.add(filter, ring, from);
+		// Only the new batch met the filter, not the 200k already in the view.
+		expect(seen.lines).toBe(2000);
+		expect(view.length).toBe(before + 2000 / 50);
 	});
 
 	test("full regex re-filter of 200k lines, time-sliced: every slice stays within budget", () => {
-		const ring = ringOf(lines, N);
-		const rf = new Refilter(
-			{
-				only: "web",
-				minLevel: "info",
-				matcher: compileQuery("(?:items|request)\\/?.*?(\\d+)\\D+\\d+ms|failed.*\\d+", true, false),
-				hideNonMatching: true,
-				win: NO_WINDOW,
-				win: NO_WINDOW,
+		// Load-independent: a wall-clock p95 per slice failed a loaded parallel run (116 ms) with nothing
+		// regressed. The guard is the slicing itself, on a virtual clock that advances a fixed cost per line
+		// the matcher sees, so the result does not depend on the machine or its load. It still goes red for
+		// the regression it exists for (a re-filter that does not yield: one long task over 200k lines).
+		const COST = 0.001; // virtual ms per matcher call
+		const BUDGET = 6;
+		const CHUNK = 2048;
+		let clock = 0;
+		let seen = 0;
+		const fake = {
+			lastIndex: 0,
+			test(l) {
+				seen++;
+				clock += COST;
+				return /items|request/.test(l);
 			},
-			ring,
-		);
-		const times = [];
-		for (;;) {
-			const t = performance.now();
-			const done = rf.step(6);
-			times.push(performance.now() - t);
-			if (done) break;
+		};
+		const filter = { only: "web", minLevel: "info", matcher: fake, hideNonMatching: true, win: NO_WINDOW };
+		const realNow = performance.now;
+		performance.now = () => clock;
+		const slices = []; // lines the matcher saw per slice
+		let rf;
+		try {
+			rf = new Refilter(filter, ringOf(lines, N));
+			for (;;) {
+				const before = seen;
+				const done = rf.step(BUDGET, CHUNK);
+				slices.push(seen - before);
+				if (done) break;
+			}
+		} finally {
+			performance.now = realNow;
 		}
-		times.sort((a, b) => a - b);
-		// p95, not the worst: a slice the OS preempted on a loaded machine is not the refilter
-		// breaking its budget (the single worst slice failed a loaded release gate).
-		const p95 = times[Math.floor(times.length * 0.95)];
-		const total = times.reduce((a, b) => a + b, 0);
+		const worst = Math.max(...slices);
+		const web = lines.filter((l) => l.name === "web").length;
 		console.log(
-			`refilter 200k: total ${total.toFixed(0)}ms in ${times.length} slices, p95 slice ${p95.toFixed(1)}ms`,
+			`refilter 200k (virtual clock): ${web} lines in ${slices.length} slices, max ${worst} lines/slice`,
 		);
-		expect(rf.view.length).toBeGreaterThan(0);
-		expect(times.length).toBeGreaterThan(1);
-		expect(p95).toBeLessThan(40);
+		// Same lines as an unsliced scan.
+		expect(seen).toBe(web);
+		expect(rf.view.length).toBe(lines.filter((l) => l.name === "web" && /items|request/.test(l.line)).length);
+		// No slice runs past its budget by more than the chunk it was in the middle of...
+		expect(worst).toBeLessThanOrEqual(BUDGET / COST + CHUNK);
+		// ...and the work really is split (a single long task is 1 slice of all `web` lines).
+		expect(slices.length).toBeGreaterThanOrEqual(Math.floor(web / (BUDGET / COST + CHUNK)));
 	});
 
-	test("search scan of 200k lines + 10k next/prev lookups", () => {
+	test("search scan of 200k lines + 10k next() lookups: each lookup is a binary search over the matches", () => {
 		const ring = ringOf(lines, N);
 		const view = new View();
 		view.add(NO_FILTER, ring, 0);
 		const s = new Search(compileQuery("ERROR", false, false), view, ring);
-		const t0 = performance.now();
 		while (!s.scan(1000));
-		const scan = performance.now() - t0;
 		expect(s.rows.length).toBe(N / 50);
-		const t1 = performance.now();
+		let reads = 0; // elements of `rows` the lookups read
+		s.rows = new Proxy(s.rows, {
+			get(rows, key, receiver) {
+				if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+				return Reflect.get(rows, key, receiver);
+			},
+		});
 		let r = -1;
-		for (let i = 0; i < 10_000; i++) r = s.next(r);
-		const nav = performance.now() - t1;
-		console.log(`search scan 200k: ${scan.toFixed(0)}ms; 10k next(): ${nav.toFixed(2)}ms`);
-		expect(nav).toBeLessThan(50);
+		const lookups = 10_000;
+		for (let i = 0; i < lookups; i++) r = s.next(r);
+		const perLookup = reads / lookups;
+		console.log(`search 200k: ${s.rows.length} matches, ${perLookup.toFixed(1)} reads per next()`);
+		// log2(4000) = 12 probes and the final read; a scan from the start would read thousands.
+		expect(perLookup).toBeLessThanOrEqual(Math.ceil(Math.log2(s.rows.length)) + 2);
 	});
 });
 

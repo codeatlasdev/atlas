@@ -1,0 +1,23 @@
+{
+	"native_notify_alert_copy_details": "Button of the native error dialog (Linux) that copies the diagnostics report to the clipboard.",
+	"native_notify_alert_crashed": "First paragraph of the native error dialog (Linux) when the web process crashed twice within a short time.",
+	"native_notify_alert_details": "Rest of the native error dialog: the two log files and the page to report it on. {stderr} and {app} are file paths, {url} the issue page.",
+	"native_notify_alert_ended": "First paragraph of the native error dialog (Linux) when the web process ended for another reason twice within a short time.",
+	"native_notify_alert_not_ready": "First paragraph of the native error dialog when the page never reported it was ready. {secs} is the wait.",
+	"native_notify_alert_out_of_memory": "First paragraph of the native error dialog (Linux) when the web process ran out of memory twice within a short time.",
+	"native_notify_alert_quit": "Button of the native error dialog that quits Atlas.",
+	"native_notify_alert_reopen": "Button of the native error dialog that reloads the window.",
+	"native_notify_alert_terminated": "First paragraph of the native error dialog (Linux) when the app itself ended the web process twice within a short time.",
+	"native_notify_alert_title": "Title of the native error dialog shown when the page of the main window never started or its web process keeps dying.",
+	"native_notify_capture_failed": "Title of the system notification shown when a screenshot or recording could not be made; the body says why.",
+	"native_notify_dock_agent_gone": "Error the agent dock shows when the agent it was about to send text to has gone away.",
+	"native_notify_dock_keys_clash": "Error under the agent dock's key settings when both shortcuts are the same.",
+	"native_notify_dock_not_built": "Error returned to the page when it asks for the dock's right-click menu and the dock window does not exist.",
+	"native_notify_no_home": "Error under the shell setting when Atlas cannot find the user's home folder to save the choice in.",
+	"native_notify_no_permission": {
+		"description": "Body of the notification, and error on the capture card, when macOS has not granted Screen Recording to Atlas. The panel names are the ones of macOS.",
+		"platform": "mac"
+	},
+	"native_notify_service_failed": "Body of the system notification shown when a service of a project fails while Atlas is in the background. {name} is the service name.",
+	"native_notify_shell_not_executable": "Error under the shell setting when the chosen file cannot be run. {path} is what the person typed."
+}

@@ -347,6 +347,7 @@ where
             Ok(Some(())) => {}
             Ok(None) => break,
             Err(e) => {
+                // i18n-ignore: the MCP server's error is read by an agent, never translated
                 result = Err(anyhow::anyhow!(
                     "stdin line exceeds {} bytes or failed to read: {e}",
                     crate::control::MAX_LINE_BYTES
@@ -690,7 +691,7 @@ mod tests {
     }
 
     async fn next_reply(lines: &mut tokio::io::Lines<BufReader<tokio::io::DuplexStream>>) -> Value {
-        let line = tokio::time::timeout(std::time::Duration::from_secs(10), lines.next_line())
+        let line = tokio::time::timeout(atlas_core::scaling::HANG, lines.next_line())
             .await
             .expect("no busy answer: requests past the cap were not refused")
             .unwrap()

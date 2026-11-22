@@ -14,6 +14,7 @@
 //! added (`startup_timeout_sec`, `enabled`, `env`, tool filters, …) are kept on update.
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 use super::plan::{MergeOutcome, RemoveOutcome};
@@ -35,7 +36,7 @@ fn server(doc: &DocumentMut) -> Result<Option<&Item>> {
         return Ok(None);
     };
     if !servers.is_table_like() {
-        bail!("`{SERVERS}` is not a table");
+        bail!(t!("cmd_setup_toml_servers_not_table", key = SERVERS));
     }
     Ok(servers.as_table_like().and_then(|t| t.get(NAME)))
 }

@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 use crate::runtime::logs::{LogEntry, LogStream};
 use crate::runtime::manager::ServiceManager;
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 pub(super) fn stream_name(stream: LogStream) -> &'static str {
@@ -60,10 +61,13 @@ pub(super) fn service_json(manager: &ServiceManager, name: &str, state: &Service
         "mem_mb": manager.usage(name).map(|u| u.mem >> 20),
         "cpu": manager.usage(name).map(|u| u.cpu.round() as u32),
     });
-    // `ready`, `probe_error`, `unhealthy_*`: the same keys as the status file.
-    if let (Some(o), Value::Object(extra)) = (v.as_object_mut(), manager.probe_facts_json(name)) {
+    // `ready`, `probe_error`, `unhealthy_*`: the same keys as the status file, plus the codes behind `probe_error` and
+    // `memory_leak` (`*_code`, `*_args`).
+    if let (Some(o), Value::Object(extra)) = (v.as_object_mut(), manager.probe_facts_wire(name)) {
         o.extend(extra);
     }
+    // The English `note` stays as it was; `note_code` + `note_args` let a client write it in its own language.
+    Note::put_flat(&mut v, "note", manager.service_note_coded(name).as_ref());
     v
 }
 
@@ -172,9 +176,12 @@ mod tests {
         .unwrap();
         let mut fresh = fresh;
         if cfg!(windows) {
-            // The committed note is the Unix form (`kill 12345`); Windows advises `taskkill`.
-            committed["note"] = Value::Null;
-            fresh["note"] = Value::Null;
+            // The committed note is the Unix form (`kill 12345`); Windows advises `taskkill`, in the English and in
+            // the `stop` arg the sentence is written from.
+            for v in [&mut committed, &mut fresh] {
+                v["note"] = Value::Null;
+                v["note_args"]["stop"] = Value::Null;
+            }
         }
         assert_eq!(
             committed, fresh,
@@ -224,7 +231,10 @@ mod tests {
         let mut m = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
         let api = m.services.get_mut("api").unwrap();
         api.probes.ready_error = Some("GET /ready → 500".into());
-        api.probes.degraded = Some("ready probe failed: GET /ready → 500".into());
+        api.probes.degraded = Some(Note::new(
+            "probe.ready_failed",
+            json!({"error": "GET /ready → 500"}),
+        ));
         m.set_state_if_changed("api", ServiceState::Degraded);
         m.services.get_mut("web").unwrap().probes.unhealthy = Some(
             crate::runtime::manager::test_unhealthy(3, &["booting", "stuck in render"]),
@@ -249,6 +259,7 @@ mod tests {
             if r["unhealthy_since"].is_u64() {
                 r["unhealthy_since"] = 1_700_000_000u64.into();
                 r["note"] = "unhealthy for 0s: 3 missed probes".into();
+                r["note_args"]["secs"] = 0.into();
             }
         }
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

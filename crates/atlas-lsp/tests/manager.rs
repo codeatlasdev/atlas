@@ -7,8 +7,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use atlas_core::clock::{Clock, ManualClock};
+use atlas_core::scaling::HANG;
 use atlas_lsp::install::{Launch, Progress};
 use atlas_lsp::manager::{Config, Manager, Push, Resolver, State};
 use atlas_lsp::registry::Server;
@@ -61,11 +63,12 @@ struct Rig {
 fn fast() -> Config {
     Config {
         idle_shutdown: Duration::from_millis(300),
-        init_timeout: Duration::from_secs(10),
+        init_timeout: HANG,
         max_restarts: 3,
         restart_window: Duration::from_secs(60),
         restart_backoff: Duration::from_millis(30),
-        request_timeout: Duration::from_secs(5),
+        request_timeout: HANG,
+        clock: Clock::default(),
     }
 }
 
@@ -106,7 +109,7 @@ impl Rig {
     }
 
     async fn diag(&mut self, path: &str, pred: impl Fn(&Value) -> bool) -> Value {
-        tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::time::timeout(HANG, async {
             loop {
                 match self.rx.recv().await.expect("push channel closed") {
                     Push::Diagnostics {
@@ -131,9 +134,7 @@ impl Rig {
 }
 
 async fn within(f: impl Future<Output = ()>) {
-    tokio::time::timeout(Duration::from_secs(5), f)
-        .await
-        .expect("timed out");
+    tokio::time::timeout(HANG, f).await.expect("timed out");
 }
 
 fn msg(d: &Value) -> String {
@@ -146,13 +147,11 @@ fn pid_alive(pid: u32) -> bool {
 }
 
 async fn until(what: &str, mut f: impl FnMut() -> bool) {
-    for _ in 0..400 {
-        if f() {
-            return;
-        }
+    let end = Instant::now() + HANG;
+    while !f() {
+        assert!(Instant::now() < end, "timed out waiting for {what}");
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    panic!("timed out waiting for {what}");
 }
 
 #[tokio::test]
@@ -248,7 +247,7 @@ async fn status_passes_through_downloading_then_ready() {
             }
         }
     };
-    let (_, seen) = tokio::join!(open, tokio::time::timeout(Duration::from_secs(10), watch));
+    let (_, seen) = tokio::join!(open, tokio::time::timeout(HANG, watch));
     let seen = seen.unwrap();
     assert_eq!(seen.first(), Some(&State::Downloading));
     assert_eq!(seen.last(), Some(&State::Ready));
@@ -266,24 +265,63 @@ async fn refcount_keeps_server_until_last_doc_closes_then_idle_shutdown() {
     assert_eq!(r.m.instance_count(), 1, "still used by b.rs");
     assert!(pid_alive(pid));
     r.m.close(&b).await;
-    assert_eq!(r.m.instance_count(), 1, "grace period before shutdown");
+    // The shutdown is waited for as an event; no window after the close is asserted (a stall longer than the
+    // grace would break one): the grace itself is the next test.
     until("idle shutdown", || r.m.instance_count() == 0).await;
     until("process gone", || !pid_alive(pid)).await;
 }
 
+// The last close starts a grace period, it does not stop the server. The grace here is an hour, so no machine is
+// slow enough to reach it: what the soak below shows is that closing alone never stopped the server.
 #[tokio::test]
-async fn reopening_inside_grace_cancels_idle_shutdown() {
-    let r = rig();
+async fn closing_the_last_doc_waits_out_the_idle_grace_before_stopping_the_server() {
+    let cfg = Config {
+        idle_shutdown: Duration::from_secs(3600),
+        ..fast()
+    };
+    let r = rig_with(cfg, &[], 0, false);
     let a = r.file("a.rs");
     r.m.open(&a, "rust", String::new(), 1, None).await;
     let pid = r.m.pids()[0];
     r.m.close(&a).await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert_eq!(r.m.instance_count(), 1, "grace period before shutdown");
+    assert!(pid_alive(pid));
+}
+
+// Reopening cancels the shutdown the close armed (#596: with a real 1 s grace, a slow reopen let the grace pass
+// first). The grace runs on a clock this test moves: the reopen follows the close however long that takes, then
+// two graces pass at once and the timer the close armed wakes (awaited as the event, on this test's current-thread
+// runtime it has run its check when we resume) and finds the document open: the same process still serves. Control:
+// the next close arms a timer that does stop it, so the timer above was a live one.
+#[tokio::test]
+async fn reopening_inside_grace_cancels_idle_shutdown() {
+    let grace = Duration::from_secs(1);
+    let manual = ManualClock::new();
+    let cfg = Config {
+        idle_shutdown: grace,
+        clock: manual.clock(),
+        ..fast()
+    };
+    let r = rig_with(cfg, &[], 0, false);
+    let a = r.file("a.rs");
+    r.m.open(&a, "rust", String::new(), 1, None).await;
+    let pid = r.m.pids()[0];
+    r.m.close(&a).await;
     let rep = r.m.open(&a, "rust", "x".into(), 2, None).await;
     assert_eq!(rep.status, "ready");
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    manual.advance(grace * 2);
+    manual.fired_past(0).await;
     assert_eq!(r.m.pids(), vec![pid], "same process kept");
     assert_eq!(r.state(&a).await["open"].as_array().unwrap().len(), 1);
+
+    r.m.close(&a).await;
+    manual.advance(grace);
+    until("idle shutdown after the last close", || {
+        r.m.instance_count() == 0
+    })
+    .await;
+    until("process gone", || !pid_alive(pid)).await;
 }
 
 #[tokio::test]
@@ -352,16 +390,19 @@ async fn request_cancel_by_rid_fails_the_call_and_tells_the_server() {
     };
     let (res, ()) = tokio::join!(slow, cancel);
     assert_eq!(res.unwrap_err().code, -32800);
+    let end = Instant::now() + HANG;
     let mut seen = false;
-    for _ in 0..40 {
-        if r.state(&a).await["cancelled"]
+    while !seen {
+        assert!(
+            Instant::now() < end,
+            "server never received $/cancelRequest"
+        );
+        seen = r.state(&a).await["cancelled"]
             .as_array()
-            .is_some_and(|c| !c.is_empty())
-        {
-            seen = true;
-            break;
+            .is_some_and(|c| !c.is_empty());
+        if !seen {
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
-        tokio::time::sleep(Duration::from_millis(25)).await;
     }
     assert!(seen, "server never received $/cancelRequest");
     // the connection still works afterwards

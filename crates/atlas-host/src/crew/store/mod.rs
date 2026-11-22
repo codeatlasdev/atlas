@@ -9,13 +9,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+mod mode;
 use crate::paths::{self, Loaded};
 
 pub(crate) mod jsonl;
 mod origin;
 mod tasklog;
 mod usage;
-pub use origin::{GithubOrigin, GithubOriginKind};
+pub use origin::{GithubOrigin, GithubOriginKind, GithubUser};
 
 /// `<hostd dir>/crew/<id>/`: where a crewmate keeps everything (definition, tasks, memory, work tree).
 pub(crate) fn crewmate_dir_in(base: &Path, id: &str) -> PathBuf {
@@ -43,12 +44,7 @@ pub(crate) fn now_s() -> u64 {
         .as_secs()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Approval {
-    Ask,
-    Auto,
-}
+pub use mode::Mode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Routine {
@@ -273,7 +269,10 @@ pub struct Crewmate {
     pub agent: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workdir: Option<String>,
-    pub approval: Approval,
+    /// What the agent may do without asking (`ask`, `edits`, `bypass`). Files from before the modes say
+    /// `approval: ask|auto`, read through the alias; hostd's JSON keeps sending that legacy field too.
+    #[serde(alias = "approval")]
+    pub mode: Mode,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routines: Vec<Routine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -289,6 +288,9 @@ pub struct Crewmate {
     pub setup_step: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short_replies: Option<bool>,
+    /// The agent ends each reply with a `spoken:` line for listening (`runner::spoken`, #648). Off by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub spoken_replies: bool,
     pub created_at: u64,
 }
 
@@ -382,6 +384,10 @@ pub struct Task {
     pub reply_full: Option<String>,
     #[serde(default)]
     pub summarized: bool,
+    /// What a client reads aloud of the finished reply (#648): the agent's `spoken:` line, else the first
+    /// sentences of the visible reply (`runner::spoken`). "" for a task with nothing to say, or not finished.
+    #[serde(default)]
+    pub spoken: String,
     /// What the user picked or typed for this task's `choose`/`input` action, shown in the chat as their message
     /// (it was sent to the agent but never recorded, so the choice vanished from the conversation).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -429,6 +435,10 @@ pub struct Task {
     /// `/ui` prefix on Telegram) or by the agent (`set_ui`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ui: bool,
+    /// The prompt was (partly) dictated by voice: the agent is told to expect homophones in identifiers and file
+    /// names (`voice::NOTE`). Never shown as user text.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dictated: bool,
     /// The crewmates whose finished tasks led to this one through `Crewmate` triggers, oldest first
     /// (empty for a task nobody chained). A chain trigger refuses to start a crewmate already in it,
     /// so two crewmates triggering each other on `done` run one round and stop.
@@ -457,6 +467,7 @@ impl Task {
             reply: None,
             reply_full: None,
             summarized: false,
+            spoken: String::new(),
             answer: None,
             title: None,
             preparing: None,
@@ -472,6 +483,7 @@ impl Task {
             resumed: false,
             attachments: vec![],
             ui: false,
+            dictated: false,
             chain: vec![],
         }
     }
@@ -497,6 +509,62 @@ pub struct CrewSettings {
     /// 75 % of the machine's memory shared by `max_agents`, at least 1 GiB (`spawn::cgroup::compute_cap`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_memory_max: Option<u64>,
+    /// The mode a new crewmate starts in (`crewmate_create` without `mode`).
+    #[serde(default = "default_mode")]
+    pub default_approval: Mode,
+    /// Whether the owner lets any crewmate use Bypass. Off: Bypass is refused everywhere and a crewmate in it
+    /// goes back to Ask.
+    #[serde(default = "default_true")]
+    pub allow_bypass: bool,
+    /// Dictation (`crew::voice`): off until the owner turns it on.
+    #[serde(default)]
+    pub voice: super::voice::VoiceSettings,
+    /// The public base URL GitHub reaches this server at (the operator's reverse proxy or tunnel, never Atlas
+    /// itself), normalized by [`normalize_public_url`]. Set: the GitHub App's webhook posts to
+    /// `<url>/github/webhook`. Unset: GitHub events come from the poll alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_url: Option<String>,
+}
+
+/// The path of the verified GitHub webhook on the hook server, under the operator's public URL.
+pub const GITHUB_WEBHOOK_PATH: &str = "/github/webhook";
+
+impl CrewSettings {
+    /// Where GitHub posts deliveries: the public URL plus [`GITHUB_WEBHOOK_PATH`]. `None` without a public URL.
+    pub fn webhook_url(&self) -> Option<String> {
+        self.public_url
+            .as_deref()
+            .map(|u| format!("{u}{GITHUB_WEBHOOK_PATH}"))
+    }
+}
+
+/// The public URL as the setting keeps it: `Ok(None)` for blank (webhooks off), else an `https` URL with a host
+/// and no credentials, query or fragment, without a trailing slash. Anything else is an error that says why:
+/// GitHub sends the payloads to it, so a plain-http or credentialed URL would expose them.
+pub fn normalize_public_url(raw: &str) -> Result<Option<String>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    if raw.len() > 200 {
+        return Err("public_url is longer than 200 characters".into());
+    }
+    let url = url::Url::parse(raw).map_err(|e| format!("public_url is not a URL: {e}"))?;
+    if url.scheme() != "https" {
+        return Err(
+            "public_url must be an https:// URL: GitHub's payloads cross the internet".into(),
+        );
+    }
+    if url.host_str().is_none_or(str::is_empty) {
+        return Err("public_url has no host".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("public_url must not carry a user name or password".into());
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err("public_url must not have a query or a fragment".into());
+    }
+    Ok(Some(url.as_str().trim_end_matches('/').to_string()))
 }
 
 /// Agents at once when `crew.json` says nothing: a handful, so one busy server is not swamped by every crewmate
@@ -507,6 +575,10 @@ fn default_max_agents() -> usize {
     DEFAULT_MAX_AGENTS
 }
 
+fn default_mode() -> Mode {
+    Mode::Ask
+}
+
 impl Default for CrewSettings {
     fn default() -> Self {
         Self {
@@ -515,6 +587,10 @@ impl Default for CrewSettings {
             paused: false,
             max_agents: DEFAULT_MAX_AGENTS,
             agent_memory_max: None,
+            default_approval: Mode::Ask,
+            allow_bypass: true,
+            voice: Default::default(),
+            public_url: None,
         }
     }
 }
@@ -550,12 +626,15 @@ impl CrewStore {
     pub fn new(base: &Path) -> Self {
         use atlas_core::crew::{Adopted, adopt_legacy_path};
         match adopt_legacy_path(&base.join(LEGACY_DIR), &base.join(DIR)) {
+            // i18n-ignore: log
             Ok(Adopted::BothExist) => eprintln!(
                 "atlas crew: {LEGACY_DIR}/ and {DIR}/ both exist in {}; using {DIR}/, {LEGACY_DIR}/ is left untouched",
                 base.display()
             ),
+            // i18n-ignore: log
             Ok(Adopted::Moved) => eprintln!("atlas crew: {LEGACY_DIR}/ moved to {DIR}/"),
             Ok(Adopted::Nothing) => {}
+            // i18n-ignore: log
             Err(e) => eprintln!("atlas crew: cannot move {LEGACY_DIR}/ to {DIR}/: {e}"),
         }
         Self {
@@ -668,6 +747,7 @@ impl CrewStore {
             let id = e.ok()?.file_name().to_string_lossy().to_string();
             self.load_crewmate(&id)
                 .inspect_err(|err| {
+                    // i18n-ignore: log
                     eprintln!("atlas crew: crewmate {id} skipped, unreadable: {err}")
                 })
                 .ok()
@@ -914,6 +994,7 @@ impl CrewStore {
             Ok(Secrets::Ok(m)) => m,
             Ok(Secrets::Corrupt(_)) => Default::default(),
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!("atlas crew: cannot read secrets of {id}: {e}");
                 Default::default()
             }
@@ -946,6 +1027,7 @@ impl CrewStore {
         if len > self.usage_max
             && let Err(e) = usage::rotate(&dir, ts, self.usage_keep)
         {
+            // i18n-ignore: log
             eprintln!("atlas crew: cannot rotate {}: {e}", path.display());
         }
         Ok(())
@@ -990,6 +1072,7 @@ impl CrewStore {
         match self.read_crew_settings() {
             Ok(s) => s,
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: {} is unreadable ({e}); the crew stays paused until it is resumed",
                     self.crew_settings_path().display()
@@ -1024,6 +1107,7 @@ impl CrewStore {
             return Ok(());
         }
         let aside = paths::set_aside_corrupt(&self.crew_settings_path())?;
+        // i18n-ignore: log
         eprintln!(
             "atlas crew: unreadable crew.json kept as {}",
             aside.display()

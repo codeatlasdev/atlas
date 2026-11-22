@@ -6,3 +6,8 @@
 # Every PR adds lines at the top of `## [Unreleased]`; git's built-in union driver keeps both sides
 # instead of a conflict on every merge of main into a branch. Review the order after a merge.
 CHANGELOG.md merge=union
+# Every branch lowers lines of the i18n baseline and none deletes one (a fixed file keeps its line at 0), so a local union
+# merge (`git merge origin/main`, the merge train) keeps both versions of a lowered count and the reader takes the smaller
+# (scripts/i18n/baseline.ts). GitHub's own merge ignores this attribute; no flow here relies on it. Two branches that
+# lowered the same file leave the count above the real one: `i18n:check` says so, `bun run i18n:fix` repairs it.
+i18n/hardcoded-baseline.jsonl merge=union

@@ -1,6 +1,7 @@
 //! The sidebar's sections, one function each. They append to a `Sidebar`
 //! (lines + click rows) and always end with a spacer line.
 
+use atlas_i18n::t;
 use ratatui::prelude::*;
 
 use super::{PULSE, Row, Sidebar, clip};
@@ -21,7 +22,10 @@ pub(super) fn health<'a>(out: &mut Sidebar<'a>, d: &Data<'a>, t: &Theme, width: 
     if d.services.is_empty() {
         out.plain(Line::from(vec![
             Span::styled("○  ", Style::default().fg(t.text_dim)),
-            Span::styled("No services", Style::default().fg(t.text_dim)),
+            Span::styled(
+                t!("tui_runtime_widgets_sidebar_no_services"),
+                Style::default().fg(t.text_dim),
+            ),
         ]));
     } else {
         let (dot, color) = if health.all_ok() {
@@ -43,7 +47,7 @@ pub(super) fn health<'a>(out: &mut Sidebar<'a>, d: &Data<'a>, t: &Theme, width: 
             (dot, color)
         };
         let text = if health.all_ok() && health.done == 0 && health.stopped == 0 {
-            "All systems operational".to_string()
+            t!("tui_runtime_widgets_sidebar_all_ok")
         } else {
             health.label()
         };
@@ -92,7 +96,7 @@ pub(super) fn services<'a>(
     port_w: u16,
 ) {
     out.plain(Line::from(Span::styled(
-        "SERVICES",
+        t!("tui_runtime_widgets_sidebar_services").to_uppercase(),
         Style::default().fg(t.text_dim),
     )));
     for svc in d.services {
@@ -121,12 +125,15 @@ pub(super) fn services<'a>(
             && let Some(code) = extra.exit_code
         {
             tail.push(Span::styled(
-                format!(" exit {code}"),
+                format!(" {}", t!("tui_runtime_widgets_sidebar_exit", code = code)),
                 Style::default().fg(t.status_failed),
             ));
         }
         if extra.off && svc.state == ServiceState::Disabled {
-            tail.push(Span::styled(" off", Style::default().fg(t.text_muted)));
+            tail.push(Span::styled(
+                format!(" {}", t!("tui_runtime_widgets_sidebar_off")),
+                Style::default().fg(t.text_muted),
+            ));
         }
         if extra.restarts > 0 {
             tail.push(Span::styled(
@@ -183,7 +190,7 @@ pub(super) fn services<'a>(
 pub(super) fn mobile<'a>(out: &mut Sidebar<'a>, d: &Data<'a>, t: &Theme, tick: usize, name_w: u16) {
     if !d.mobile_phases.is_empty() {
         out.plain(Line::from(Span::styled(
-            "MOBILE",
+            t!("tui_runtime_widgets_sidebar_mobile").to_uppercase(),
             Style::default().fg(t.text_dim),
         )));
         for (label, phase) in d.mobile_phases {
@@ -224,7 +231,7 @@ pub(super) fn operation<'a>(
 ) {
     if let Some(op) = d.operation {
         out.plain(Line::from(Span::styled(
-            "OPERATIONS",
+            t!("tui_runtime_widgets_sidebar_operations").to_uppercase(),
             Style::default().fg(t.text_dim),
         )));
         let failed = op.failed.is_some();
@@ -262,12 +269,18 @@ pub(super) fn operation<'a>(
 pub(super) fn critical<'a>(out: &mut Sidebar<'a>, d: &Data<'a>, t: &Theme, width: u16) {
     if !d.critical.is_empty() {
         out.plain(Line::from(Span::styled(
-            "⚠  ISSUES",
+            format!(
+                "⚠  {}",
+                t!("tui_runtime_widgets_sidebar_issues").to_uppercase()
+            ),
             Style::default().fg(t.error).bold(),
         )));
         for (name, snippet, help) in d.critical {
             out.plain(Line::from(Span::styled(
-                format!("  {name} failed"),
+                format!(
+                    "  {}",
+                    t!("tui_runtime_widgets_sidebar_failed", name = name.as_str())
+                ),
                 Style::default().fg(t.error),
             )));
             if !snippet.is_empty() {
@@ -291,7 +304,7 @@ pub(super) fn critical<'a>(out: &mut Sidebar<'a>, d: &Data<'a>, t: &Theme, width
 pub(super) fn tunnel<'a>(out: &mut Sidebar<'a>, d: &Data<'a>, t: &Theme, width: u16, tick: usize) {
     if d.has_tunnel {
         out.plain(Line::from(Span::styled(
-            "TUNNEL",
+            t!("tui_runtime_widgets_sidebar_tunnel").to_uppercase(),
             Style::default().fg(t.text_dim),
         )));
         match d.tunnel {
@@ -305,6 +318,7 @@ pub(super) fn tunnel<'a>(out: &mut Sidebar<'a>, d: &Data<'a>, t: &Theme, width: 
                 out.plain(Line::from(vec![
                     Span::raw(" "),
                     Span::styled(format!("{icon} "), Style::default().fg(color)),
+                    // i18n-ignore: the name of the ssh program
                     Span::styled("ssh ", Style::default().fg(t.text)),
                     Span::styled(
                         format!(":{} → {}", tn.local_port, tn.ssh_host),
@@ -322,13 +336,19 @@ pub(super) fn tunnel<'a>(out: &mut Sidebar<'a>, d: &Data<'a>, t: &Theme, width: 
             None => out.plain(Line::from(vec![
                 Span::raw(" "),
                 Span::styled("○ ", Style::default().fg(t.status_stopped)),
-                Span::styled("off (opens on demand)", Style::default().fg(t.text_dim)),
+                Span::styled(
+                    t!("tui_runtime_widgets_sidebar_tunnel_off"),
+                    Style::default().fg(t.text_dim),
+                ),
             ])),
         }
         let check = if d.tunnel_kill_on_exit { "✓" } else { " " };
         out.plain(Line::from(vec![
             Span::styled(format!(" [{check}] "), Style::default().fg(t.primary)),
-            Span::styled("Kill tunnel on exit", Style::default().fg(t.text_dim)),
+            Span::styled(
+                t!("tui_runtime_widgets_sidebar_tunnel_kill"),
+                Style::default().fg(t.text_dim),
+            ),
         ]));
         out.spacer();
     }

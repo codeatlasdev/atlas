@@ -75,9 +75,60 @@ impl AgentStatus {
     }
 }
 
+/// How far an `allow` reaches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApproveScope {
+    /// This one call (the default and the primary answer): a single answer never grants standing access.
+    #[default]
+    Once,
+    /// The same kind of call for the rest of this task, never another task.
+    Task,
+}
+
+/// The longest transcript an audit entry keeps (characters).
+pub const MAX_TRANSCRIPT: usize = 200;
+
+/// The answer to a prompt: who gave it and what it says.
+#[derive(Debug, Clone)]
+pub struct Answer {
+    pub allow: bool,
+    /// Who answered: `desktop`, `phone:<node>`, `telegram:<chat>`.
+    pub by: String,
+    pub scope: ApproveScope,
+    /// What the person wrote with the answer: the agent gets it (`crew::approval`).
+    pub comment: Option<String>,
+    /// What decided: `person`, or `mode` / `grant` when hostd re-decided a waiting call itself.
+    pub source: &'static str,
+    /// The transcript this answer was spoken as (`via: voice` in the audit), at most [`MAX_TRANSCRIPT`] characters.
+    pub voice: Option<String>,
+}
+
+impl Answer {
+    /// A person's plain answer: this call only, no comment.
+    pub fn person(allow: bool, by: &str) -> Self {
+        Self {
+            allow,
+            by: by.to_string(),
+            scope: ApproveScope::Once,
+            comment: None,
+            source: "person",
+            voice: None,
+        }
+    }
+}
+
 /// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
 /// The answer carries who gave it (`desktop`, `phone:<node>`, `telegram:<chat>`): the crew audit records it.
-type Pending = (String, Value, oneshot::Sender<(bool, String)>);
+type Pending = (String, Value, oneshot::Sender<Answer>);
+
+/// A prompt [`AgentHub::open`] announced, to wait on with [`AgentHub::wait`].
+pub struct Prompt {
+    /// Its request id, as in the `agent_approval` push.
+    pub req: String,
+    pane: String,
+    rx: oneshot::Receiver<Answer>,
+}
 
 type CrewmateAnswerFn = Box<dyn Fn(&str) -> bool + Send>;
 
@@ -370,7 +421,22 @@ impl AgentHub {
         wait: Duration,
         someone_can_answer: bool,
     ) -> Option<bool> {
-        // Crewmate panes can also be answered by telegram or push.
+        let prompt = self.open(pane, agent, payload, someone_can_answer, None)?;
+        self.wait(prompt, wait).await.map(|a| a.allow)
+    }
+
+    /// Hold a permission prompt for an answer: announce it (`agent_approval`) and list it. `None` at once
+    /// unless someone can answer (`someone_can_answer`: a connected phone with `approve`; crewmate panes can
+    /// also be answered by telegram or push). `rail` names the rail that forced the question (it is asked even
+    /// where the mode would have allowed it), for the clients to say so. Finish with [`wait`](Self::wait).
+    pub fn open(
+        &self,
+        pane: &str,
+        agent: &str,
+        payload: &Value,
+        someone_can_answer: bool,
+        rail: Option<&str>,
+    ) -> Option<Prompt> {
         let is_crewmate = crate::crew::pane::is_crewmate_pane(pane);
         let crewmate_can = is_crewmate
             && self
@@ -381,14 +447,9 @@ impl AgentHub {
         if !someone_can_answer && !crewmate_can {
             return None;
         }
-        let wait = if is_crewmate {
-            std::time::Duration::from_secs(30 * 60) // CREWMATE_DECISION_WAIT
-        } else {
-            wait
-        };
         let req = crate::paths::random_hex(6).ok()?;
         let (otx, orx) = oneshot::channel();
-        let event = json!({
+        let mut event = json!({
             "ev": "agent_approval",
             "pane_key": pane,
             "agent": agent,
@@ -396,25 +457,43 @@ impl AgentHub {
             "tool_name": payload["tool_name"],
             "tool_input": payload["tool_input"],
         });
+        if let Some(rail) = rail {
+            event["rail"] = json!(rail);
+        }
         self.pending
             .lock()
             .insert(req.clone(), (pane.to_string(), event.clone(), otx));
         let _ = self.tx.send(event);
-        let res = tokio::time::timeout(wait, orx)
+        Some(Prompt {
+            req,
+            pane: pane.to_string(),
+            rx: orx,
+        })
+    }
+
+    /// Wait up to `wait` for the answer to `prompt` and announce how it ended (`agent_approval_done`). `None`:
+    /// nobody answered in time.
+    pub async fn wait(&self, prompt: Prompt, wait: Duration) -> Option<Answer> {
+        let Prompt { req, pane, rx } = prompt;
+        let res = tokio::time::timeout(wait, rx)
             .await
             .ok()
             .and_then(Result::ok);
         self.pending.lock().remove(&req);
         // How it ended and who answered, for the audit (`decision`: allow|deny|timeout; `by`: `none` for a timeout).
-        let (decision, by) = match &res {
-            Some((true, by)) => ("allow", by.as_str()),
-            Some((false, by)) => ("deny", by.as_str()),
-            None => ("timeout", "none"),
+        let (decision, by, source) = match &res {
+            Some(a) => (
+                if a.allow { "allow" } else { "deny" },
+                a.by.as_str(),
+                a.source,
+            ),
+            None => ("timeout", "none", "timeout"),
         };
         let _ = self.tx.send(json!({
             "ev": "agent_approval_done", "req": req, "pane_key": pane, "decision": decision, "by": by,
+            "source": source,
         }));
-        res.map(|(allow, _)| allow)
+        res
     }
 
     /// Answer a pending prompt from the desktop (or any client that is not named). A `req` that is
@@ -426,14 +505,29 @@ impl AgentHub {
 
     /// [`approve`](Self::approve) naming who answered: `phone:<node id>`, `telegram:<chat id>`, `desktop`.
     pub fn approve_as(&self, pane: &str, req: &str, allow: bool, by: &str) -> Result<(), String> {
+        self.answer(pane, req, Answer::person(allow, by))
+    }
+
+    /// Answer a pending prompt with everything a person can say: allow or deny, how far an allow reaches
+    /// (`scope`) and a comment the agent gets. Same refusals as [`approve`](Self::approve).
+    pub fn answer(&self, pane: &str, req: &str, answer: Answer) -> Result<(), String> {
         let mut p = self.pending.lock();
         match p.get(req) {
             Some((owner, _, _)) if owner == pane => {}
             _ => return Err("no such pending request".into()),
         }
         let (_, _, tx) = p.remove(req).expect("checked above");
-        tx.send((allow, by.to_string()))
+        tx.send(answer)
             .map_err(|_| "no such pending request".to_string())
+    }
+
+    /// End a pending prompt hostd itself decided now (the mode changed, a task grant covers it): same as
+    /// [`answer`](Self::answer) without a pane check. `false` when it was no longer waiting.
+    pub fn resolve(&self, req: &str, answer: Answer) -> bool {
+        let Some((_, _, tx)) = self.pending.lock().remove(req) else {
+            return false;
+        };
+        tx.send(answer).is_ok()
     }
 
     /// Prompts still waiting, as the `agent_approval` events that announced them (this daemon's

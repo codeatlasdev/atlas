@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { gitToast, hostErrorToast } from "#lib/gitToast.ts";
 	import { onMount, tick } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
 	import { listen } from "@tauri-apps/api/event";
@@ -20,6 +21,7 @@
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
+	import VirtualList from "#lib/components/VirtualList.svelte";
 	import {
 		visibleRows,
 		ancestorsOf,
@@ -28,7 +30,9 @@
 		statusMap,
 		statusOf,
 		navMove,
+		type TreeRow,
 	} from "#lib/stores/tree.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { worktreeId }: { worktreeId: string } = $props();
 
@@ -63,7 +67,7 @@
 			void host.fsWatch(rel ? `${root}/${rel}` : root, watchIds[rel]).catch((e) => {
 				if (watchFailed) return;
 				watchFailed = true;
-				toast.error(`File tree changes are not watched: ${errText(e)}`);
+				toast.error(m.workbench_explorer_watch_failed({ error: errText(e) }));
 			});
 		}
 	}
@@ -112,6 +116,9 @@
 		}
 		editing = { mode, rel, value: mode === "rename" ? (rel.split("/").pop() ?? "") : "" };
 		await tick();
+		// The row being edited may be off screen (the tree renders a window of its rows).
+		vl?.reveal(items.findIndex((r) => (mode === "rename" ? r.rel === rel : r.isNew)));
+		await tick();
 		editInput?.focus();
 		// Select the stem so typing replaces the name but keeps the extension.
 		const v = editing?.value ?? "";
@@ -128,19 +135,17 @@
 		const name = e?.value.trim();
 		if (!e || !name || name.includes("/")) return;
 		if (e.mode === "folder") {
-			await host.fsMkdir(`${root}/${join(e.rel, name)}`).catch((err) => toast.error(errText(err)));
+			await host.fsMkdir(`${root}/${join(e.rel, name)}`).catch(hostErrorToast);
 			await load(e.rel);
 			expanded[join(e.rel, name)] = true;
 		} else if (e.mode === "new") {
 			const rel = join(e.rel, name);
-			await host.fsWrite(`${root}/${rel}`, "").catch((err) => toast.error(errText(err)));
+			await host.fsWrite(`${root}/${rel}`, "").catch(hostErrorToast);
 			await load(e.rel);
 			openFile(worktreeId, rel);
 		} else if (name !== e.rel.split("/").pop()) {
 			const dir = parentOf(e.rel);
-			await host
-				.fsRename(`${root}/${e.rel}`, `${root}/${join(dir, name)}`)
-				.catch((err) => toast.error(errText(err)));
+			await host.fsRename(`${root}/${e.rel}`, `${root}/${join(dir, name)}`).catch(hostErrorToast);
 			await load(dir);
 		}
 		focusRow(e.mode === "rename" ? join(parentOf(e.rel), name) : join(e.rel, name));
@@ -157,11 +162,35 @@
 	}
 
 	let listEl: HTMLDivElement | undefined = $state();
+	let vl: ReturnType<typeof VirtualList<Item>> | undefined = $state();
 	let cursor = $state("");
+	/** Index of the first row at the top of the viewport (the tab stop when the cursor row is far away). */
+	let firstVisible = $state(0);
+
+	/** A row of the tree, or the input for a new file/folder (at the top of its folder). */
+	type Item = TreeRow & { isNew?: boolean };
+	let entries = $derived(visibleRows(children, expanded));
+	let items = $derived.by((): Item[] => {
+		if (!editing || editing.mode === "rename") return entries;
+		const at = editing.rel === "" ? -1 : entries.findIndex((r) => r.rel === editing!.rel);
+		if (at < 0 && editing.rel !== "") return entries; // its folder is not shown (collapsed meanwhile)
+		const depth = at < 0 ? 0 : entries[at].depth + 1;
+		const row: Item = { rel: `\0new:${editing.rel}`, name: "", dir: false, depth, isNew: true };
+		return [...entries.slice(0, at + 1), row, ...entries.slice(at + 1)];
+	});
+	/** The one row in the tab order: the cursor's while it is near the viewport, else the top row (rows come and go as it scrolls). */
+	let tabRel = $derived.by(() => {
+		const i = items.findIndex((r) => !r.isNew && r.rel === cursor);
+		return items[i >= firstVisible && i < firstVisible + 20 ? i : firstVisible]?.rel;
+	});
 
 	function focusRow(rel: string) {
 		cursor = rel;
-		void tick().then(() => listEl?.querySelector<HTMLElement>(`[data-rel="${CSS.escape(rel)}"]`)?.focus());
+		void tick().then(async () => {
+			vl?.reveal(items.findIndex((r) => !r.isNew && r.rel === rel));
+			await tick();
+			listEl?.querySelector<HTMLElement>(`[data-rel="${CSS.escape(rel)}"]`)?.focus();
+		});
 	}
 
 	/** Expand every folder above the active file, then scroll to and highlight it. */
@@ -172,8 +201,8 @@
 			if (!children[dir]) await load(dir);
 		}
 		await tick();
-		const el = listEl?.querySelector<HTMLElement>(`[data-rel="${CSS.escape(activePath)}"]`);
-		el?.scrollIntoView({ block: "center", behavior: "smooth" });
+		const i = items.findIndex((r) => !r.isNew && r.rel === activePath);
+		if (i >= 0) await vl?.scrollToIndex(i);
 		cursor = activePath;
 	}
 
@@ -187,7 +216,7 @@
 		if (editing || fromMenu(ev)) return;
 		if (onTreeContextKey(ev)) return;
 		if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-		const move = navMove(ev.key, visibleRows(children, expanded), cursor, expanded);
+		const move = navMove(ev.key, entries, cursor, expanded);
 		if (!move) return;
 		ev.preventDefault();
 		if (move.toggle !== undefined) toggle(move.toggle);
@@ -198,24 +227,25 @@
 
 	async function remove(rel: string, dir: boolean) {
 		if (
-			!(await confirmDialog(`Delete ${rel.split("/").pop()}?`, {
-				description: dir ? "The folder and everything in it." : rel,
-				confirmLabel: "Delete",
+			!(await confirmDialog(m.workbench_explorer_delete_title({ name: rel.split("/").pop() ?? rel }), {
+				description: dir ? m.workbench_explorer_delete_folder() : rel,
+				confirmLabel: m.common_action_delete(),
 				destructive: true,
 			}))
 		)
 			return;
-		await host.fsRemove(`${root}/${rel}`, dir).catch((e) => toast.error(errText(e)));
+		await host.fsRemove(`${root}/${rel}`, dir).catch(hostErrorToast);
 		await load(parentOf(rel));
 	}
 
 	async function gitDo(args: string[]) {
 		const r = await git.run(worktreeId, args);
-		if (r.code !== 0) toast.error(r.stderr || "git failed");
+		if (r.code !== 0) gitToast(r.stderr || r.stdout || m.workbench_explorer_git_failed());
 		await gitStatus.refresh(worktreeId);
 	}
 
-	const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.success("Copied"));
+	const copy = (t: string) =>
+		navigator.clipboard.writeText(t).then(() => toast.success(m.capture_quick_page_copied()));
 
 	/**
 	 * One menu for the `…` button, right-click and Shift+F10 / the menu key: `menuTarget` says what it is about,
@@ -260,8 +290,9 @@
 		const taken = new Set((children[dir] ?? []).map((e) => e.name));
 		const to = join(dir, duplicateName(name, taken));
 		const r = await host.exec(root, ["cp", "-R", "--", `${root}/${rel}`, `${root}/${to}`]).catch((e) => e);
-		if (r instanceof Error || (r as { code?: number }).code) {
-			toast.error(r instanceof Error ? errText(r) : (r as { stderr: string }).stderr || "Duplicate failed");
+		if (r instanceof Error || typeof r === "string") return void hostErrorToast(r);
+		if ((r as { code?: number }).code) {
+			toast.error((r as { stderr: string }).stderr || m.workbench_explorer_duplicate_failed({ name }));
 			return;
 		}
 		await load(dir);
@@ -298,8 +329,8 @@
 				return gitDo(["add", "--", rel]);
 			case "discard":
 				return (
-					(await confirmDialog(`Discard changes to ${rel}?`, {
-						confirmLabel: "Discard",
+					(await confirmDialog(m.workbench_explorer_discard_title({ path: rel }), {
+						confirmLabel: m.workbench_explorer_menu_discard_changes(),
 						destructive: true,
 					})) && gitDo(["checkout", "--", rel])
 				);
@@ -321,40 +352,35 @@
 
 <svelte:window {onkeydown} />
 
-{#snippet newRow(dir: string, depth: number)}
-	{#if editing && editing.mode !== "rename" && editing.rel === dir}
-		<div class="row editing" style:padding-left="{8 + depth * prefs.value.project_panel.indent_size}px">
+{#snippet rowOf(r: Item)}
+	{#if r.isNew}
+		<div class="row editing" style:padding-left="{8 + r.depth * prefs.value.project_panel.indent_size}px">
 			<span class="sp"></span>
 			<input
 				class="edit"
 				bind:this={editInput}
-				bind:value={editing.value}
+				bind:value={editing!.value}
 				onkeydown={onEditKey}
 				onblur={commitEdit}
-				placeholder="name.ext"
+				placeholder={m.workbench_explorer_new_file_placeholder()}
 				spellcheck="false"
-				aria-label="New file name"
+				aria-label={m.workbench_explorer_new_file_name()}
 			/>
 		</div>
-	{/if}
-{/snippet}
-
-{#snippet tree(dir: string, depth: number)}
-	{@render newRow(dir, depth)}
-	{#each children[dir] ?? [] as e (e.name)}
-		{@const rel = join(dir, e.name)}
-		{@const isDir = e.kind === "dir"}
+	{:else}
+		{@const rel = r.rel}
+		{@const isDir = r.dir}
 		{@const st = statusOf(status, rel)}
 		<div
 			class="row {st ?? ''}"
 			class:active={!isDir && rel === activePath}
 			class:cur={cursor === rel}
-			style:padding-left="{8 + depth * prefs.value.project_panel.indent_size}px"
+			style:padding-left="{8 + r.depth * prefs.value.project_panel.indent_size}px"
 			role="treeitem"
 			aria-selected={!isDir && rel === activePath}
 			aria-expanded={isDir ? !!expanded[rel] : undefined}
 			data-rel={rel}
-			tabindex={cursor === rel || (!cursor && rel === (children[""]?.[0]?.name ?? "")) ? 0 : -1}
+			tabindex={rel === tabRel ? 0 : -1}
 			draggable="true"
 			ondragstart={(ev) => ev.dataTransfer?.setData("text/plain", `${root}/${rel}`)}
 			onfocus={() => (cursor = rel)}
@@ -369,12 +395,12 @@
 			{#if isDir}
 				{#if expanded[rel]}<ChevronDown size={11} />{:else}<ChevronRight size={11} />{/if}
 				{#if prefs.value.project_panel.folder_icons}<span class="ico" data-contrast-decorative
-						>{@html folderIcon(e.name, !!expanded[rel])}</span
+						>{@html folderIcon(r.name, !!expanded[rel])}</span
 					>{/if}
 			{:else}
 				<span class="sp"></span>{#if prefs.value.project_panel.file_icons}<span
 						class="ico"
-						data-contrast-decorative>{@html fileIcon(e.name)}</span
+						data-contrast-decorative>{@html fileIcon(r.name)}</span
 					>{/if}
 			{/if}
 			{#if editing?.mode === "rename" && editing.rel === rel}
@@ -386,41 +412,40 @@
 					onblur={commitEdit}
 					onclick={(ev) => ev.stopPropagation()}
 					spellcheck="false"
-					aria-label="New name"
+					aria-label={m.workbench_explorer_new_name()}
 				/>
 			{:else}
-				<span class="name">{e.name}</span>
+				<span class="name">{r.name}</span>
 			{/if}
 			<button
 				type="button"
 				class="more"
-				aria-label="More actions"
+				aria-label={m.capture_quick_page_more_actions()}
 				tabindex="-1"
 				onclick={(ev) => {
 					ev.stopPropagation();
-					const r = ev.currentTarget.getBoundingClientRect();
-					void openMenu(menuOf(rel, isDir), r.right, r.bottom);
+					const b = ev.currentTarget.getBoundingClientRect();
+					void openMenu(menuOf(rel, isDir), b.right, b.bottom);
 				}}
 				onkeydown={(ev) => ev.stopPropagation()}><Ellipsis size={12} /></button
 			>
 		</div>
-		{#if isDir && expanded[rel]}{@render tree(rel, depth + 1)}{/if}
-	{/each}
+	{/if}
 {/snippet}
 
 <aside class="explorer">
 	<div class="head">
 		<span class="title">
 			{#if repoId}<ProjectIcon id={repoId} size={16} />{/if}
-			<span class="tname">{project?.name ?? "Files"}</span>
+			<span class="tname">{project?.name ?? m.sidebar_loose_files_files()}</span>
 		</span>
 		<span class="hbtns">
-			<Tip label="Reveal active file" side="bottom">
+			<Tip label={m.workbench_explorer_reveal_active_file()} side="bottom">
 				{#snippet child(props)}
 					<button
 						{...props}
 						class="hbtn"
-						aria-label="Reveal active file"
+						aria-label={m.workbench_explorer_reveal_active_file()}
 						disabled={!activePath}
 						onclick={revealActive}
 					>
@@ -428,16 +453,26 @@
 					</button>
 				{/snippet}
 			</Tip>
-			<Tip label="New file" side="bottom">
+			<Tip label={m.workbench_explorer_new_file()} side="bottom">
 				{#snippet child(props)}
-					<button {...props} class="hbtn" aria-label="New file" onclick={() => newFile("")}>
+					<button
+						{...props}
+						class="hbtn"
+						aria-label={m.workbench_explorer_new_file()}
+						onclick={() => newFile("")}
+					>
 						<FilePlus size={13} />
 					</button>
 				{/snippet}
 			</Tip>
-			<Tip label="New folder" side="bottom">
+			<Tip label={m.workbench_explorer_new_folder()} side="bottom">
 				{#snippet child(props)}
-					<button {...props} class="hbtn" aria-label="New folder" onclick={() => newFolder("")}>
+					<button
+						{...props}
+						class="hbtn"
+						aria-label={m.workbench_explorer_new_folder()}
+						onclick={() => newFolder("")}
+					>
 						<FolderPlus size={13} />
 					</button>
 				{/snippet}
@@ -458,9 +493,11 @@
 				{#each [70, 55, 80, 45, 65] as w, i (i)}<Skeleton variant="rounded" height={14} width="{w}%" />{/each}
 			</div>
 		{:else if !children[""].length}
-			<p class="none">This folder is empty.</p>
+			<p class="none">{m.workbench_explorer_this_folder_is_empty()}</p>
 		{:else}
-			{@render tree("", 0)}
+			<VirtualList bind:this={vl} bind:firstVisible class="vtree" {items} key={(r) => r.rel} estimate={22}>
+				{#snippet item(r)}{@render rowOf(r)}{/snippet}
+			</VirtualList>
 		{/if}
 	</div>
 	<PointerMenu
@@ -542,8 +579,13 @@
 	}
 	.list {
 		flex: 1;
-		overflow: auto;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 		padding: 4px 0 10px;
+	}
+	.list :global(.vtree) {
+		flex: 1;
 	}
 	.row {
 		display: flex;

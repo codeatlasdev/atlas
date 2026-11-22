@@ -1,124 +1,184 @@
-<!-- Ready step right panel: the first crewmate's card (large face, name, engine badge). -->
+<!--
+  Ready step panel: the first crewmate online on the server, with its first chat bubble. The face hops, the rack
+  lights are green, the bubble types in once. Transform and opacity only.
+-->
 <script lang="ts">
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
 	import { agentLogo } from "#lib/agentLogos.ts";
+	import { reducedMotion } from "#lib/crew/motion.ts";
 	import type { CrewmateLook } from "#lib/crew/look.ts";
+	import ServerRack from "./ServerRack.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { engine, look }: { engine: string; look: CrewmateLook } = $props();
 
 	const logo = $derived(agentLogo(engine || "claude"));
 </script>
 
-<div class="ready-hero">
-	<div class="hero-face-wrap">
-		<div class="hero-bob">
-			<CrewmateFace seed="onb-preview" {look} state="idle" size={140} />
+<div class="ready-hero" class:still={reducedMotion} data-testid="ready-scene">
+	<div class="bubble">
+		<span class="dots"><i></i><i></i><i></i></span>
+		<span class="msg">{m.crew_onboarding_ready_hero_greeting()}</span>
+	</div>
+	<div class="who">
+		<div class="face-wrap">
+			<div class="bob"><CrewmateFace seed="onb-preview" {look} state="idle" size={132} /></div>
+			{#if logo}<span class="engine">{@html logo.dark ?? logo.light}</span>{/if}
+			<span class="online" title={m.crew_onboarding_ready_hero_online()}></span>
 		</div>
-		{#if logo}
-			<span class="hero-badge">{@html logo.dark ?? logo.light}</span>
-		{/if}
+		<svg class="rack" viewBox="0 0 150 176" aria-hidden="true"><ServerRack state="ok" /></svg>
 	</div>
-	<div class="hero-info">
-		<span class="hero-name">My First Crewmate</span>
-		<span class="hero-sub">No tasks yet</span>
-	</div>
+	<p class="cap">
+		<b>{m.crew_onboarding_ready_hero_crewmate_name()}</b>
+		{m.crew_onboarding_ready_hero_online_caption()}
+	</p>
 </div>
 
 <style>
 	.ready-hero {
-		width: min(360px, 88%);
-		padding: 36px 32px 28px;
-		background: var(--ca-surface-base);
-		border: 1.5px solid var(--ca-border-subtle);
-		border-radius: 20px;
+		width: min(400px, 90%);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 20px;
-		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
-		animation: hero-spring 560ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+		gap: 18px;
+		animation: ob-rise 520ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
 	}
 
-	@keyframes hero-spring {
-		from {
-			opacity: 0;
-			transform: translateY(32px) scale(0.88);
-		}
-		to {
-			opacity: 1;
-			transform: none;
-		}
-	}
-
-	.hero-face-wrap {
+	.bubble {
 		position: relative;
-		flex-shrink: 0;
+		align-self: flex-end;
+		max-width: 80%;
+		padding: 12px 16px;
+		border-radius: 16px 16px 4px 16px;
+		background: color-mix(in srgb, var(--ob-accent, var(--ca-accent)) 20%, var(--ca-surface-base));
+		border: 1.5px solid var(--ob-accent, var(--ca-accent));
+		color: var(--ca-text-primary);
+		font-size: 14px;
+		animation: ob-rise 500ms 500ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
 	}
 
-	/* periodic hop after the spring entrance */
-	.hero-bob {
-		animation: face-hop 3.6s ease-in-out infinite;
-		animation-delay: 700ms;
-	}
-
-	@keyframes face-hop {
-		0%,
-		75%,
-		100% {
-			transform: translateY(0);
-		}
-		88% {
-			transform: translateY(-9px);
-		}
-	}
-
-	.hero-badge {
+	.dots {
 		position: absolute;
-		bottom: -4px;
-		right: -4px;
-		width: 30px;
-		height: 30px;
-		background: var(--ca-surface-base);
-		border: 2.5px solid var(--ca-surface-base);
-		border-radius: 9px;
+		inset: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		overflow: hidden;
-		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-	}
-
-	.hero-badge :global(svg) {
-		width: 22px;
-		height: 22px;
-	}
-
-	.hero-info {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
 		gap: 5px;
-		text-align: center;
+		background: inherit;
+		border-radius: inherit;
+		animation: ob-fade 1.6s 0.5s ease forwards;
 	}
 
-	.hero-name {
-		font-size: 26px;
-		font-weight: 700;
-		color: var(--ca-text-primary);
-		letter-spacing: -0.02em;
+	.dots i {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--ob-accent, var(--ca-accent));
+		animation: ob-dot 700ms ease-in-out infinite;
 	}
 
-	.hero-sub {
+	.dots i:nth-child(2) {
+		animation-delay: 120ms;
+	}
+
+	.dots i:nth-child(3) {
+		animation-delay: 240ms;
+	}
+
+	.who {
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		gap: 28px;
+	}
+
+	.face-wrap {
+		position: relative;
+	}
+
+	.bob {
+		animation: ob-hop 3.6s ease-in-out infinite;
+	}
+
+	.engine {
+		position: absolute;
+		right: -8px;
+		bottom: 4px;
+		width: 34px;
+		height: 34px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--ca-surface-base);
+		border: 1.5px solid var(--ob-line-idle, var(--ca-border-subtle));
+	}
+
+	.engine :global(svg) {
+		width: 20px;
+		height: 20px;
+	}
+
+	.online {
+		position: absolute;
+		left: 6px;
+		top: 6px;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--ob-ok, var(--ca-semantic-success));
+		border: 2px solid var(--ca-surface-sunken);
+	}
+
+	.rack {
+		width: 92px;
+		flex-shrink: 0;
+	}
+
+	.cap {
+		margin: 0;
 		font-size: 14px;
 		color: var(--ca-text-secondary);
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.ready-hero {
-			animation: none;
+	.cap b {
+		color: var(--ca-text-primary);
+	}
+
+	@keyframes ob-rise {
+		from {
+			opacity: 0;
+			transform: translateY(18px) scale(0.94);
 		}
-		.hero-bob {
-			animation: none;
+	}
+
+	@keyframes ob-fade {
+		to {
+			opacity: 0;
+			visibility: hidden;
 		}
+	}
+
+	@keyframes ob-dot {
+		50% {
+			transform: translateY(-4px);
+			opacity: 0.5;
+		}
+	}
+
+	@keyframes ob-hop {
+		0%,
+		85%,
+		100% {
+			transform: none;
+		}
+		92% {
+			transform: translateY(-10px);
+		}
+	}
+
+	.still *,
+	.still {
+		animation: none !important;
 	}
 </style>

@@ -10,11 +10,17 @@
 #   fastlane release          promote BUILD_NUMBER (already tested) to both stores
 #   fastlane ios_release      submit that TestFlight build to App Store review
 #   fastlane android_release  promote that internal build to Play production
+#   fastlane android_apk      the Play-signed universal APK of that build, for the GitHub release
+#   fastlane ios_rehearse     the iOS store build, unsigned, never uploaded (pull requests)
+#   fastlane android_rehearse the Android store bundle, debug-signed, never uploaded (pull requests)
+
+require "digest"
 
 default_platform(:ios)
 
 APP = File.expand_path("..", __dir__) # apps/mobile
 ANDROID_PACKAGE = "br.com.codeatlas.atlas.mobile"
+IOS_BUNDLE_ID = "br.com.codeatlas.atlas.mobile"
 
 BETA_DESCRIPTION = <<~TEXT.strip
   Atlas on your phone: see and control the Atlas running on your computer, from anywhere and
@@ -45,6 +51,13 @@ def flutter(*args)
   sh("flutter", *args, log: true) # sh runs from fastlane/; Flutter needs the app dir
 end
 
+# The translations are not committed: the ARB files come from the one catalog (i18n/messages, the `mobile` surface)
+# and `flutter pub get` turns them into lib/l10n/app_localizations.dart. Every store build starts here.
+def write_translations
+  sh("bun", File.join(APP, "../../scripts/i18n/generate.ts"), "--surface", "mobile", log: true)
+  flutter("pub", "get")
+end
+
 # What every store build passes to `flutter build`. The pubspec's default flavor is the Atlas Dev app, so the
 # store app is always asked for by name (`prod`: br.com.codeatlas.atlas.mobile). The Dart symbols go to a
 # directory instead of the binary (smaller App.framework / libapp.so); CI keeps that directory as an artifact
@@ -71,19 +84,44 @@ lane :beta do
   android_beta(build_number: n)
 end
 
+# The TestFlight groups a build must be handed to. A group with access to all builds already gets every
+# build once it is processed, and App Store Connect refuses to assign one to it ("Builds cannot be assigned
+# to this internal group", mobile-v1.0.1), so those are left out. Needs the API key set first.
+def assignable_groups(names)
+  return [] if names.empty?
+  app = Spaceship::ConnectAPI::App.find(IOS_BUNDLE_ID)
+  UI.user_error!("no App Store Connect app #{IOS_BUNDLE_ID}") unless app
+  by_name = app.get_beta_groups.to_h { |g| [g.name, g] }
+  unknown = names - by_name.keys
+  UI.user_error!("unknown TestFlight groups: #{unknown.join(', ')}") unless unknown.empty?
+  automatic, manual = names.partition { |name| by_name[name].has_access_to_all_builds }
+  UI.message("TestFlight: #{automatic.join(', ')} get every build automatically") unless automatic.empty?
+  manual
+end
+
 lane :ios_beta do |options|
   need("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "APPLE_TEAM_ID")
   n = options[:build_number] || build_number
+  # Internal groups only: external testers need Apple's beta review (and a way to try the
+  # app without a computer running Atlas).
+  groups = ENV.fetch("TESTFLIGHT_GROUPS", "").split(",").map(&:strip).reject(&:empty?)
+  # Handing a build to a group needs the app's beta information (description AND feedback email):
+  # without the email fastlane reports it "set" but creates no localization, and App Store Connect
+  # refuses the distribution after a 25-minute build ("Beta App Description is missing"). Checked here,
+  # before anything is built.
+  need("BETA_FEEDBACK_EMAIL") unless groups.empty?
   key = app_store_connect_api_key(
     key_id: ENV["ASC_KEY_ID"],
     issuer_id: ENV["ASC_ISSUER_ID"],
     key_content: ENV["ASC_KEY_P8"],
   )
+  groups = assignable_groups(groups)
   # xcodebuild signs with the same key (automatic signing, no certificates in the repo).
   p8 = File.join(Dir.tmpdir, "AuthKey_#{ENV['ASC_KEY_ID']}.p8")
   File.write(p8, ENV["ASC_KEY_P8"])
   plist = write_firebase_config("ios/GoogleService-Info.plist", "GOOGLE_SERVICE_INFO_PLIST")
   Dir.chdir(APP) do
+    write_translations
     flutter("build", "ios", "--no-codesign", *store_build_args("ios", n))
   end
   # Archive and export both sign through the API key (role Admin: creating the cloud-managed
@@ -104,9 +142,6 @@ lane :ios_beta do |options|
     xcargs: "#{auth} DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}",
     export_options: { signingStyle: "automatic", teamID: ENV["APPLE_TEAM_ID"] },
   )
-  # Internal groups only: external testers need Apple's beta review (and a way to try the
-  # app without a computer running Atlas).
-  groups = ENV.fetch("TESTFLIGHT_GROUPS", "").split(",").map(&:strip).reject(&:empty?)
   upload_to_testflight(
     api_key: key,
     ipa: ipa,
@@ -116,6 +151,10 @@ lane :ios_beta do |options|
     beta_app_description: BETA_DESCRIPTION,
     beta_app_feedback_email: ENV["BETA_FEEDBACK_EMAIL"],
     changelog: ENV.fetch("BETA_CHANGELOG", "New test build."),
+    # The groups are internal (see above), and internal testers need no beta review. pilot submits one
+    # by default, which fails without the beta review contact ("Missing required information to submit
+    # for external testing"), after the build is already uploaded (mobile-v1.0.1).
+    submit_beta_review: false,
   )
 ensure
   [p8, plist].each { |f| File.delete(f) if f && File.exist?(f) }
@@ -136,6 +175,7 @@ lane :android_beta do |options|
   PROPS
   gservices = write_firebase_config("android/app/google-services.json", "GOOGLE_SERVICES_JSON")
   Dir.chdir(APP) do
+    write_translations
     flutter("build", "appbundle", *store_build_args("android", n))
   end
   upload_to_play_store(
@@ -149,6 +189,37 @@ lane :android_beta do |options|
   )
 ensure
   [props, jks, gservices].each { |f| File.delete(f) if f && File.exist?(f) }
+end
+
+# The universal APK Google Play generates from the bundle BUILD_NUMBER, signed with Play's app signing key: the
+# same signature as an install from the Play Store, so one updates the other. An APK built and signed here would
+# carry the upload key instead, and Android refuses to update across different signatures. Written to
+# build/apk/atlas-mobile-VERSION.apk with its .sha256, which scripts/mobile-apk-release.sh attaches to the tag's
+# GitHub release.
+#
+# Right after the upload Play may not have generated the APK yet: APK_WAIT_MINUTES (the workflow's testing stage
+# sets it) waits for it, a minute at a time. Only for that: a refused key or a missing permission (401, 403) stops
+# at once, and without APK_WAIT_MINUTES every error does.
+lane :android_apk do
+  need("PLAY_SERVICE_ACCOUNT_JSON", "BUILD_NUMBER")
+  apk = File.join(APP, "build/apk/atlas-mobile-#{version_name}.apk")
+  deadline = Time.now + (ENV["APK_WAIT_MINUTES"].to_i * 60)
+  begin
+    download_universal_apk_from_google_play(
+      package_name: ANDROID_PACKAGE,
+      version_code: ENV["BUILD_NUMBER"].to_i,
+      json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      destination: apk, # the action creates the folder
+    )
+  rescue StandardError => e
+    raise if Time.now >= deadline || e.message =~ /\b(401|403)\b|unauthori[sz]ed|forbidden|permission|invalid_grant/i
+    UI.important("Play has no universal APK for #{ENV['BUILD_NUMBER']} yet (#{e.message.lines.first&.strip}); waiting 60 s")
+    sleep(60)
+    retry
+  end
+  sum = Digest::SHA256.file(apk).hexdigest
+  File.write("#{apk}.sha256", "#{sum}  #{File.basename(apk)}\n")
+  UI.success("#{File.basename(apk)} #{sum}")
 end
 
 # The store half: never builds. It promotes the exact build testers had (BUILD_NUMBER), so what
@@ -175,46 +246,98 @@ lane :ios_release do
     skip_screenshots: true,
     submit_for_review: true,
     automatic_release: true,
+    # precheck cannot read in-app purchases through an API key and fails the whole submission on it
+    # (the app has none).
+    precheck_include_in_app_purchases: false,
+    # Export compliance: the app's Info.plist already says ITSAppUsesNonExemptEncryption = NO.
+    submission_information: { export_compliance_uses_encryption: false },
     force: true,
   )
 end
 
 # Move the internal-testing build BUILD_NUMBER to production, to every user at once.
+#
+# An app that was never published is a "draft app" for Play, and the API refuses to roll anything out
+# on it ("Only releases with status draft may be created on draft app"). Its first production release
+# is therefore created as a draft and sent to review from Play Console (Publishing overview → Send for
+# review); every later release goes out completed from here.
 lane :android_release do
   need("PLAY_SERVICE_ACCOUNT_JSON", "BUILD_NUMBER")
-  upload_to_play_store(
-    package_name: ANDROID_PACKAGE,
-    json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
-    track: "internal",
-    track_promote_to: "production",
-    version_code: ENV["BUILD_NUMBER"].to_i,
-    track_promote_release_status: "completed",
-    skip_upload_apk: true,
-    skip_upload_aab: true,
-    skip_upload_metadata: true,
-    skip_upload_changelogs: true,
-    skip_upload_images: true,
-    skip_upload_screenshots: true,
+  promote = lambda do |status|
+    upload_to_play_store(
+      package_name: ANDROID_PACKAGE,
+      json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      track: "internal",
+      track_promote_to: "production",
+      version_code: ENV["BUILD_NUMBER"].to_i,
+      track_promote_release_status: status,
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+  begin
+    promote.call("completed")
+  rescue StandardError => e
+    raise unless e.message =~ /draft app/i
+    promote.call("draft")
+    UI.important("Play: first production release created as a DRAFT (the app was never published). " \
+                 "Finish it once in Play Console: Publishing overview → Send for review.")
+  end
+end
+
+# Rehearsal (pull requests that touch the release path, `.github/workflows/mobile-release.yml`): the
+# store builds exactly as a release makes them (same flavor, flags and symbols), but unsigned and never
+# uploaded, with no secret at all. A break in the store build shows up on the PR, not on a release tag.
+lane :ios_rehearse do
+  Dir.chdir(APP) do
+    write_translations
+    flutter("build", "ios", "--no-codesign", *store_build_args("ios", build_number))
+  end
+  build_app(
+    workspace: File.join(APP, "ios/Runner.xcworkspace"),
+    scheme: "prod",
+    skip_codesigning: true,
+    skip_package_ipa: true,
+    archive_path: File.join(APP, "build/fastlane/Runner.xcarchive"),
+    xcargs: "CODE_SIGNING_ALLOWED=NO",
   )
+end
+
+lane :android_rehearse do
+  Dir.chdir(APP) do
+    write_translations
+    # No key.properties: build.gradle.kts signs with the debug key, which is enough to prove the bundle builds.
+    flutter("build", "appbundle", *store_build_args("android", build_number))
+  end
+  aab = File.join(APP, "build/app/outputs/bundle/prodRelease/app-prod-release.aab")
+  UI.user_error!("no bundle at #{aab}") unless File.exist?(aab)
 end
 
 # Hand an already uploaded iOS build to the TestFlight groups (e.g. after fixing what blocked
 # the distribution). BUILD_NUMBER and VERSION name it.
 lane :ios_distribute do
   need("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "BUILD_NUMBER", "TESTFLIGHT_GROUPS")
+  key = app_store_connect_api_key(
+    key_id: ENV["ASC_KEY_ID"],
+    issuer_id: ENV["ASC_ISSUER_ID"],
+    key_content: ENV["ASC_KEY_P8"],
+  )
+  groups = assignable_groups(ENV["TESTFLIGHT_GROUPS"].split(",").map(&:strip).reject(&:empty?))
+  next UI.success("Nothing to hand over: every group gets new builds automatically") if groups.empty?
   upload_to_testflight(
-    api_key: app_store_connect_api_key(
-      key_id: ENV["ASC_KEY_ID"],
-      issuer_id: ENV["ASC_ISSUER_ID"],
-      key_content: ENV["ASC_KEY_P8"],
-    ),
+    api_key: key,
     distribute_only: true,
     app_platform: "ios",
     app_version: ENV.fetch("VERSION", "1.0.0"),
     build_number: ENV["BUILD_NUMBER"],
-    groups: ENV["TESTFLIGHT_GROUPS"].split(",").map(&:strip),
+    groups: groups,
     beta_app_description: BETA_DESCRIPTION,
     beta_app_feedback_email: ENV["BETA_FEEDBACK_EMAIL"],
     changelog: ENV.fetch("BETA_CHANGELOG", "New test build."),
+    submit_beta_review: false, # internal groups only, as in ios_beta
   )
 end

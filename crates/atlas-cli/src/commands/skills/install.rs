@@ -1,4 +1,5 @@
 use anyhow::Result;
+use atlas_i18n::t;
 use atlas_skills::{InstallOutcome, embedded};
 
 use super::{manifest_path, skills_dir};
@@ -18,32 +19,42 @@ pub fn handle(names: Vec<String>, global: bool) -> Result<()> {
         match outcome {
             InstallOutcome::Installed => {
                 installed += 1;
-                println!("  {name}  \x1b[32m✓\x1b[0m  installed v{version}");
+                println!(
+                    "  {name}  \x1b[32m✓\x1b[0m  {}",
+                    t!("cmd_skills_installed", version = version)
+                );
             }
             InstallOutcome::Updated => {
                 updated += 1;
-                println!("  {name}  \x1b[33m↑\x1b[0m  updated → v{version}");
+                println!(
+                    "  {name}  \x1b[33m↑\x1b[0m  {}",
+                    t!("cmd_skills_updated", version = version)
+                );
             }
             InstallOutcome::UpToDate => {
-                println!("  {name}  \x1b[2m─\x1b[0m  v{version} (up to date)");
+                println!(
+                    "  {name}  \x1b[2m─\x1b[0m  {}",
+                    t!("cmd_skills_up_to_date", version = version)
+                );
             }
         }
     }
 
     println!();
+    let dir = dir.display().to_string();
     if installed + updated == 0 {
-        println!("Nothing changed ({}).", dir.display());
+        println!("{}", t!("cmd_skills_nothing_changed", dir = &dir));
     } else {
         if installed > 0 {
             println!(
-                "\x1b[32m✓\x1b[0m  {installed} skill(s) installed → {}",
-                dir.display()
+                "\x1b[32m✓\x1b[0m  {}",
+                t!("cmd_skills_installed_total", count = installed, dir = &dir)
             );
         }
         if updated > 0 {
             println!(
-                "\x1b[33m↑\x1b[0m  {updated} skill(s) updated → {}",
-                dir.display()
+                "\x1b[33m↑\x1b[0m  {}",
+                t!("cmd_skills_updated_total", count = updated, dir = &dir)
             );
         }
     }

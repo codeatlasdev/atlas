@@ -18,6 +18,7 @@
 //! permission). The summon key is a setting; the action table ([`Action`]) is where later hotkeys (push-to-talk,
 //! capture) join it.
 
+use atlas_i18n::{t, t_in};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -80,7 +81,7 @@ impl DockPrefs {
         crate::hotkeys::accelerator(&self.summon)?;
         crate::hotkeys::accelerator(&self.toggle)?;
         if !self.summon.trim().is_empty() && self.summon.trim() == self.toggle.trim() {
-            return Err("The summon and hide keys are the same; pick two different keys".into());
+            return Err(t!("native_notify_dock_keys_clash"));
         }
         Ok(())
     }
@@ -175,6 +176,43 @@ pub struct DockState {
     ready: std::sync::atomic::AtomicBool,
     /// Captures sent to the composer (`attach`) that the page has not taken yet.
     attachments: Mutex<Attachments>,
+    /// The window is being built right now (lazily, off the event loop): a second request must not build it twice.
+    building: std::sync::atomic::AtomicBool,
+    /// Something asked for the pill before its window existed: what to do once its page has painted (`dock_ready`).
+    pending: Mutex<Pending>,
+}
+
+/// What was asked of a dock window that was not built yet.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Pending {
+    show: bool,
+    summon: bool,
+}
+
+/// What the page's `dock_ready` does for the requests that came before it existed.
+#[derive(Debug, PartialEq, Eq)]
+enum OnReady {
+    Summon,
+    Show,
+    Nothing,
+}
+
+/// A summon includes the show; a show is owed when the pill is enabled (the old "always there while Atlas runs") or was asked for.
+fn on_ready(enabled: bool, pending: Pending) -> OnReady {
+    if pending.summon {
+        OnReady::Summon
+    } else if enabled || pending.show {
+        OnReady::Show
+    } else {
+        OnReady::Nothing
+    }
+}
+
+/// Whether the dock window is built when Atlas starts: only for a pill the user sees. Hidden is "no window at all" (see
+/// [`DockPrefs::enabled`]); it is built the first time something shows it. Linux and Windows default to hidden, so a launch there
+/// no longer loads a transparent always-on-top page that nobody sees (#286).
+fn builds_at_launch(prefs: &DockPrefs) -> bool {
+    prefs.enabled
 }
 
 /// Captures waiting for the dock page: a queue the page drains (`dock_take_attachments`), because the dock page may
@@ -237,7 +275,7 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let win = builder
         .theme(theme)
         .initialization_script(script)
-        .title("Atlas Dock")
+        .title(t!("native_tray_dock_window_title"))
         .inner_size(PILL.0, PILL.1)
         .decorations(false)
         .transparent(true)
@@ -255,6 +293,13 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         crate::dock_mac::make_panel(ns);
     }
     Ok(win)
+}
+
+/// The display language changed: the dock window's title (window switchers and screen readers read it) follows it.
+pub fn retitle(app: &AppHandle, tag: &str) {
+    if let Some(win) = app.get_webview_window(LABEL) {
+        let _ = win.set_title(&t_in!(tag, "native_tray_dock_window_title"));
+    }
 }
 
 /// The monitor under the cursor, else the primary one: (x, y, w, h physical) and its scale.
@@ -296,9 +341,41 @@ fn reposition(app: &AppHandle, win: &WebviewWindow, to_cursor: bool) {
     let _ = win.set_position(PhysicalPosition::new(x, y));
 }
 
+/// Build the dock window when it does not exist. Never from the event loop or a sync command (`webview_win.rs` guard:
+/// a WebView2 built there never finishes on Windows): the async runtime, via [`build_lazily`].
+fn ensure_built(app: &AppHandle) {
+    if app.get_webview_window(LABEL).is_none()
+        && let Err(e) = build(app)
+    {
+        crate::diag::incident("dock", &format!("the dock could not be built: {e}"));
+    }
+}
+
+/// Build the window off the event loop, once however many ask. Its page calls `dock_ready`, which carries out what was
+/// asked meanwhile ([`Pending`]).
+fn build_lazily(app: &AppHandle) {
+    use std::sync::atomic::Ordering::AcqRel;
+    if app.state::<DockState>().building.swap(true, AcqRel) {
+        return;
+    }
+    let a = app.clone();
+    tauri::async_runtime::spawn(async move {
+        ensure_built(&a);
+        a.state::<DockState>()
+            .building
+            .store(false, std::sync::atomic::Ordering::Release);
+    });
+}
+
 /// [`show`] on the main thread, from whichever thread asks (Tauri runs commands on workers; AppKit window calls trap
-/// off the main thread).
+/// off the main thread). A window that is not built yet (hidden at launch, #286) is built first and shown once its page
+/// has painted.
 fn show_on_main(app: &AppHandle) {
+    if app.get_webview_window(LABEL).is_none() {
+        app.state::<DockState>().pending.lock().show = true;
+        build_lazily(app);
+        return;
+    }
     let a = app.clone();
     let _ = app.run_on_main_thread(move || show(&a));
 }
@@ -370,6 +447,11 @@ fn apply_hotkeys(app: &AppHandle, prefs: &DockPrefs) -> Result<(), String> {
 /// this is called from async command threads (`attach`, from the card's "Send to agent"): the work runs on the main
 /// thread (agent run, 2026-10-26: SIGTRAP in `setFrame:display:` under `dock::show`).
 pub fn summon(app: &AppHandle) {
+    if app.get_webview_window(LABEL).is_none() {
+        app.state::<DockState>().pending.lock().summon = true;
+        build_lazily(app);
+        return;
+    }
     if !app
         .state::<DockState>()
         .ready
@@ -418,57 +500,28 @@ const MENU_OPEN: &str = "dock:open";
 const MENU_HIDE: &str = "dock:hide";
 
 /// One entry of the pill's right-click menu.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MenuEntry {
     pub id: &'static str,
     pub label: String,
 }
 
-/// A stroke of the keymap grammar as the glyphs a Mac menu shows (`ctrl-alt-d` → `⌃⌥D`). Empty stays empty.
-pub fn glyphs(stroke: &str) -> String {
-    let stroke = stroke.trim().to_lowercase();
-    if stroke.is_empty() {
-        return String::new();
-    }
-    let mut parts: Vec<&str> = stroke.split('-').collect();
-    let key = if stroke.ends_with("--") {
-        parts.truncate(parts.len() - 2);
-        "-".to_string()
-    } else {
-        parts.pop().unwrap_or_default().to_string()
-    };
-    let mut out = String::new();
-    for m in ["ctrl", "alt", "shift", "cmd"] {
-        if parts.contains(&m) {
-            out.push(match m {
-                "ctrl" => '⌃',
-                "alt" => '⌥',
-                "shift" => '⇧',
-                _ => '⌘',
-            });
-        }
-    }
-    let mut chars = key.chars();
-    if let Some(c) = chars.next() {
-        out.extend(c.to_uppercase().chain(chars))
-    }
-    out
-}
-
-/// The pill's right-click menu.
-pub fn pill_menu(prefs: &DockPrefs) -> Vec<MenuEntry> {
-    let hint = glyphs(&prefs.toggle);
+/// The pill's right-click menu in the language `tag`. The hotkey in the hide label is written for this OS (`⌃⌥D` on
+/// macOS, `Ctrl+Alt+D` elsewhere) in the language's key names.
+pub fn pill_menu(prefs: &DockPrefs, tag: &str) -> Vec<MenuEntry> {
+    let stroke = prefs.toggle.trim().to_lowercase();
+    let hint = atlas_i18n::shortcut_for(&stroke, atlas_i18n::os(), tag);
     vec![
         MenuEntry {
             id: MENU_OPEN,
-            label: "Open Atlas".into(),
+            label: t_in!(tag, "native_tray_open"),
         },
         MenuEntry {
             id: MENU_HIDE,
             label: if hint.is_empty() {
-                "Hide Agent Dock".into()
+                t_in!(tag, "native_tray_dock_hide")
             } else {
-                format!("Hide Agent Dock  {hint}")
+                t_in!(tag, "native_tray_dock_hide_key", key = hint)
             },
         },
     ]
@@ -478,9 +531,11 @@ pub fn pill_menu(prefs: &DockPrefs) -> Vec<MenuEntry> {
 /// the panel to become key, which the idle pill must never be.
 #[tauri::command]
 pub fn dock_menu(app: AppHandle, state: State<'_, DockState>) -> Result<(), String> {
-    use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
-    let win = app.get_window(LABEL).ok_or("the dock is not built")?;
-    let items = pill_menu(&state.prefs.lock());
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    let win = app
+        .get_window(LABEL)
+        .ok_or_else(|| t!("native_notify_dock_not_built"))?;
+    let items = pill_menu(&state.prefs.lock(), atlas_i18n::lang());
     let menu = Menu::new(&app).map_err(|e| e.to_string())?;
     for (i, e) in items.iter().enumerate() {
         if i > 0 {
@@ -491,7 +546,7 @@ pub fn dock_menu(app: AppHandle, state: State<'_, DockState>) -> Result<(), Stri
             .map_err(|e| e.to_string())?;
         menu.append(&item).map_err(|e| e.to_string())?;
     }
-    menu.popup(win).map_err(|e| e.to_string())
+    crate::native_ui::popup(&menu, win, "dock pill menu").map(|_| ())
 }
 
 /// A pill menu item was chosen (wired once in `main`: `on_menu_event`).
@@ -535,7 +590,8 @@ fn set_prefs(app: &AppHandle, prefs: DockPrefs) -> Result<DockPrefs, String> {
     Ok(prefs)
 }
 
-/// Build the window, register the hotkey and show the pill (the user's app, when enabled).
+/// Register the hotkeys and, when the pill is enabled, build its window (shown once its page paints). A hidden pill has no
+/// window until something shows it: the hide key stays registered, it is the way back.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     let prefs = DockPrefs::load();
     app.manage(DockState {
@@ -543,8 +599,11 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
         snapshot: Mutex::new(Value::Null),
         ..DockState::default()
     });
-    build(app)?;
+    if builds_at_launch(&prefs) {
+        build(app)?;
+    }
     if let Err(e) = apply_hotkeys(app, &prefs) {
+        // i18n-ignore: log
         eprintln!("dock: hotkey: {e}");
     }
     Ok(())
@@ -556,10 +615,13 @@ pub fn dock_ready(app: AppHandle) {
     app.state::<DockState>()
         .ready
         .store(true, std::sync::atomic::Ordering::Release);
-    if app.state::<DockState>().prefs.lock().enabled
-        && crate::agent_mode::Mode::current().focus_allowed()
-    {
-        show_on_main(&app);
+    let state = app.state::<DockState>();
+    let pending = std::mem::take(&mut *state.pending.lock());
+    let enabled = state.prefs.lock().enabled;
+    match on_ready(enabled, pending) {
+        OnReady::Summon => summon(&app),
+        OnReady::Show if crate::agent_mode::Mode::current().focus_allowed() => show_on_main(&app),
+        _ => {}
     }
 }
 
@@ -685,8 +747,8 @@ pub async fn dock_send(
     tab: String,
     text: String,
 ) -> Result<(), String> {
-    let pty = pty_of(&state.snapshot.lock(), &tab)
-        .ok_or("That agent is not running any more. Pick another.")?;
+    let pty =
+        pty_of(&state.snapshot.lock(), &tab).ok_or_else(|| t!("native_notify_dock_agent_gone"))?;
     crate::agent::send::send_text(&app, &pty, &text).await
 }
 
@@ -705,6 +767,67 @@ pub fn dock_open(app: AppHandle, tab: Option<String>) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn prefs_on(os: &str) -> DockPrefs {
+        DockPrefs {
+            enabled: default_enabled(os),
+            ..DockPrefs::default()
+        }
+    }
+
+    /// #286: Linux and Windows default the pill off, yet every launch built its transparent always-on-top webview (a web
+    /// process of its own, ~60 MB PSS) and never showed it.
+    #[test]
+    fn a_launch_builds_the_dock_window_only_for_a_pill_the_user_sees() {
+        assert!(!builds_at_launch(&prefs_on("linux")));
+        assert!(!builds_at_launch(&prefs_on("windows")));
+        assert!(builds_at_launch(&prefs_on("macos")));
+        // Turned on in Settings, it is there at the next launch on any OS; turned off on macOS, it is not.
+        let on = DockPrefs {
+            enabled: true,
+            ..prefs_on("linux")
+        };
+        assert!(builds_at_launch(&on));
+        let off = DockPrefs {
+            enabled: false,
+            ..prefs_on("macos")
+        };
+        assert!(!builds_at_launch(&off));
+    }
+
+    /// A pill that was never built still has to appear when asked for: the page's first paint carries out the request
+    /// (`dock_ready`), a summon wins over a plain show, and nothing asked means nothing shown for a disabled pill.
+    #[test]
+    fn the_first_paint_of_a_lazily_built_dock_carries_out_what_was_asked() {
+        let none = Pending::default();
+        let show = Pending {
+            show: true,
+            summon: false,
+        };
+        let summon = Pending {
+            show: false,
+            summon: true,
+        };
+        let both = Pending {
+            show: true,
+            summon: true,
+        };
+        assert_eq!(on_ready(false, none), OnReady::Nothing);
+        assert_eq!(on_ready(true, none), OnReady::Show);
+        assert_eq!(on_ready(false, show), OnReady::Show);
+        assert_eq!(on_ready(false, summon), OnReady::Summon);
+        assert_eq!(on_ready(true, both), OnReady::Summon);
+    }
+
+    /// The hide key is the way back from hidden: it stays registered with no window, and the summon key only exists
+    /// while the pill does.
+    #[test]
+    fn a_hidden_dock_keeps_its_way_back_registered_without_a_window() {
+        let hidden = prefs_on("linux");
+        assert!(!builds_at_launch(&hidden));
+        let keys = wanted_keys(&hidden);
+        assert_eq!(keys, [(Action::Toggle, "ctrl-alt-d".to_string())]);
+    }
 
     fn fixture() -> Value {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -888,27 +1011,72 @@ mod tests {
     /// does the same, so the menu teaches it.
     #[test]
     fn the_pill_menu_can_hide_the_dock_and_shows_its_hotkey() {
-        let items = pill_menu(&DockPrefs::default());
+        let items = pill_menu(&DockPrefs::default(), "en");
         let hide = items.iter().find(|i| i.id == MENU_HIDE).expect("hide item");
-        assert_eq!(hide.label, "Hide Agent Dock  ⌃⌥D");
+        let key = atlas_i18n::shortcut_for("ctrl-alt-d", atlas_i18n::os(), "en").to_lowercase();
+        assert_eq!(hide.label.to_lowercase(), format!("hide agent dock  {key}"));
         let none = DockPrefs {
             toggle: String::new(),
             ..DockPrefs::default()
         };
-        let hide = pill_menu(&none)
+        let hide = pill_menu(&none, "en")
             .into_iter()
             .find(|i| i.id == MENU_HIDE)
             .unwrap();
-        assert_eq!(hide.label, "Hide Agent Dock", "no hotkey, no hint");
+        assert_eq!(
+            hide.label.to_lowercase(),
+            "hide agent dock",
+            "no hotkey, no hint"
+        );
         assert!(items.iter().any(|i| i.id == MENU_OPEN));
     }
 
+    /// The pill's menu is built when it opens, from the language in force then: a switch in Settings shows at once.
     #[test]
-    fn a_stroke_reads_as_mac_glyphs() {
-        assert_eq!(glyphs("ctrl-alt-d"), "⌃⌥D");
-        assert_eq!(glyphs("cmd-shift-s"), "⇧⌘S");
-        assert_eq!(glyphs("ctrl-alt-space"), "⌃⌥Space");
-        assert_eq!(glyphs(""), "");
+    fn the_pill_menu_is_in_the_language_asked_for() {
+        let labels = |tag| -> Vec<String> {
+            pill_menu(&DockPrefs::default(), tag)
+                .into_iter()
+                .map(|i| i.label)
+                .collect()
+        };
+        // Casing follows the OS (menu_model's tests); the words are the language's.
+        let lower = |tag| {
+            labels(tag)
+                .iter()
+                .map(|l| l.to_lowercase())
+                .collect::<Vec<_>>()
+        };
+        let key = atlas_i18n::shortcut_for("ctrl-alt-d", atlas_i18n::os(), "en").to_lowercase();
+        assert_eq!(
+            lower("en"),
+            ["open atlas", &format!("hide agent dock  {key}")]
+        );
+        assert_eq!(
+            lower("pt-BR"),
+            ["abrir o atlas", &format!("ocultar dock de agentes  {key}")]
+        );
+    }
+
+    /// The hotkey in the menu is the OS's spelling of the stroke, not glyphs typed into the code.
+    #[test]
+    fn the_pill_menu_writes_the_hotkey_for_the_os() {
+        let hide = |toggle: &str| {
+            let prefs = DockPrefs {
+                toggle: toggle.into(),
+                ..DockPrefs::default()
+            };
+            pill_menu(&prefs, "en")
+                .into_iter()
+                .find(|i| i.id == MENU_HIDE)
+                .unwrap()
+                .label
+        };
+        assert!(hide(" Ctrl-Alt-D ").ends_with(&atlas_i18n::shortcut_for(
+            "ctrl-alt-d",
+            atlas_i18n::os(),
+            "en"
+        )));
     }
 
     const SCREEN: (f64, f64, f64, f64) = (0.0, 0.0, 3024.0, 1964.0);

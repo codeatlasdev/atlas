@@ -7,10 +7,14 @@ import {
 	phaseFromCheck,
 	pickReadyEngine,
 	statusAfterInstall,
-	STEP_META,
+	stepMeta,
+	story,
 	type EnginePhase,
 } from "./engines.ts";
 import { INFO_STEPS } from "#lib/crew/onboardingFlow.ts";
+
+const STEPS = ["intro", "how", "connect", "engine", "ready"];
+const STEP_META = Object.fromEntries(STEPS.map((s) => [s, stepMeta(s)]));
 
 const PHASES: EnginePhase[] = [
 	"idle",
@@ -108,5 +112,16 @@ describe("STEP_META", () => {
 			expect(m.body.length).toBeGreaterThan(0);
 			expect(Boolean(m.label)).toBe(INFO_STEPS.includes(step));
 		}
+	});
+});
+
+// The writing guide bans em and en dashes and slogans (#517 review): every string the onboarding shows is plain.
+describe("onboarding copy", () => {
+	test("no step, bullet or story line uses a dash as punctuation", () => {
+		const texts = [
+			...story().flatMap((s) => [s.title, s.text]),
+			...Object.values(STEP_META).flatMap((m) => [m.headline, m.body, m.label ?? "", ...(m.bullets ?? [])]),
+		];
+		for (const t of texts) expect(t, t).not.toMatch(/[—–]/);
 	});
 });

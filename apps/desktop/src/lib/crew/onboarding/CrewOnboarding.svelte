@@ -7,26 +7,44 @@
 	import CrewArtHow from "#lib/crew/CrewArtHow.svelte";
 	import { reducedMotion } from "#lib/crew/motion.ts";
 	import ConnectStep from "./ConnectStep.svelte";
-	import ConnectActions from "./ConnectActions.svelte";
-	import InstallChecklist from "./InstallChecklist.svelte";
+	import ConnectArt from "./ConnectArt.svelte";
+	import { stepDocs } from "./docsLinks.ts";
+	import { api } from "#lib/api.ts";
 	import EngineStep from "./EngineStep.svelte";
-	import EngineActions from "./EngineActions.svelte";
 	import EngineSignIn from "./EngineSignIn.svelte";
 	import EngineArt from "./EngineArt.svelte";
 	import ReadyHero from "./ReadyHero.svelte";
-	import { STORY } from "./engines.ts";
+	import { story } from "./engines.ts";
 	import { Onboarding } from "./onboarding.svelte.ts";
+	import { modalOverlay } from "./modalOverlay.ts";
 	import "./onboarding.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ondone }: { ondone: () => void } = $props();
 
 	// The flow reads `ondone` once at construction; the parent passes a stable callback.
 	// svelte-ignore state_referenced_locally
 	const ob = new Onboarding(ondone);
+	// Debug builds expose the stores as `window.__atlas`; the flow goes there too, so a measurement script can put it in a state.
+	const dbg = (window as unknown as { __atlas?: Record<string, unknown> }).__atlas;
+	if (dbg) dbg.crewOb = ob;
 
-	// Effects that follow the flow state: detect the SSH key, promote an old root@host server, check the engines,
-	// and stream the sign-in terminal.
+	// A soft shadow on the footer, only while content is scrolled under it.
+	let scroller = $state<HTMLElement>();
+	let underFooter = $state(false);
+	function measure() {
+		if (scroller) underFooter = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 2;
+	}
+	$effect(() => {
+		void [ob.step, ob.failure, ob.method, ob.browsers, ob.key, ob.primary.reason];
+		const frame = requestAnimationFrame(measure);
+		return () => cancelAnimationFrame(frame);
+	});
+
+	// Effects that follow the flow state: detect the SSH key (and look again when the address or the key changes),
+	// promote an old root@host server, check the engines, and stream the sign-in terminal.
 	$effect(() => ob.checkSshKey());
+	$effect(() => ob.watchKey());
 	$effect(() => ob.promoteOldServer());
 	$effect(() => ob.checkEngines());
 	$effect(() => ob.watchSigninPty());
@@ -68,10 +86,11 @@
 </script>
 
 <div
+	use:modalOverlay
 	class="crew-onboarding overlay"
 	role="dialog"
 	aria-modal="true"
-	aria-label="Atlas Crew setup"
+	aria-label={m.crew_onboarding_atlas_crew_setup()}
 	data-testid="crew-onboarding"
 >
 	<!-- Progress bar + Skip -->
@@ -79,90 +98,85 @@
 		<div class="progress-track" role="progressbar" aria-valuenow={Math.round(ob.progress * 100)}>
 			<div class="progress-fill" style:width="{ob.progress * 100}%"></div>
 		</div>
-		<button class="skip-btn" onclick={ob.finish}>Skip</button>
+		<button class="skip-btn" onclick={ob.finish}>{m.crew_onboarding_skip()}</button>
 	</div>
 
 	<!-- Two-column body -->
 	<div class="body">
-		<!-- ─── LEFT: text content ─────────────────────────────────────────── -->
+		<!-- ─── LEFT: content (scrolls) + footer (never moves, never animates) ──────── -->
 		<div class="left-panel">
-			{#key ob.step}
-				<div class="text-block" in:textIn={{ d: ob.direction }} out:textOut={{ d: ob.direction }}>
-					<!-- Info step label "N of 2" -->
-					{#if ob.isInfoStep}
-						<span class="step-label" style:--stagger={0}>{ob.meta.label}</span>
-					{:else if ob.step === "connect" || ob.step === "engine"}
-						<span class="step-label setup" style:--stagger={0}>Setup</span>
-					{/if}
-
-					<h1 class="headline" style:--stagger={1}>{ob.meta.headline}</h1>
-					<p class="body-text" style:--stagger={2}>{ob.meta.body}</p>
-
-					<!-- Bullet points (info steps only) -->
-					{#if ob.meta.bullets?.length}
-						<ul class="bullets" style:--stagger={3}>
-							{#each ob.meta.bullets as bullet}
-								<li>{bullet}</li>
-							{/each}
-						</ul>
-					{/if}
-
-					<!-- The how-it-works story, lit in sync with the art -->
-					{#if ob.step === "how"}
-						<ol class="story" style:--stagger={3}>
-							{#each STORY as line, i (line.title)}
-								<li class:on={ob.howBeat === i} class:past={ob.howBeat > i}>
-									<b>{line.title}</b>
-									<span>{line.text}</span>
-								</li>
-							{/each}
-						</ol>
-					{/if}
-
-					{#if ob.step === "connect"}
-						<ConnectStep {ob} />
-					{:else if ob.step === "engine"}
-						<EngineStep {ob} />
-					{/if}
-
-					<!-- ─── Actions row ────────────────────────────────────────── -->
-					<div class="actions" style:--stagger={ob.meta.bullets?.length ? 4 : 3}>
-						<!-- Back button (not on intro) -->
-						{#if ob.step !== "intro" && ob.step !== "ready"}
-							<button class="back-btn" onclick={ob.back}>
-								<ChevronLeft size={15} />Back
-							</button>
+			<div class="scroll" bind:this={scroller} onscroll={measure}>
+				{#key ob.step}
+					<div class="text-block" in:textIn={{ d: ob.direction }} out:textOut={{ d: ob.direction }}>
+						<!-- Info step label "N of 2" -->
+						{#if ob.isInfoStep}
+							<span class="step-label" style:--stagger={0}>{ob.meta.label}</span>
 						{/if}
 
-						{#if ob.step === "intro" || ob.isInfoStep}
-							<button class="primary-btn" onclick={ob.advance}>Continue</button>
-						{:else if ob.step === "connect"}
-							<ConnectActions {ob} />
-						{:else if ob.step === "engine"}
-							<EngineActions {ob} />
-						{:else if ob.step === "ready"}
-							<button
-								class="primary-btn"
-								onclick={() => ob.openChat()}
-								disabled={ob.creatingCrewmate || !ob.engineReady}
+						<h1 class="headline" style:--stagger={1}>{ob.meta.headline}</h1>
+						<p class="body-text" style:--stagger={2}>
+							{ob.meta.body}
+							<!-- One small docs link per step, in the header: the page of the docs that explains this step. -->
+							<button class="docs-link" onclick={() => api.openUrl(stepDocs(ob.step))}
+								>{m.crew_onboarding_docs()}</button
 							>
-								{ob.creatingCrewmate ? "Opening…" : "Open chat"}
-							</button>
-							<button class="back-btn" onclick={ob.back}>
-								<ChevronLeft size={15} />Back
-							</button>
-							{#if !ob.engineReady && !ob.creatingCrewmate}
-								<!-- A disabled button with no reason looked like "nothing happens". -->
-								<p class="field-hint">
-									{ob.selectedEngine
-										? `${ob.selectedEngine} isn't ready on your crew server yet (${ob.engineStatus[ob.selectedEngine]?.phase ?? "not checked"}). Go back and finish it.`
-										: "Go back and pick an engine."}
-								</p>
-							{/if}
+						</p>
+
+						<!-- Bullet points (info steps only) -->
+						{#if ob.meta.bullets?.length}
+							<ul class="bullets" style:--stagger={3}>
+								{#each ob.meta.bullets as bullet}
+									<li>{bullet}</li>
+								{/each}
+							</ul>
+						{/if}
+
+						<!-- The how-it-works story, lit in sync with the art -->
+						{#if ob.step === "how"}
+							<ol class="story" style:--stagger={3}>
+								{#each story() as line, i (line.title)}
+									<li class:on={ob.howBeat === i} class:past={ob.howBeat > i}>
+										<b>{line.title}</b>
+										<span>{line.text}</span>
+									</li>
+								{/each}
+							</ol>
+						{/if}
+
+						{#if ob.step === "connect"}
+							<ConnectStep {ob} />
+						{:else if ob.step === "engine"}
+							<EngineStep {ob} />
+						{/if}
+
+						<!-- Why the primary button is disabled: said here, in the content, never under the button. -->
+						{#if ob.primary.reason}
+							<p class="field-hint reason">{ob.primary.reason}</p>
 						{/if}
 					</div>
-				</div>
-			{/key}
+				{/key}
+			</div>
+
+			<!-- Same row, same height, same slots on every step: Back left, primary right. -->
+			<div class="footer" class:shadow={underFooter} data-testid="onboarding-footer">
+				<button
+					class="back-btn back-slot"
+					style:visibility={ob.step === "intro" ? "hidden" : "visible"}
+					disabled={ob.step === "intro"}
+					onclick={ob.back}
+				>
+					<ChevronLeft size={15} />{m.common_action_back()}
+				</button>
+				<button
+					class="primary-btn primary-slot"
+					data-testid="onboarding-primary"
+					onclick={ob.primary.run}
+					disabled={ob.primary.disabled}
+				>
+					{#if ob.primary.busy}<span class="spin-dot" aria-hidden="true"></span>{/if}
+					<span>{ob.primary.label}</span>
+				</button>
+			</div>
 		</div>
 
 		<!-- ─── RIGHT: illustration ──────────────────────────────────────── -->
@@ -179,7 +193,7 @@
 					{:else if ob.step === "how"}
 						<CrewArtHow bind:beat={ob.howBeat} />
 					{:else if ob.step === "connect"}
-						<InstallChecklist
+						<ConnectArt
 							done={ob.install.done}
 							active={ob.install.active}
 							failed={ob.failedPhase}
@@ -204,7 +218,8 @@
 	.overlay {
 		position: fixed;
 		inset: 0;
-		z-index: 1600;
+		/* Above the shell's rail (1700) and below the window controls (2000), which stay usable. */
+		z-index: 1800;
 		background: var(--ca-surface-base);
 		display: flex;
 		flex-direction: column;
@@ -263,29 +278,88 @@
 	}
 
 	/* ─── Left panel ─────────────────────────────────────────────── */
+	/* Rows: the content (the only thing that scrolls) and the footer (fixed height, outside the keyed step). */
 	.left-panel {
 		position: relative;
 		display: grid;
-		align-content: center;
+		grid-template-rows: minmax(0, 1fr) auto;
 		overflow: hidden;
-		/* Everything inside scales with the column (cqi), so a full-screen window gets a full-size page,
-		   not the laptop layout floating in a corner. */
+		/* Everything inside scales with the column (cqi). */
 		container-type: inline-size;
-		padding: 64px clamp(32px, 6cqi, 96px) 64px clamp(48px, 9cqi, 140px);
 	}
 
-	/* entering + exiting text-blocks both live in cell 1/1 — no width competition */
-	.left-panel > * {
+	.scroll {
+		display: grid;
+		align-content: start;
+		overflow-x: hidden;
+		overflow-y: auto;
+		padding: 40px clamp(32px, 6cqi, 96px) 16px clamp(48px, 9cqi, 140px);
+	}
+
+	/* entering + exiting text-blocks both live in cell 1/1: no width competition */
+	.scroll > * {
 		grid-area: 1 / 1;
 		min-width: 0;
 	}
 
 	.text-block {
+		margin-block: auto;
 		width: 100%;
 		max-width: clamp(420px, 62cqi, 760px);
 		display: flex;
 		flex-direction: column;
 		gap: 0;
+	}
+
+	.footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		box-sizing: border-box;
+		height: 84px;
+		padding: 0 clamp(32px, 6cqi, 96px) 0 clamp(48px, 9cqi, 140px);
+		background: var(--ca-surface-base);
+		transition: box-shadow 160ms;
+	}
+
+	.footer.shadow {
+		box-shadow: 0 -10px 18px -12px rgba(0, 0, 0, 0.55);
+	}
+
+	.back-slot {
+		width: 88px;
+		justify-content: flex-start;
+	}
+
+	.footer .primary-slot {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		box-sizing: border-box;
+		width: 220px;
+		height: 44px;
+		padding: 0 20px;
+		font-size: 14.5px;
+		white-space: nowrap;
+	}
+
+	.docs-link {
+		display: inline;
+		padding: 0;
+		margin-left: 6px;
+		background: none;
+		border: none;
+		color: var(--ca-accent, #4f8ef7);
+		font-size: 0.8em;
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		cursor: pointer;
+	}
+
+	.reason {
+		margin-top: 12px;
 	}
 
 	/* Stagger animation: each direct child (the step's components included) fades + lifts in */
@@ -314,8 +388,6 @@
 		display: block;
 		font-size: clamp(12px, 1.25cqi, 16px);
 		font-weight: 600;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
 		color: var(--ca-accent, #4f8ef7);
 		margin-bottom: clamp(12px, 1.6cqi, 22px);
 	}
@@ -406,13 +478,6 @@
 		opacity: 0.7;
 	}
 
-	.actions {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		flex-wrap: wrap;
-	}
-
 	/* ─── Right panel ────────────────────────────────────────────── */
 	.right-panel {
 		position: relative;
@@ -430,6 +495,7 @@
 	}
 
 	.art-zone {
+		container-type: inline-size;
 		position: absolute;
 		inset: 0;
 		display: flex;

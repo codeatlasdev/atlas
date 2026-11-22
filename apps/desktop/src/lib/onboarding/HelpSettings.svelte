@@ -7,6 +7,7 @@
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { progress } from "./checklist.ts";
 	import { onboarding } from "./state.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let p = $derived(progress(onboarding.state));
 
@@ -17,33 +18,43 @@
 	}
 </script>
 
-<Group title="Help">
+<Group title={m.onboarding_help_settings_help()}>
 	<Row
 		id="tour"
-		label="Guided tour"
-		description="A two-minute walk through spaces, the header, the side panel and search."
+		label={m.onboarding_help_settings_tour_label()}
+		description={m.onboarding_help_settings_tour_description()}
 	>
 		{#snippet lead()}<Compass size={16} />{/snippet}
-		<Button variant="glass" size="sm" onclick={() => run(() => onboarding.startTour())}>Take the tour</Button>
+		<Button variant="glass" size="sm" onclick={() => run(() => onboarding.startTour())}
+			>{m.onboarding_welcome_take_the_tour()}</Button
+		>
 	</Row>
-	<Row id="help-keys" label="Shortcut cheat sheet" description="Every key in one searchable list.">
+	<Row
+		id="help-keys"
+		label={m.onboarding_help_settings_shortcuts_label()}
+		description={m.onboarding_help_settings_shortcuts_description()}
+	>
 		{#snippet lead()}<Keyboard size={16} />{/snippet}
 		<Kbd>{shortcutFor("atlas::Help") ?? "?"}</Kbd>
 		<Button variant="glass" size="sm" onclick={() => run(() => (onboarding.helpOpen = true))}>
-			Open cheat sheet
+			{m.onboarding_help_settings_open_shortcuts()}
 		</Button>
 	</Row>
 	<Row
 		id="checklist"
-		label="Getting started checklist"
-		description={`${p.done} of ${p.total} first steps done${onboarding.state.checklist.dismissed ? ". The card is hidden." : "."}`}
+		label={m.onboarding_help_settings_checklist_label()}
+		description={onboarding.state.checklist.dismissed
+			? m.onboarding_help_settings_progress_hidden({ done: p.done, total: p.total })
+			: m.onboarding_help_settings_progress({ done: p.done, total: p.total })}
 	>
 		{#snippet lead()}<ListChecks size={16} />{/snippet}
 		{#if onboarding.state.checklist.dismissed}
 			<Button variant="glass" size="sm" onclick={() => run(() => void onboarding.showChecklist())}
-				>Show the card</Button
+				>{m.onboarding_help_settings_show_checklist()}</Button
 			>
 		{/if}
-		<Button variant="ghost" size="sm" onclick={() => run(() => void onboarding.restart())}>Start over</Button>
+		<Button variant="ghost" size="sm" onclick={() => run(() => void onboarding.restart())}
+			>{m.onboarding_help_settings_start_over()}</Button
+		>
 	</Row>
 </Group>

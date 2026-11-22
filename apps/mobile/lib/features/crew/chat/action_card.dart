@@ -26,6 +26,7 @@ import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_card_frame.dart';
 import 'package:atlas_mobile/features/crew/chat/image_source.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
 import 'package:atlas_mobile/features/crew/ops/engine_signin.dart';
 import 'package:atlas_mobile/features/crew/widgets/github_device_login.dart';
 
@@ -232,6 +233,17 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         busy: busy,
         onPick: _submit,
         onCancel: _cancel,
+        voiceAnswer:
+            ref.watch(crewVoiceProvider(widget.device)).value?.enabled ?? false
+            ? (transcript, lang) => answerActionByVoice(
+                ref,
+                widget.device,
+                widget.crewmateId,
+                widget.task.id,
+                transcript,
+                lang,
+              )
+            : null,
       ),
       'sign_in_engine' => SignInEngineAction(
         action: action,

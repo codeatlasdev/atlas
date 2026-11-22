@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Terminal } from "@xterm/xterm";
+	// xterm's own stylesheet loads with the terminal, not with the shell (#288).
+	import "@xterm/xterm/css/xterm.css";
 	import { FitAddon } from "@xterm/addon-fit";
 	import { SearchAddon } from "@xterm/addon-search";
 	import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -12,7 +14,6 @@
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { imeStagingKey, keepTextareaEmpty } from "#lib/xtermInput.ts";
-	import { isMac } from "#lib/lsp/navigation.ts";
 	import { copyText, keyAction } from "./terminal/clipboardKeys.ts";
 	import { browserFontEnv, usableFamilies } from "./terminal/xtermFont.ts";
 	import FindInput from "./FindInput.svelte";
@@ -20,6 +21,7 @@
 	import { xtermKey } from "#lib/termKeys.ts";
 	import { ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
 	import { hostEvents } from "#lib/hostEventsApp.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		pty,
@@ -162,7 +164,7 @@
 		t.attachCustomKeyEventHandler((e) => {
 			if (imeStagingKey(e, input.composing())) return false;
 			// Linux clipboard keys: Ctrl+Shift+C/V, and Ctrl+C while text is selected (issue #28).
-			const clip = keyAction(e, { mac: isMac(), hasSelection: t.hasSelection() });
+			const clip = keyAction(e, { mac: IS_MAC, hasSelection: t.hasSelection() });
 			if (clip) {
 				e.preventDefault();
 				if (clip === "copy") void copyText(t.getSelection());
@@ -203,8 +205,7 @@
 		// `terminal.copy_on_select`: selecting copies, as in the GPU terminal (the selection is not a DOM
 		// selection, so the webview never puts it on the clipboard by itself).
 		const sel = t.onSelectionChange(() => {
-			if (!isMac() && prefs.value.terminal.copy_on_select && t.hasSelection())
-				void copyText(t.getSelection());
+			if (!IS_MAC && prefs.value.terminal.copy_on_select && t.hasSelection()) void copyText(t.getSelection());
 		});
 		offs.push(() => sel.dispose());
 		const stream = ptyStream({
@@ -272,7 +273,7 @@
 			<!-- svelte-ignore a11y_autofocus -->
 			<FindInput
 				autofocus
-				placeholder="Find"
+				placeholder={m.logs_search_bar_find()}
 				bind:value={query}
 				oninput={() => find(1)}
 				onkeydown={(e) => {

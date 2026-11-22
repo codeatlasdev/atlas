@@ -6,6 +6,7 @@
 	import { Button, toast } from "@codeatlasdev/ui";
 	import { ExternalLink, Heart } from "@lucide/svelte";
 	import { api, errText } from "#lib/api.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const SITE = "https://draculatheme.com";
 	const ZENO = "https://github.com/zenorocha";
@@ -15,20 +16,25 @@
 	const open = (url: string) => api.openUrl(url).catch((e) => toast.error(errText(e)));
 </script>
 
-<section class="credit" aria-label="About the Dracula themes">
+<section class="credit" aria-label={m.settings_theme_credit_card_label()}>
 	<div class="text">
 		<h3 class="title">
 			<Heart size={13} aria-hidden="true" />
-			Dracula by Zeno Rocha and Luxonauta
+			{m.settings_theme_credit_card_title()}
 		</h3>
 		<p class="links">
+			<!-- i18n-ignore: a site address -->
 			<button class="link" onclick={() => open(SITE)}>draculatheme.com <ExternalLink size={11} /></button>
+			<!-- i18n-ignore: a GitHub handle -->
 			<button class="link" onclick={() => open(ZENO)}>@zenorocha <ExternalLink size={11} /></button>
+			<!-- i18n-ignore: a GitHub handle -->
 			<button class="link" onclick={() => open(LUXONAUTA)}>@luxonauta <ExternalLink size={11} /></button>
 		</p>
-		<p class="note">Dracula and Alucard follow the official spec · MIT</p>
+		<p class="note">{m.settings_theme_credit_card_license_note()}</p>
 	</div>
-	<Button variant="filled" size="sm" onclick={() => open(PRO)}>Get Dracula Pro →</Button>
+	<Button variant="filled" size="sm" onclick={() => open(PRO)}
+		>{m.settings_theme_credit_card_get_pro()}</Button
+	>
 </section>
 
 <style>

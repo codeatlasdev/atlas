@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use atlas_core::github;
 use atlas_core::release_verify::{self, Policy};
+use atlas_i18n::t;
 use sha2::{Digest, Sha256};
 
 pub const REPO: &str = "codeatlasdev/atlas";
@@ -28,11 +29,18 @@ pub fn download_verified(
 ) -> Result<PathBuf> {
     let policy = Policy::current()?;
     let tarball = dir.join(asset);
-    let missing = |name: &str| format!("{tag} has no {name} (download failed or missing asset)");
+    let missing = |name: &str| {
+        t!(
+            "cmd_misc_release_ctx_missing_asset",
+            tag = tag,
+            asset = name
+        )
+    };
     if !policy.requires_signature(tag) {
         if policy.is_active() {
             eprintln!(
-                "\x1b[33m◆\x1b[0m {tag} predates release signing: only its .sha256 (served by the same release) vouches for {asset}"
+                "\x1b[33m◆\x1b[0m {}",
+                t!("cmd_misc_release_predates_signing", tag = tag, asset = asset)
             );
         }
         let sum_name = format!("{asset}.sha256");
@@ -48,9 +56,9 @@ pub fn download_verified(
     let fetch = |name: &str| -> Result<PathBuf> {
         let path = dir.join(name);
         github::download_asset(REPO, tag, name, &path).with_context(|| {
-            format!(
-                "{} (signed releases only; refusing an unsigned install)",
-                missing(name)
+            t!(
+                "cmd_misc_release_ctx_missing_signed",
+                missing = missing(name)
             )
         })?;
         Ok(path)
@@ -59,10 +67,13 @@ pub fn download_verified(
     let sig = std::fs::read_to_string(fetch("SHA256SUMS.sig")?)?;
     let key = policy
         .verify(&sums, &sig)
-        .with_context(|| format!("{tag}: SHA256SUMS.sig does not verify; refusing to install"))?;
-    println!("\x1b[1;32m✓\x1b[0m SHA256SUMS signed by {key}");
+        .with_context(|| t!("cmd_misc_release_sig_invalid", tag = tag))?;
+    println!(
+        "\x1b[1;32m✓\x1b[0m {}",
+        t!("cmd_misc_release_signed_by", key = &key.to_string())
+    );
     let expected = release_verify::expected_hash(&String::from_utf8_lossy(&sums), asset)
-        .with_context(|| format!("{tag}: refusing to install {asset}"))?;
+        .with_context(|| t!("cmd_misc_release_refusing_asset", tag = tag, asset = asset))?;
     github::download_asset_progress(REPO, tag, asset, &tarball, on_progress)
         .with_context(|| missing(asset))?;
     check_sha256(&tarball, &expected)?;
@@ -76,7 +87,7 @@ pub fn verify_sha256(tarball: &Path) -> Result<()> {
     sum.push(".sha256");
     let sum = PathBuf::from(sum);
     if !sum.is_file() {
-        bail!("{name} has no {name}.sha256; refusing unverified install");
+        bail!(t!("cmd_misc_release_no_checksum", name = &name));
     }
     let expected = std::fs::read_to_string(&sum)?
         .split_whitespace()
@@ -90,10 +101,12 @@ pub fn verify_sha256(tarball: &Path) -> Result<()> {
 fn check_sha256(tarball: &Path, expected: &str) -> Result<()> {
     let actual = hex::encode(Sha256::digest(std::fs::read(tarball)?));
     if expected != actual {
-        bail!(
-            "checksum mismatch for {} (expected {expected}, got {actual})",
-            file_name(tarball)
-        );
+        bail!(t!(
+            "cmd_misc_release_checksum_mismatch",
+            name = &file_name(tarball),
+            expected = expected,
+            actual = &actual
+        ));
     }
     Ok(())
 }

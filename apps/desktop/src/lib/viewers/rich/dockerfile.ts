@@ -1,3 +1,5 @@
+import { m } from "#lib/i18n/m.ts";
+
 /** Dockerfile parser: instructions with continuations and heredocs, stages, ports, lint warnings. */
 
 export interface Instruction {
@@ -112,7 +114,7 @@ export function analyzeDockerfile(text: string): DockerDoc {
 	let user: { name: string; line: number } | null = null;
 	const flush = () => {
 		if (user && /^(root|0)(:|$)/.test(user.name))
-			warnings.push({ line: user.line, message: "The final stage runs as root; add a non-root USER" });
+			warnings.push({ line: user.line, message: m.viewers_devops_dockerfile_warn_root_user() });
 	};
 	for (const ins of instructions) {
 		if (ins.op === "FROM") {
@@ -132,9 +134,9 @@ export function analyzeDockerfile(text: string): DockerDoc {
 			const isStage = stages.slice(0, -1).some((s) => s.name === image);
 			if (!isStage && image !== "scratch" && !image.includes("$")) {
 				if (!ref.tag && !ref.digest)
-					warnings.push({ line: ins.line, message: `${image} has no tag (defaults to :latest)` });
+					warnings.push({ line: ins.line, message: m.viewers_devops_dockerfile_warn_no_tag({ image }) });
 				else if (ref.tag === "latest")
-					warnings.push({ line: ins.line, message: `${image} pins :latest; use a fixed version or digest` });
+					warnings.push({ line: ins.line, message: m.viewers_devops_dockerfile_warn_latest({ image }) });
 			}
 			continue;
 		}
@@ -149,26 +151,26 @@ export function analyzeDockerfile(text: string): DockerDoc {
 		if (ins.op === "USER") user = { name: ins.args.trim(), line: ins.line };
 		if (ins.op === "RUN") {
 			if (/apt-get\s+install/.test(ins.args) && !/--no-install-recommends/.test(ins.args))
-				warnings.push({ line: ins.line, message: "apt-get install without --no-install-recommends" });
+				warnings.push({ line: ins.line, message: m.viewers_devops_dockerfile_warn_apt_recommends() });
 			if (
 				/apt-get\s+install/.test(ins.args) &&
 				!/rm\s+-rf\s+\/var\/lib\/apt\/lists/.test(ins.args) &&
 				!/apt-get\s+clean/.test(ins.args)
 			)
-				warnings.push({ line: ins.line, message: "apt lists are not cleaned in the same layer" });
+				warnings.push({ line: ins.line, message: m.viewers_devops_dockerfile_warn_apt_lists() });
 			if (/\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba)?sh\b/.test(ins.args))
-				warnings.push({ line: ins.line, message: "Piping a download into a shell" });
+				warnings.push({ line: ins.line, message: m.viewers_devops_dockerfile_warn_pipe_shell() });
 		}
 		if (ins.op === "ADD" && !/^\s*(--\S+\s+)*https?:|\.(tar|tgz|gz|xz|bz2)(\s|$)/.test(ins.args))
-			warnings.push({ line: ins.line, message: "ADD for local files; prefer COPY" });
+			warnings.push({ line: ins.line, message: m.viewers_devops_dockerfile_warn_add_local() });
 		if (ins.op === "MAINTAINER")
-			warnings.push({ line: ins.line, message: "MAINTAINER is deprecated; use LABEL" });
+			warnings.push({ line: ins.line, message: m.viewers_devops_dockerfile_warn_maintainer() });
 	}
 	if (stages.length) {
 		if (user === null)
 			warnings.push({
 				line: stages[stages.length - 1].line,
-				message: "The final stage never sets USER, so it runs as root",
+				message: m.viewers_devops_dockerfile_warn_no_user(),
 			});
 		else flush();
 	}

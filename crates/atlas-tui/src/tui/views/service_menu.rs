@@ -6,6 +6,7 @@ use crate::theme;
 use crate::tui::app::{Message, ServiceMenuAction};
 use crate::tui::clicks::ClickMap;
 use crate::tui::widgets::modal::Modal;
+use atlas_i18n::t;
 
 /// Menu actions that make sense for `state`, in display order.
 /// Shared with the key handler so hidden entries can't be triggered.
@@ -43,7 +44,7 @@ pub fn render(frame: &mut Frame, service_name: &str, state: &ServiceState, click
         ServiceState::Unhealthy => ("‼", t.status_failed),
         ServiceState::Degraded => ("◐", t.warning),
     };
-    let state_label = format!("{state:?}");
+    let state_label = state.label();
 
     let mut lines = vec![
         Line::from(vec![
@@ -69,9 +70,9 @@ pub fn render(frame: &mut Frame, service_name: &str, state: &ServiceState, click
             },
         );
         let (key, label) = match action {
-            ServiceMenuAction::Restart => (" r  ", "Restart"),
-            ServiceMenuAction::Stop => (" s  ", "Stop"),
-            ServiceMenuAction::Start => (" t  ", "Start"),
+            ServiceMenuAction::Restart => (" r  ", t!("tui_runtime_views_menu_restart")),
+            ServiceMenuAction::Stop => (" s  ", t!("tui_runtime_views_menu_stop")),
+            ServiceMenuAction::Start => (" t  ", t!("tui_runtime_views_menu_start")),
         };
         lines.push(Line::from(vec![
             Span::styled(key, Style::default().fg(t.primary).bold()),
@@ -80,7 +81,13 @@ pub fn render(frame: &mut Frame, service_name: &str, state: &ServiceState, click
     }
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        " esc to cancel",
+        format!(
+            " {}",
+            t!(
+                "tui_runtime_views_menu_cancel",
+                key = t!("common_keys_escape").to_lowercase()
+            )
+        ),
         Style::default().fg(t.text_dim),
     )));
 

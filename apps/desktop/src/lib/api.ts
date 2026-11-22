@@ -5,6 +5,16 @@ import type { ProviderState } from "#lib/commitMessage.ts";
 import type { HygieneFixed, HygieneReport } from "#lib/settings/hygiene.ts";
 import { parseBranches, parseSwitched, type Branches, type Switched } from "#lib/branches.ts";
 
+/** What a file panel is asked for. */
+export interface PathDialog {
+	title?: string;
+	/** A folder, not a file (open panel only). */
+	directory?: boolean;
+	/** Where to start; a file path also names the file to save as. */
+	defaultPath?: string;
+	filters?: { name: string; extensions: string[] }[];
+}
+
 export interface DiscoverArgs {
 	/** Extra folders besides the defaults (absolute or `~/…`). */
 	roots?: string[];
@@ -44,8 +54,16 @@ export interface ProjectView {
 	identity: Identity | null;
 	/** The checkout's folder is gone from this machine (null = present, or an SSH project). */
 	missing: "root" | null;
-	/** `file`: an atlas.yaml is on disk. `detected`: Atlas detected the stack in memory (offer "Save as atlas.yaml"). */
-	config_source: "file" | "detected";
+	/**
+	 * `file`: an atlas.yaml is on disk. `detected`: Atlas detected the stack in memory (offer "Save as atlas.yaml").
+	 * `none`: a plain folder, which has no config to talk about.
+	 */
+	config_source: "file" | "detected" | "none";
+	/**
+	 * `folder`: a plain folder (no git, atlas.yaml or manifest, not promoted): explorer and editor only, no services,
+	 * no atlas.yaml prompt, no Changes or PR. `project`: everything else.
+	 */
+	kind: "project" | "folder";
 	/** `origin` URL last seen while the project existed (set when missing). */
 	last_remote: string | null;
 }
@@ -152,6 +170,14 @@ export interface Probe {
 	registered: string | null;
 }
 
+/** Where opening a path leads (`path_locate`). */
+export interface OpenPlan {
+	/** A file of no project and no added folder: opens in the light editor and registers nothing. */
+	standalone: boolean;
+	/** The folder to open; for a standalone file, the folder it sits in. */
+	root: string;
+}
+
 /** What `atlas init` would write in a folder (`project_init_preview`). */
 export interface InitPreview {
 	yaml: string;
@@ -203,6 +229,10 @@ export const api = {
 	relink: (id: string, root: string) => invoke<ProjectView>("projects_relink", { id, root }),
 	removeMissing: () => invoke<number>("projects_remove_missing"),
 	findMoved: (id: string) => invoke<Found | null>("projects_find_moved", { id }),
+	/** "Use as project": a plain folder gets the full project UI from now on (nothing is written to the folder). */
+	promote: (id: string) => invoke<void>("project_promote", { id }),
+	/** How opening `path` goes: a project or folder to open, or a standalone file (no project is registered). */
+	locate: (path: string) => invoke<OpenPlan>("path_locate", { path }),
 	initProject: (dir: string) => invoke<ProjectView>("project_init", { dir }),
 	/** Write the detected config as atlas.yaml (exactly what the header shows) and reload the project as file-backed. */
 	saveConfig: (id: string) => invoke<ProjectView>("project_save_config", { id }),
@@ -230,6 +260,10 @@ export const api = {
 	openUrl: (url: string) => invoke<void>("open_url", { url }),
 	reveal: (id: string) => invoke<void>("reveal", { id }),
 	revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+	/** The OS open panel for one file or folder (`null` = cancelled). Rust asks the native-UI gate first: an agent instance never shows it. */
+	pickPath: (options: PathDialog = {}) => invoke<string | null>("pick_path", { options }),
+	/** The OS save panel (`null` = cancelled). */
+	savePath: (options: PathDialog = {}) => invoke<string | null>("save_path", { options }),
 	shellInfo: () => invoke<ShellInfo>("shell_info"),
 	shellSet: (shell: string | null) => invoke<ShellInfo>("shell_set", { shell }),
 	settings: () => invoke<Record<string, unknown>>("settings_get"),

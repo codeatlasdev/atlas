@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::Subcommand;
 use serde_json::{Value, json};
 
@@ -49,11 +50,11 @@ pub enum DebugCmd {
         /// The whole scrollable page (or element): the view grows to fit the content for the snapshot
         #[arg(long, conflicts_with = "window")]
         full: bool,
-        /// The whole native window as the compositor shows it (needs Screen Recording permission)
+        /// The whole native window as the compositor shows it (macOS: needs Screen Recording permission)
         #[arg(long)]
         window: bool,
     },
-    /// Record the window to a .mov with the app's own recorder (needs Screen Recording permission)
+    /// Record the window to a .mov/.mp4 with the app's own recorder (macOS: needs Screen Recording permission; Linux: an agent instance, needs grim and ffmpeg)
     Record {
         path: PathBuf,
         /// Record this many seconds
@@ -126,14 +127,14 @@ pub enum DebugCmd {
 pub fn parse_rect(s: &str) -> Result<[f64; 4], String> {
     let parts: Vec<&str> = s.split(',').collect();
     if parts.len() != 4 {
-        return Err("expected x,y,width,height, e.g. 0,0,400,300".into());
+        return Err(t!("cmd_desktop_rect_format"));
     }
     let mut r = [0.0; 4];
     for (slot, p) in r.iter_mut().zip(&parts) {
         *slot = p
             .trim()
             .parse::<f64>()
-            .map_err(|_| format!("{p:?} is not a number"))?;
+            .map_err(|_| t!("cmd_desktop_not_a_number", value = *p))?;
     }
     Ok(r)
 }
@@ -277,24 +278,23 @@ pub fn run(cmd: DebugCmd) -> Result<()> {
 
 fn request(req: &Value, timeout: Duration) -> Result<Value> {
     let path = atlas_core::paths::desktop_debug_socket();
-    let stream = atlas_core::ipc::connect_sync(&path).with_context(|| {
-        format!(
-            "no debug bridge at {} — start an agent instance (`atlas desktop --agent`, or `bun run desktop:agent`) and point ATLAS_DEBUG_SOCK at the socket it prints",
-            path.display()
-        )
-    })?;
+    let stream = atlas_core::ipc::connect_sync(&path)
+        .with_context(|| t!("cmd_desktop_no_bridge", path = path.display().to_string()))?;
     stream.set_read_timeout(Some(timeout))?;
     (&stream).write_all(format!("{req}\n").as_bytes())?;
     let mut line = String::new();
     BufReader::new(&stream).read_line(&mut line)?;
     if line.is_empty() {
-        bail!("the debug bridge closed the connection (the app exited or crashed)");
+        bail!("{}", t!("cmd_desktop_bridge_closed"));
     }
-    let reply: Value = serde_json::from_str(&line).context("bad reply from debug bridge")?;
+    let reply: Value =
+        serde_json::from_str(&line).with_context(|| t!("cmd_desktop_bridge_bad_reply"))?;
     if reply["ok"] != true {
         bail!(
             "{}",
-            reply["error"].as_str().unwrap_or("debug bridge error")
+            reply["error"]
+                .as_str()
+                .map_or_else(|| t!("cmd_desktop_bridge_error"), str::to_owned)
         );
     }
     Ok(reply["result"].clone())

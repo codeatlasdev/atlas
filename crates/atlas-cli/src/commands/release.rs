@@ -40,7 +40,11 @@ pub fn download_verified(
         if policy.is_active() {
             eprintln!(
                 "\x1b[33m◆\x1b[0m {}",
-                t!("cmd_misc_release_predates_signing", tag = tag, asset = asset)
+                t!(
+                    "cmd_misc_release_predates_signing",
+                    tag = tag,
+                    asset = asset
+                )
             );
         }
         let sum_name = format!("{asset}.sha256");

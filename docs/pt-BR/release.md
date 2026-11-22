@@ -1,7 +1,7 @@
 ---
 title: "Publicar uma versão"
 source: release.md
-source_sha: "f354ea56a50d8e52dcb2daed385b86e0c9b7167e"
+source_sha: "2567e4ae2d4decbe31efc08876b56c314732081f"
 translation: machine
 ---
 
@@ -77,6 +77,7 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lista os arqu
 6. **Aumento de versão.** Todo `crates/*/Cargo.toml` (inclusive o `atlas-desktop`; o `tauri.conf.json` não tem versão própria e lê a do crate) recebe a mesma versão; `cargo update --workspace --offline` atualiza o `Cargo.lock`.
 7. **Commit, tag, push.** Commit `chore(release): vX.Y.Z[-pre.N]`, tag anotada e depois `git push --atomic origin <main|release/X.Y> <tag>`: a branch e a tag chegam juntas ou não chegam.
 8. **Push da tag; o GitHub roda o `release.yml`** (gate → builds para macOS, Linux e Windows, pacote Arch → verificação do Linux em containers → publicação). O script acompanha a execução (`gh run watch`) e depois faz o deploy do site (mantido; ele nunca faz a versão falhar).
+9. **Assinar e publicar** (`scripts/release-sign.sh <tag>`, o mesmo para todo canal, inclusive uma promoção para stable). O `release.yml` deixa a versão como **rascunho**, então nada é público ainda. O script baixa o `SHA256SUMS`, imprime o arquivo, assina com a sua chave offline, confere a assinatura contra as chaves do repositório, envia o `SHA256SUMS.sig` e só então publica o rascunho ([Assinatura de versões](#assinatura-de-versões)). Com uma chave configurada, uma versão sem assinatura nunca é publicada e o site não recebe deploy. Depois ele faz o deploy do site.
 
 ### Guarda de promoção (stable)
 
@@ -128,6 +129,8 @@ Só a linha stable mais nova recebe correções. Se um hotfix toca em código qu
 7. **`verify-windows`** (`windows-latest`, depois do `build-windows`): os arquivos do Windows são executados, não só compilados por cross-compilação (#312). O `scripts/windows-launch-check.ps1` confere cada `.sha256`, descompacta o arquivo da CLI e roda `atlas.exe --version`, instala com `Atlas-Setup.exe --silent`, abre o `atlas-desktop.exe` instalado (uma janela, ainda de pé depois de um tempo de espera, uma tela que não é de uma cor só, `~\.atlas\desktop\app.log` vazio), desinstala com `Atlas Uninstall.exe --uninstall --silent --remove-data`, e então faz o mesmo com o instalador NSIS simples `/S` (o que `atlas desktop` e `atlas update` rodam) e o seu `uninstall.exe /S`. Um primeiro passo roda a verificação em um programa que não é um app e exige que ela falhe. Capturas de tela e logs são o artefato `verify-windows`.
 8. **`verify-macos`** (`macos-latest`, depois do `build`): o `scripts/macos-launch-check.sh` confere cada `.sha256`, roda o `atlas --version` do tarball da CLI, monta o `.dmg` e verifica a assinatura de código do `Atlas.app` dentro dele, descompacta o `.app.tar.gz` (o que `atlas desktop` instala) e exige a mesma versão do bundle; depois abre o app de cada um (uma janela na tela, ainda de pé depois de um tempo de espera, `~/.atlas/desktop/app.log` vazio). Mesmo controle negativo; a evidência é o artefato `verify-macos`. O app roda a partir de uma cópia em um diretório temporário, nunca de `/Applications`.
 9. **`publish`** (`ubuntu-latest`, depois dos builds e dos três jobs `verify-*`): o `scripts/generate-manifest.py` escreve o `manifest.json` (`version`, `date`, `assets`, mais `channel`, `prerelease`, `commit` e, em uma promoção, `promoted_from`); um arquivo `SHA256SUMS` cobre cada asset e o manifesto; depois vem o GitHub Release (`softprops/action-gh-release`, com o `GITHUB_TOKEN` da própria execução). O `promoted_from` vem da linha `Promoted from: …` na mensagem da tag, que o `release.sh stable` escreve. O corpo é a seção da versão no `CHANGELOG.md` seguida das instruções de instalação e atualização; em um pré-lançamento, ele abre com uma linha dizendo em qual canal o build está (e, para um build do canal padrão que o GitHub marca como "Latest", que ele ainda não é oferecido no canal Stable).
+   Um GitHub Release é criado como **rascunho** (o `GITHUB_TOKEN` da própria execução, `contents: write`); ele fica público quando um mantenedor assina o `SHA256SUMS` ([Assinatura de versões](#assinatura-de-versões)). O `SHA256SUMS` montado aqui também é salvo como o artefato de workflow `sha256sums`.
+10. **`attest`** (`ubuntu-latest`, depois do `publish`, nunca em uma execução somente build; `contents: read`, `id-token: write`, `attestations: write`): `actions/attest` com `subject-checksums: SHA256SUMS`, então o GitHub registra uma atestação assinada para cada asset do arquivo. Ele não pode publicar nem assinar uma versão; é a segunda camada, para quem usa o `gh attestation verify`.
 
 Uma versão é compilada a frio de propósito: não há cache do cargo, porque uma versão nunca é compilada a partir de um cache restaurado.
 
@@ -225,6 +228,7 @@ O Tauri escreve a versão do crate sem alterações em `CFBundleShortVersionStri
 
 - **O plano ou a pré-verificação falha** (branch errada, soak, guarda, a tag existe, seção do changelog): nada mudou ainda; corrija e rode de novo.
 - **As verificações falham**: nada mudou ainda.
+- **A execução do Release deu certo, mas a versão ainda é um rascunho** (a assinatura foi pulada ou falhou, por exemplo: sem chave, uma chave que não está no `release-keys.json`, `ssh-keygen` ausente): nada é público e nenhum cliente a vê. Rode `scripts/release-sign.sh vX.Y.Z --key <sua chave>`; é seguro rodar de novo, e uma versão que já tem uma assinatura válida só é publicada. O `bun run release` não aumenta a versão de novo (a tag existe), então faça o deploy do site depois com `bun run site:deploy`.
 - **O push deu certo, mas a execução do Release falhou**: corrija a causa (`gh run view <id> --log-failed`) e depois rode `bun run release:publish vX.Y.Z` de novo. Ele dispara o `release.yml` para a tag existente e o acompanha. Rodar de novo o mesmo `bun run release <request>` nesse commit faz o mesmo (a verificação de retomada vê a tag enviada sem um Release). Os jobs que falharam também podem ser rodados de novo pela página do Actions.
 - **O push falhou no meio**: `--atomic` quer dizer que nem a branch nem a tag se moveram em `origin`. Ficam um commit e uma tag locais: apague a tag (`git tag -d vX.Y.Z`), desfaça o commit da versão e rode de novo.
 - **A primeira beta falhou depois de a branch ser criada**: o `release/X.Y` existe localmente; volte para a `main`, rode `git branch -D release/X.Y` se nada foi enviado e rode de novo.
@@ -251,6 +255,8 @@ Rode antes de uma versão sempre que o Linux ou o empacotamento mudou, e leia os
 ## AUR (`codeatlas-atlas-bin`)
 
 Depois que o `publish` tem êxito, o job `publish-aur` envia o `PKGBUILD` renderizado da versão (o que o `build-arch` anexou; a sua fonte é o `.deb` da própria versão, então ele só existe depois que a versão existe) e um `.SRCINFO` gerado com `makepkg --printsrcinfo` para `ssh://aur@aur.archlinux.org/codeatlas-atlas-bin.git`, branch `master`. Rodar de novo uma versão sem mudanças não envia nada. O `build-arch` já falha quando o PKGBUILD não consegue se descrever (`makepkg --printsrcinfo`, com `ripgrep` entre as dependências). Alphas e betas também vão para o AUR: as versões do pacman tiram o `-` de um pré-lançamento (`1.5.0alpha.26`, veja `packaging/arch/render.sh`), e Alpha é o canal padrão.
+
+O `publish` cria a versão como rascunho ([Assinatura de versões](#assinatura-de-versões)), então, nos minutos até o `scripts/release-sign.sh` publicá-la, o `.deb` para o qual o novo PKGBUILD aponta ainda não pode ser baixado: um helper do AUR que compila nessa janela recebe um 404 e tenta de novo depois. O `bun run release` assina logo depois da execução, então a janela é o passo de assinatura.
 
 A conta do AUR é do mantenedor, então o job não faz nada até esta configuração única ser feita (sem ela, o job imprime um aviso e termina com sucesso; ele nunca bloqueia uma versão):
 
@@ -284,6 +290,17 @@ Confira os checksums de um download:
 ```bash
 curl -fsSLO https://github.com/codeatlasdev/atlas/releases/download/vX.Y.Z/SHA256SUMS
 shasum -a 256 -c SHA256SUMS --ignore-missing
+```
+
+Confira a assinatura (o que os clientes fazem), a atestação do build e a atestação da própria versão no GitHub:
+
+```bash
+curl -fsSLO https://github.com/codeatlasdev/atlas/releases/download/vX.Y.Z/SHA256SUMS.sig
+bun scripts/release-keys.ts allowed-signers > allowed_signers          # de um checkout na tag
+ssh-keygen -Y verify -f allowed_signers -I <key name> -n atlas-release -s SHA256SUMS.sig < SHA256SUMS
+gh attestation verify atlas-X.Y.Z-aarch64-apple-darwin.tar.gz --repo codeatlasdev/atlas
+gh release verify vX.Y.Z --repo codeatlasdev/atlas                       # só versões imutáveis
+gh release verify-asset vX.Y.Z atlas-X.Y.Z-aarch64-apple-darwin.tar.gz --repo codeatlasdev/atlas
 ```
 
 Os usuários recebem a nova versão com `atlas update`, que baixa `atlas-<version>-aarch64-apple-darwin.tar.gz` da versão e depois o `Atlas-<version>-…app.tar.gz` correspondente quando o Atlas Desktop está instalado. Ou clicam em **Atualizar CLI e app** no app. Confira o arquivo do app com `atlas desktop --install --latest --no-open && atlas desktop --status`.
@@ -335,25 +352,87 @@ O manifesto (`manifest.json`) não tem campos de kill switch: ele guarda `versio
 | Os binários são assinados ad-hoc (`codesign --sign -`) | só quando os secrets do Developer ID estão ausentes (forks, antes de serem configurados); o Gatekeeper então avisa em um `.dmg` baixado |
 | Assinatura Developer ID e notarização (CLI, `Atlas.app`, dmg) | **decidido e implementado**; ligado quando os seis secrets existem ([Assinatura e notarização no macOS](#assinatura-e-notarização-no-macos)). Até uma versão rodar com eles, trate as versões como ad-hoc |
 | Assinatura Authenticode do Windows (SignPath Foundation) | **ainda não**: o workflow está pronto e desligado; ele liga com a variável de repositório `SIGNPATH_ENABLED` quando a Foundation aceitar o projeto ([Assinatura de código no Windows](#assinatura-de-código-no-windows-signpath-foundation)) |
-| Checksums | `.sha256` por asset, `SHA256SUMS` sobre tudo, `manifest.json` |
-| `SHA256SUMS` assinado | **não**; uma decisão do mantenedor, comandos abaixo |
+| Checksums | `.sha256` por asset (mantido para clientes anteriores à primeira versão assinada), `SHA256SUMS` sobre tudo, `manifest.json` |
+| `SHA256SUMS` assinado | **construído, ainda não obrigatório.** Assinatura OpenSSH (`SHA256SUMS.sig`, namespace `atlas-release`) feita com a chave ed25519 offline de um mantenedor; a CLI a verifica e toma os hashes dos assets do arquivo assinado. Ela passa a ser obrigatória a partir de `signed_since`, que continua sem valor (e a lista de chaves vazia) até a primeira versão assinada ([Transição](#transição)) |
 | SBOM | JSON CycloneDX da árvore de dependências da CLI, quando o `cargo-cyclonedx` está disponível |
 | Builds reproduzíveis | parcial: `--locked`, `SOURCE_DATE_EPOCH`; o `--remap-path-prefix` não está definido porque não foi verificado contra o build do Tauri |
 | Compilado em runners hospedados pelo GitHub a partir da tag | sim (`release.yml`, disparado pelo push da tag `v*`) |
-| Atestações de artefato do GitHub (procedência SLSA) | **não ativadas**; possíveis agora que os builds são hospedados |
+| Atestações de artefato do GitHub | **sim** (job `attest`, `actions/attest` sobre o `SHA256SUMS`): uma atestação Sigstore da execução do `release.yml` para cada asset. Ela é feita depois dos jobs de build, a partir dos arquivos que o `publish` reuniu, então diz "esta execução do workflow publicou estes bytes", nada além disso |
+| Versões imutáveis | **desligadas** (configuração do repositório); ligue na primeira versão assinada ([abaixo](#ativar-versões-imutáveis)) |
 
-**O que um build hospedado pode afirmar:** os artefatos foram compilados pelo GitHub Actions a partir do commit da tag, com dependências travadas, e o manifesto registra esse commit. Sem atestações, isso é no máximo o nível 1 de build do [SLSA](https://slsa.dev) (a procedência existe, não é assinada por um serviço de build e é autodeclarada). Não descreva os builds como de um nível mais alto que esse.
+**O que um build hospedado pode afirmar:** os artefatos foram compilados pelo GitHub Actions a partir do commit da tag, com dependências travadas, e o manifesto registra esse commit. A atestação é a declaração assinada do GitHub sobre essa execução; ela não afirma nenhum nível SLSA acima do nível 1 de build para o build em si. Não descreva os builds como de um nível mais alto que esse.
 
-Se o mantenedor decidir assinar, estes são os comandos (rode depois de a versão ser publicada, sobre o `SHA256SUMS` baixado, e anexe o resultado com `gh release upload`):
+## Assinatura de versões
+
+A ameaça: uma versão trocada (um token de upload roubado, uma conta de mantenedor ou um workflow comprometido) passava em todas as verificações, porque o checksum vinha da mesma versão que o arquivo. Agora a âncora de confiança é a **chave offline de um mantenedor**, não o GitHub: o CI compila um rascunho, um mantenedor assina o `SHA256SUMS` na própria máquina e só então a versão fica pública. Quem consegue publicar assets mas não tem uma chave não produz uma assinatura que os clientes aceitem; o pior caso é uma versão que fica como rascunho. Uma mudança maliciosa no workflow ainda compila uma versão envenenada que um mantenedor pode assinar às cegas, então o `release-sign.sh` mostra os hashes que assina; compare-os com a atestação da execução (`gh attestation verify`).
+
+| Ameaça (S = barrada, N = não, P = em parte) | `.sha256` ao lado do asset (antes) | Chave offline do mantenedor + atestação (agora) |
+|---|---|---|
+| Um **token de upload** de assets de versão roubado troca assets depois do CI | N | S (não consegue assinar) |
+| Uma **conta do GitHub** comprometida (mantenedor ou admin) | N | S (pode publicar assets, não consegue produzir uma assinatura válida; o pior caso é reter a versão, um DoS) |
+| Um **workflow de CI** comprometido (mudança maliciosa que entrou por merge, action envenenada, runner) | N | P (o CI não assina; um mantenedor que assina um build envenenado o assina, então compare antes os hashes com a atestação) |
+| Adulteração de **CDN / espelho** | N | S |
+| Suprimir versões novas, ou servir uma antiga assinada (rollback) | N | N (o feed de atualização não é assinado; fora do escopo) |
+
+Custódia: dois mantenedores, duas chaves, qualquer uma assina; rotação, expiração e o procedimento de chave perdida estão abaixo. O Sigstore keyless como *única* âncora de confiança foi rejeitado (ele não defende contra uma conta ou um workflow comprometido, custa de 1,7 a 5 MB e mais de 34 crates na CLI, e os instaladores de shell não conseguem verificá-lo); a atestação do GitHub fica como a segunda camada, aditiva.
+
+- **Formato:** `sshsig` do OpenSSH sobre o `SHA256SUMS` inteiro, namespace `atlas-release`, tipo de chave `ssh-ed25519`, hash `sha512` (o padrão do `ssh-keygen -Y sign`). Só ed25519 comum: chaves FIDO `-sk` são rejeitadas pelo verificador da CLI. Uma chave no `gpg-agent` ou em um cartão OpenPGP serve quando é uma chave ed25519 comum.
+- **Chaves:** uma por mantenedor (`mvilacad`, `luancoleto`), qualquer uma assina. A lista é `crates/atlas-core/data/release-keys.json` (`name`, `pubkey`, `valid_after`, `valid_before`, mais `signed_since`). A CLI a embute; `bun scripts/release-keys.ts allowed-signers` a converte em um arquivo `allowed_signers` do OpenSSH para o `ssh-keygen -Y verify`, e o `release-sign.sh` confere a assinatura contra ela antes de enviar, então uma assinatura que os clientes rejeitariam nunca é enviada.
+- **Onde é verificada:** `atlas update`, `atlas desktop` e o download que o `atlas crew install` faz na sua própria máquina (o fallback que baixa aqui e envia para o servidor) passam todos por `download_verified` (`crates/atlas-cli/src/commands/release.rs`). Uma tag em `signed_since` ou depois exige `SHA256SUMS` e `SHA256SUMS.sig` da lista de chaves; o asset precisa bater com a sua linha no arquivo assinado. Uma assinatura ausente ou inválida, ou um asset que o arquivo não lista, é um erro e nada é instalado; a CLI não tem override por variável de ambiente. Uma tag anterior a `signed_since` mantém a verificação do `.sha256` e um aviso. Builds de release ignoram `ATLAS_RELEASE_POLICY`, o ponto de teste dos builds de debug. Os scripts de shell (`install.sh`, `install.ps1` e o script que o `atlas crew install` roda no servidor) ainda verificam só o `.sha256` até o [passo 3 da transição](#transição).
+
+### Gerar uma chave (uma vez por mantenedor)
+
+Na sua própria máquina, nunca no CI e nunca em uma pasta sincronizada por um gerenciador de senhas:
 
 ```bash
-# Assinatura sem chave ou com chave do arquivo de checksums, verificável offline a partir do bundle
-cosign sign-blob --bundle SHA256SUMS.sigstore.json SHA256SUMS
-# ou, com um par de chaves do minisign
-minisign -Sm SHA256SUMS
+ssh-keygen -t ed25519 -C "atlas-release mvilacad" -f ~/.ssh/atlas-release   # defina uma passphrase
+cat ~/.ssh/atlas-release.pub
 ```
 
-A documentação de instalação diz qual das duas assinaturas uma versão carrega.
+Adicione a chave ao `release-keys.json` em um pull request, com `valid_before` de 12 a 24 meses à frente (`valid_after` = hoje), e peça que o **outro mantenedor confirme a impressão digital** (`ssh-keygen -lf ~/.ssh/atlas-release.pub`) por um canal que não seja o GitHub. Faça um backup offline (cifrado) da chave privada; ela não existe em nenhum outro lugar.
+
+### Assinar uma versão
+
+O `bun run release <channel>` termina com isso. À mão, para um rascunho que está esperando:
+
+```bash
+scripts/release-sign.sh vX.Y.Z --key ~/.ssh/atlas-release
+```
+
+Ele baixa o `SHA256SUMS`, mostra o arquivo, pergunta, roda `ssh-keygen -Y sign -n atlas-release`, verifica o resultado contra o `release-keys.json`, envia o `SHA256SUMS.sig` e roda `gh release edit --draft=false --latest=<flag>` (a flag que o `release-version.ts github-flags` dá: alphas são "Latest" enquanto alpha é o canal padrão). Rodar de novo é seguro.
+
+### Rotacionar uma chave
+
+1. Adicione a nova chave na versão N (um pull request que muda o `release-keys.json`) e assine a versão N com a chave **antiga**: os clientes que confiam só na antiga aceitam a N e, a partir da N, conhecem a nova.
+2. A versão N+1 em diante pode ser assinada com a nova chave. Quando a N for a versão mais antiga que você ainda mantém, remova a chave antiga na N+k.
+3. Toda chave tem `valid_before` (12 a 24 meses). Uma chave não rotacionada deixa de ser aceita pelos clientes novos nesse dia, sozinha, e esse é o limite real de quanto tempo uma chave vazada é perigosa: clientes que nunca atualizam continuam confiando em uma chave removida até lá.
+
+### Chave perdida ou vazada
+
+- **Perdida** (o outro mantenedor ainda tem a dele): o outro mantenedor assina uma versão que adiciona uma chave de reposição e remove a perdida. Nada quebra.
+- **Vazada ou suspeita de vazamento**: remova a chave do `release-keys.json` e do `allowed_signers` dos instaladores imediatamente, publique uma versão assinada pelo outro mantenedor e diga isso nas notas da versão. As versões já assinadas com ela não ficam seguras retroativamente; os clientes confiam nela até atualizarem ou até o `valid_before` passar. Prefira prazos curtos.
+- **As duas perdidas**: nenhuma versão que os clientes existentes aceitem pode ser assinada. Os clientes existentes recusam versões sem assinatura, então a recuperação é uma instalação nova a partir de uma fonte em que você confia, mais um cliente compilado com chaves novas; guarde as duas chaves em dois backups diferentes para evitar isso.
+
+### Ativar versões imutáveis
+
+Settings › General › Releases › **Enable release immutability** (`gh api repos/codeatlasdev/atlas/immutable-releases` mostra `{"enabled": ...}`). Assets podem ser enviados enquanto a versão é um rascunho e ficam congelados na publicação, que é a ordem que o `release-sign.sh` usa (envia a assinatura, depois publica). Uma versão publicada não pode mais ser editada, ter assets trocados nem ter a tag movida; o GitHub então também atesta a versão (`gh release verify`). Ligue quando a primeira versão assinada for gerada; uploads com `--clobber` contra uma versão publicada deixam de funcionar, por design.
+
+### Transição
+
+A assinatura chega em etapas para que ninguém fique para trás:
+
+1. **Verificador, scripts e workflow, sem mudança de comportamento** (esta etapa): `signed_since` sem valor, lista de chaves vazia; a CLI mantém o caminho do `.sha256`; o `release.yml` compila rascunhos e o `release-sign.sh` os publica sem assinatura, com um aviso, enquanto nenhuma chave está configurada.
+2. **O PR de versão da primeira versão assinada** (a primeira versão depois da que traz esta etapa): as duas chaves públicas no `release-keys.json`, `signed_since` = essa tag. A versão é publicada como rascunho e assinada. Os clientes antigos (alpha.26 e anteriores, o atualizador do app rodando a CLI antiga) leem o `.sha256` por asset nesse salto e a instalam; todo salto a partir daí é verificado por assinatura. Continue publicando o `.sha256` por asset enquanto puderem existir clientes mais antigos que essa versão.
+3. **`install.sh`, `install.ps1` e o script de download do crew** passam a exigir assinatura (`allowed_signers` embutido, `ssh-keygen -Y verify`, hash tirado do arquivo assinado, falha fechada, `ATLAS_ALLOW_UNSIGNED=1` como a recusa explícita quando falta o `ssh-keygen`) no **mesmo PR que faz da primeira tag assinada o bootstrap permitido mais antigo**, ou seja, o PR de versão do passo 2. Até uma tag assinada ser a mais nova, eles mantêm o caminho legado.
+4. As tags antigas (alpha.26 e anteriores) continuam sem assinatura: uma assinatura feita hoje garantiria quaisquer bytes que estejam na versão agora. Instalações explícitas delas mostram um aviso.
+5. O `bun run release stable` passa pelo `release-sign.sh` como todo outro canal, então uma versão promovida é assinada; senão uma CLI que conhece assinaturas a recusaria.
+
+### Lista de verificação da versão
+
+1. `bun run release <channel>`; acompanhe a execução (`gate` → builds → `verify-linux` → `publish` → `attest`).
+2. No prompt de assinatura, leia os hashes; confira um deles contra a atestação: baixe um asset e rode `gh attestation verify <asset> --repo codeatlasdev/atlas`.
+3. Depois de pública: `gh release verify vX.Y.Z --repo codeatlasdev/atlas` (quando as versões imutáveis estiverem ligadas), `gh release verify-asset vX.Y.Z <asset> --repo codeatlasdev/atlas` e `ssh-keygen -Y verify` como em [Verificar uma versão](#verificar-uma-versão).
+4. `atlas update --check` e um `atlas update` de verdade a partir da versão anterior.
 
 ## Auditoria de contraste (antes de cada versão)
 

@@ -3,6 +3,7 @@
 	 * Native chat for an omp pipe-mode agent: reads the pty's JSONL stream into `ChatState`
 	 * (see `rpc.ts`) and writes commands back. The transcript and composer are in `chat/`.
 	 */
+	import { frameBatch } from "#lib/frameBatch.ts";
 	import { usePoll } from "#lib/clock.svelte.ts";
 	import { onMount } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
@@ -12,7 +13,7 @@
 	import { host, b64bytes } from "#lib/host.ts";
 	import { hostEvents } from "#lib/hostEventsApp.ts";
 	import { errText } from "#lib/api.ts";
-	import { apply, emptyChat, LineBuffer, type ChatState, type UiRequest } from "#lib/rpc.ts";
+	import { applyBatch, emptyChat, LineBuffer, type ChatState, type UiRequest } from "#lib/rpc.ts";
 	import { ws, type Tab } from "#lib/stores/workspace.svelte.ts";
 	import { worktreeFiles } from "#lib/stores/files.svelte.ts";
 	import Composer, { type Pasted } from "./chat/Composer.svelte";
@@ -48,14 +49,8 @@
 		void host.ptyWrite(tab.pty, `${JSON.stringify(cmd)}\n`).catch((e) => toast.error(errText(e)));
 	}
 
-	function feed(bytes: Uint8Array, replay: boolean) {
-		if (replay) {
-			chat = emptyChat();
-			lines.reset();
-			askedHistory = false;
-		}
-		for (const l of lines.push(dec.decode(bytes, { stream: !replay }))) apply(chat, l);
-		chat = chat;
+	/** What the chat does once a batch of lines is in the transcript. */
+	function after() {
 		if (chat.ready && !askedHistory) {
 			askedHistory = true;
 			send({ type: "get_messages", id: "history" });
@@ -65,6 +60,28 @@
 			tab.pendingPrompt = undefined;
 			submit(p);
 		}
+	}
+
+	// omp streams the whole message so far in every delta: one apply per frame, newest delta only (rpc.coalesce).
+	const frames = frameBatch<string>((ls) => {
+		applyBatch(chat, ls);
+		chat = chat;
+		after();
+	});
+
+	function feed(bytes: Uint8Array, replay: boolean) {
+		if (replay) {
+			// The replay is the whole history: what was waiting for a frame is part of it.
+			frames.stop();
+			chat = emptyChat();
+			lines.reset();
+			askedHistory = false;
+		}
+		const ls = lines.push(dec.decode(bytes, { stream: !replay }));
+		if (!replay) return frames.push(ls);
+		applyBatch(chat, ls);
+		chat = chat;
+		after();
 	}
 
 	const poll = () => send({ type: "get_state", id: "state" });
@@ -91,6 +108,7 @@
 		void worktreeFiles(tab.worktreeId).then((f) => (atFiles = f));
 		return () => {
 			alive = false;
+			frames.stop();
 			offs.forEach((u) => u());
 			if (tab.pty) void host.ptyDetach(tab.pty).catch(() => {});
 		};

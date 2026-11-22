@@ -243,3 +243,24 @@ test("a brief blur never rests the page, and a hidden document does at once", ()
 	listeners.visibility.forEach((f) => f());
 	expect(rests).toEqual([true, false]);
 });
+
+test("onRest tells loops of the app when the page starts and stops resting, and resting reads the same", () => {
+	const c = make(60_000);
+	const seen: boolean[] = [];
+	const off = c.onRest((r) => seen.push(r));
+	expect(c.resting).toBe(false);
+	focus = false;
+	listeners.blur.forEach((f) => f());
+	live()
+		.find((x) => x.ms === 60_000)
+		.fn();
+	expect(c.resting).toBe(true);
+	focus = true;
+	listeners.focus.forEach((f) => f());
+	expect(seen).toEqual([true, false]);
+	off();
+	visible = false;
+	listeners.visibility.forEach((f) => f());
+	expect(seen).toEqual([true, false]);
+	expect(c.resting).toBe(true);
+});

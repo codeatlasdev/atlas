@@ -73,11 +73,18 @@ export ATLAS_DEBUG_SOCK="$sock"
 "$atlas" desktop debug info >/dev/null 2>&1 || { echo "FAIL: no debug bridge after 120 s"; tail -20 "$work/app.out"; exit 3; }
 
 # A seat with no keyboard never gives a window focus (document.hasFocus() stays false: no caret blink, no focus-only paths).
+# `wtype -k Shift_R` presses and releases one modifier once, then `-s` keeps its virtual keyboard alive: the seat has a keyboard
+# and no key stays held (a held Shift would shift every key the app sees). Only after the display is proven the gate's own, and
+# with the instance's variables spelled out on the command lines, never inherited by luck.
 if command -v wtype >/dev/null; then
-  env -u ATLAS_HOSTD_DIR wtype -P Shift_R -s 7200000 >/dev/null 2>&1 & kb=$!
+  headless_assert_private || exit 3
+  priv=(XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" SWAYSOCK="$SWAYSOCK")
+  env -u ATLAS_HOSTD_DIR "${priv[@]}" wtype -k Shift_R -s 7200000 >/dev/null 2>&1 & kb=$!
   sleep 1
-  swaymsg '[app_id=".*"] focus' >/dev/null 2>&1 || true
+  env "${priv[@]}" swaymsg '[app_id=".*"] focus' >/dev/null 2>&1 || true
   sleep 2
+  focus=$("$atlas" desktop debug eval 'return document.hasFocus()' 2>/dev/null || true)
+  echo "page has focus: $focus"
 fi
 
 # The bench and wtype run without the instance's ATLAS_HOSTD_DIR: the bench finds the instance's processes by it, and must not count itself.

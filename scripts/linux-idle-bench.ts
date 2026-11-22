@@ -33,7 +33,8 @@ import { join } from "node:path";
 /** One thread: its name (`prctl(PR_SET_NAME)`, so WebKit and tokio name theirs), CPU ticks and context switches (a switch is a wakeup). */
 export type Thread = { tid: number; name: string; ticks: number; switches: number };
 export type Sample = { pid: number; role: string; comm: string; ticks: number; rssKb: number; pssKb: number; swapKb: number; threads: Thread[] };
-export type Window = { label: string; seconds: number; cpuPct: Record<string, number>; totalCpuPct: number; rssMb: number; pssMb: number; swapMb: number; processes: { role: string; pid: number; cpuPct: number; /** context switches per second, all threads */ switchesPerS: number; rssMb: number; pssMb: number; swapMb: number; /** busiest threads over the window */ threads: { name: string; cpuPct: number; switchesPerS: number }[] }[] };
+export type Live = { name: string; before: number; after: number; ok: boolean; why: string };
+export type Window = { live?: Live; label: string; seconds: number; cpuPct: Record<string, number>; totalCpuPct: number; rssMb: number; pssMb: number; swapMb: number; processes: { role: string; pid: number; cpuPct: number; /** context switches per second, all threads */ switchesPerS: number; rssMb: number; pssMb: number; swapMb: number; /** busiest threads over the window */ threads: { name: string; cpuPct: number; switchesPerS: number }[] }[] };
 
 export const TICKS_PER_S = 100;
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -74,6 +75,23 @@ export function commitsPerSecond(log: string, seconds: number): number {
 }
 
 /**
+ * Proof that the state HAPPENED during the window: a bench whose chat never streamed, whose services never listened or whose
+ * flood never ran reports a low CPU number that reads like a win (2.5 % where 22 % was the truth). `counter`: something that
+ * must grow at least `minPerS` per second (deltas the fake engine sent, passes of the flood, frames of the scroller).
+ */
+export function counterLive(name: string, before: number, after: number, seconds: number, minPerS: number): Live {
+	const need = minPerS * seconds;
+	const ok = after - before >= need;
+	return { name, before, after, ok, why: ok ? "" : `${name} grew by ${after - before} in ${seconds.toFixed(0)} s, needs at least ${need.toFixed(0)}: the state did not happen` };
+}
+
+/** `level`: something that must read `want` at both ends of the window (services accepting connections). */
+export function levelLive(name: string, before: number, after: number, want: number): Live {
+	const ok = before === want && after === want;
+	return { name, before, after, ok, why: ok ? "" : `${name} was ${before} then ${after}, needs ${want} at both ends: the state did not happen` };
+}
+
+/**
  * The states CI holds to a CPU budget (% of one core over the window, all processes of the instance, llvmpipe: a GitHub
  * runner has no GPU). Only states that are already idle on `main`: a state with a known cost is added here by the PR that
  * removes it (`stack-running` after the animation fix, `terminal-idle` after the hostd fix, `chat-stream`, `terminal-output`),
@@ -86,7 +104,7 @@ export const GATE_BUDGET: Record<string, number> = { welcome: 3, workspace: 4 };
 export function judgeGate(windows: Window[], budgets: Record<string, number> = GATE_BUDGET): string[] {
 	return Object.entries(budgets).flatMap(([scenario, budget]) => {
 		const w = windows.filter((x) => x.label.endsWith(`/${scenario}`));
-		return w.length ? w.flatMap((x) => judgeWindow(x, budget)) : [`${scenario}: no window measured`];
+		return w.length ? w.flatMap((x) => (x.live && !x.live.ok ? [`${x.label}: ${x.live.why}`] : judgeWindow(x, budget))) : [`${scenario}: no window measured`];
 	});
 }
 
@@ -228,7 +246,7 @@ const JS = {
 	start: `[...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "Start")?.click(); return 1`,
 	stop: `[...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "Stop")?.click(); return 1`,
 	close: (tab: string) => `window.__atlas.ws.closeTab(${JSON.stringify(tab)}); return 1`,
-	scroll: `const el = [...document.querySelectorAll(".dock *")].find((e) => e.scrollHeight > e.clientHeight + 20 && getComputedStyle(e).overflowY !== "visible"); if (!el) throw new Error("no scrollable list in the dock"); window.__benchScroll = true; (function step(t0) { if (!window.__benchScroll) return; requestAnimationFrame((t) => { el.scrollTop = ((t - t0) * 0.1) % (el.scrollHeight - el.clientHeight); step(t0); }); })(performance.now()); return el.scrollHeight`,
+	scroll: `const el = [...document.querySelectorAll(".dock *")].find((e) => e.scrollHeight > e.clientHeight + 20 && getComputedStyle(e).overflowY !== "visible"); if (!el) throw new Error("no scrollable list in the dock"); window.__benchScroll = true; (function step(t0) { if (!window.__benchScroll) return; requestAnimationFrame((t) => { el.scrollTop = ((t - t0) * 0.1) % (el.scrollHeight - el.clientHeight); window.__benchFrames = (window.__benchFrames || 0) + 1; step(t0); }); })(performance.now()); return el.scrollHeight`,
 	scrollStop: `window.__benchScroll = false; return 1`,
 };
 
@@ -247,7 +265,9 @@ export const SCENARIOS = [
 	"unfocused-chat-stream",
 ] as const;
 
-type Ctx = { pid: number; atlas: string; sock: string; run: (js: string) => unknown; sway: (...a: string[]) => string; tmp: string; project: string; wt: string };
+/** What `enter` leaves for `measure` to read at both ends of the window to prove the state ran. */
+type Probe = { name?: string; kind?: "counter" | "level"; read?: () => number; minPerS?: number; want?: number };
+type Ctx = { probe: Probe; pid: number; atlas: string; sock: string; run: (js: string) => unknown; sway: (...a: string[]) => string; tmp: string; project: string; wt: string };
 
 /** Puts the app in the state `name` measures and returns what undoes it. `welcome` needs an instance with no project: start it that way. */
 async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => void> {
@@ -264,13 +284,17 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 			// The two services are real listeners, so their dots turn from "starting" (pulsing) to ok.
 			c.run(JS.start);
 			await Bun.sleep(8000);
+			c.probe = Object.assign(c.probe, { name: "services listening", kind: "level", want: 2, read: () => fixturePortsUsed!.filter((p) => spawnSync(["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${p}`]).exitCode === 0).length });
 			return () => c.run(JS.stop);
 		case "terminal-idle": {
 			const t = rpc(["bash", "--norc", "--noprofile", "-i"]);
 			return () => c.run(JS.close(t));
 		}
 		case "terminal-output": {
-			const t = rpc(["sh", "-c", 'while :; do yes "2026-11-22 12:00:00 INFO request handled path=/api/v1/items status=200 ms=12" | head -c 20M; done']);
+			const passes = join(c.tmp, "flood.passes");
+			writeFileSync(passes, "0");
+			const t = rpc(["sh", "-c", `n=0; while :; do yes "2026-11-22 12:00:00 INFO request handled path=/api/v1/items status=200 ms=12" | head -c 20M; n=$((n+1)); echo $n > ${passes}; done`]);
+			Object.assign(c.probe, { name: "20 MB flood passes", kind: "counter", minPerS: 0.05, read: () => Number(readFileSync(passes, "utf8")) || 0 });
 			return () => c.run(JS.close(t));
 		}
 		case "chat-idle": {
@@ -280,13 +304,17 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 		}
 		case "chat-stream": {
 			writeFileSync(stream, "");
+			rmSync(`${stream}.sent`, { force: true });
 			const t = chat();
+			// fake-omp counts what it wrote to the pipe the app reads (it dies on a broken one): a dead chat stops the counter.
+			Object.assign(c.probe, { name: "message_update lines sent", kind: "counter", minPerS: 10, read: () => Number(existsSync(`${stream}.sent`) ? readFileSync(`${stream}.sent`, "utf8") : 0) || 0 });
 			return () => (rmSync(stream, { force: true }), c.run(JS.close(t)));
 		}
 		case "list-scroll":
 			c.run(JS.chord("KeyE"));
 			await Bun.sleep(1500);
 			c.run(JS.scroll);
+			Object.assign(c.probe, { name: "scroller frames", kind: "counter", minPerS: 20, read: () => c.run("return window.__benchFrames || 0") as number });
 			return () => c.run(JS.scrollStop);
 		case "unfocused": {
 			// A second window takes the keyboard focus on the instance's own sway; the app stays mapped and visible.
@@ -329,6 +357,7 @@ async function measure() {
 	const env = environOf(root);
 	const pids = () => [...new Set([...children(root), ...(env.ATLAS_HOSTD_DIR ? tagged(env.ATLAS_HOSTD_DIR) : [])])];
 	let undo = () => {};
+	const probe: Probe = {};
 	const tmp = join(env.HOME ?? "/tmp", ".idle-bench");
 	mkdirSync(tmp, { recursive: true });
 	if (scenario) {
@@ -344,16 +373,20 @@ async function measure() {
 		if (!project && scenario !== "welcome") (fixture = makeFixture(tmp)), (project = fixture.root);
 		fixturePortsUsed = fixture?.ports;
 		const wt = scenario === "welcome" ? "" : (run(JS.open(project as string)) as string);
-		undo = await enter(scenario as (typeof SCENARIOS)[number], { pid: root, atlas, sock, run, sway, tmp, project: project ?? "", wt });
+		undo = await enter(scenario as (typeof SCENARIOS)[number], { probe, pid: root, atlas, sock, run, sway, tmp, project: project ?? "", wt });
 	}
 	await Bun.sleep(settle * 1000);
+	const live0 = probe.read?.();
+	const loadBefore = Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]);
 	const before = sample(pids());
 	const t0 = performance.now();
 	await Bun.sleep(seconds * 1000);
 	const secs = (performance.now() - t0) / 1000;
 	const after = sample(pids());
+	const live1 = probe.read?.();
 	const w = cpuWindow(`${label}/${scenario ?? "state"}`, secs, before, after);
-	const res: Record<string, unknown> = { ...w, fixturePorts: fixturePortsUsed, when: new Date().toISOString(), loadAvg1: Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]) };
+	const res: Record<string, unknown> = { ...w, fixturePorts: fixturePortsUsed, loadAvg1Before: loadBefore, when: new Date().toISOString(), loadAvg1: Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]) };
+	if (probe.read && probe.name) res.live = probe.kind === "level" ? levelLive(probe.name, live0!, live1!, probe.want!) : counterLive(probe.name, live0!, live1!, secs, probe.minPerS!);
 	if (probeS > 0) res.page = JSON.parse(debug(atlas, sock, "perf", "--seconds", String(probeS)));
 	// What the page believes about itself in this state (the probe above ran in it too).
 	res.pageState = JSON.parse(debug(atlas, sock, "eval", "return { visibility: document.visibilityState, hasFocus: document.hasFocus(), hidden: document.hidden, animations: document.getAnimations().filter((a) => a.playState === 'running').length }"));
@@ -361,6 +394,8 @@ async function measure() {
 	console.log(JSON.stringify(res));
 	const out = arg("out");
 	if (out) appendFileSync(out, `${JSON.stringify(res)}\n`);
+	const live = res.live as Live | undefined;
+	if (live && !live.ok) (console.error(`NOT A VALID RUN ${w.label}: ${live.why}`), process.exit(1));
 }
 
 if (import.meta.main) {

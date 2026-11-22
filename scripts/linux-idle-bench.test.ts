@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cpuWindow, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
+import { counterLive, cpuWindow, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, levelLive, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
 
 const sample = (pid: number, role: string, ticks: number, o: Partial<Sample> = {}): Sample => ({ pid, role, comm: role, ticks, rssKb: 100 * 1024, pssKb: 60 * 1024, swapKb: 0, threads: [], ...o });
 
@@ -128,5 +128,40 @@ describe("fixture ports", () => {
 		expect(y).toContain("python3 -m http.server 31002 --bind 127.0.0.1");
 		expect(fixturePorts(y)).toEqual([31001, 31002]);
 		expect(y).not.toMatch(/2100[12]/);
+	});
+});
+
+// Incident (2026-11-22, redo of the compositing matrix): `unfocused-chat-stream` read 1-2 % in some runs and 22-60 % in others
+// because the chat sometimes never streamed; the low rows looked like a win for the setting under test. A run in which the
+// state did not happen must fail, not report a low number.
+describe("liveness: a state that did not happen is not a result", () => {
+	test("a counter must grow at the stated rate over the window, and a stalled one fails with the numbers", () => {
+		expect(counterLive("lines", 100, 400, 30, 10).ok).toBe(true); // exactly 10/s
+		const dead = counterLive("lines", 100, 100, 30, 10);
+		expect(dead.ok).toBe(false);
+		expect(dead.why).toMatch(/lines grew by 0 in 30 s, needs at least 300/);
+		expect(counterLive("lines", 100, 399, 30, 10).ok).toBe(false); // one short
+	});
+	test("a level must hold at both ends: services up at the start and gone at the end is not a running stack", () => {
+		expect(levelLive("services", 2, 2, 2).ok).toBe(true);
+		expect(levelLive("services", 2, 1, 2).ok).toBe(false);
+		expect(levelLive("services", 0, 2, 2).ok).toBe(false);
+	});
+	test("the gate fails a window whose state did not happen even when its CPU is under budget", () => {
+		const w = { ...cpuWindow("ci/welcome", 30, [sample(1, "app", 0)], [sample(1, "app", 3)]), live: counterLive("x", 0, 0, 30, 1) };
+		const others = Object.keys(GATE_BUDGET).filter((s) => s !== "welcome").map((s) => cpuWindow(`ci/${s}`, 30, [sample(1, "app", 0)], [sample(1, "app", 3)]));
+		expect(judgeGate([w, ...others])).toEqual([expect.stringContaining("ci/welcome: x grew by 0")]);
+	});
+	test("the real fake engine counts what it sends, and stops counting when its stream file goes away", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "fake-omp-"));
+		const stream = join(dir, "stream");
+		writeFileSync(stream, "");
+		const p = Bun.spawn(["python3", join(import.meta.dir, "fixtures/linux-idle/fake-omp.py"), "--mode", "rpc-ui", "--stream-file", stream], { stdout: "ignore", stdin: "pipe" });
+		await Bun.sleep(2500);
+		const n = Number(await Bun.file(`${stream}.sent`).text());
+		p.kill();
+		// 30 updates/s: 2.5 s is ~75; the counter is written every 30 lines, so at least 30 and a multiple of 30
+		expect(n).toBeGreaterThanOrEqual(30);
+		expect(n % 30).toBe(0);
 	});
 });

@@ -1,7 +1,7 @@
 ---
 title: "App desktop"
 source: desktop.md
-source_sha: "8abd619c7784795ab1f144f68ff8db5d0f6bf162"
+source_sha: "d36f015dfbafd2ae584d3b2477d3ef9be23d28eb"
 translation: machine
 ---
 
@@ -134,6 +134,12 @@ A janela principal é criada a partir do `tauri.conf.json` (`create: false`) no 
 - Os **arquivos de tema** vêm de `themes_user_read` (leituras simples de disco de `~/.atlas/themes` e do diretório legado), não pelo hostd, então o tema nunca espera o host de terminais.
 - **Bundle.** As telas pesadas (editor, editor de arquivo avulso, diff, conversa do chat, aba do navegador, PR, painel, logs, config, painel do terminal) carregam por `components/Lazy.svelte`; Configurações, Novidades e os diálogos de nova worktree / PR, por `LazyOpen.svelte` na primeira abertura. O shell só alcança o CodeMirror pelos slots `ops` de `lib/symbols.ts`, instalados por `lib/outline.ts` quando o primeiro editor carrega; não importe `@codemirror/*`, `yaml`, `marked`, `prettier` nem `echarts` de módulos de inicialização (`routes/(app)/+layout.svelte`, `lib/shell/*`, `lib/stores/*`). A parte do controle do servidor de linguagem que o shell alcança (`lsp/client.svelte.ts`, `lsp/history.ts`) é a metade sem CodeMirror: `lsp/convert.ts` (posições sobre um `LineDoc` estrutural, URIs, planejamento de WorkspaceEdit) e `lsp/navigation.ts`; as metades com CodeMirror são `lsp/changes.ts` e `lsp/navigationCm.ts`, e o editor entrega o seu `ChangeBuffer` ao `LspDoc`. A conversa do chat do crew (`CrewmateView`) é um `Lazy` com uma caixa vazia do mesmo tamanho enquanto carrega, porque as respostas são markdown com todos os pacotes de linguagem. O `bun run bundle` (parte do `bun run check` e do CI) compila o app e confere o que uma abertura carrega (o fecho estático dos chunks de entrada e da rota principal) contra o `apps/desktop/bundle-budget.json`: o JS e o CSS comprimidos com gzip não podem passar do orçamento, nenhum desses pacotes pode ser alcançável, exceto as violações listadas em `known` (cada uma com o motivo), e os dois valores só encolhem (`bun run bundle -- --ratchet` os reduz). O xterm.js fica fora da inicialização, folha de estilo inclusive. Hoje o `known` está vazio: mantenha assim. As mensagens sofrem tree-shaking: o `m` (`lib/i18n/m.ts`) é um namespace com uma exportação por mensagem, então cada uma cai no chunk das telas que chamam `m.key()` e a inicialização não cresce com o catálogo; mantenha as chamadas estáticas (sem `m[variable]`, sem passar o `m` adiante) e o `bun run bundle` imprime quantas mensagens compiladas a inicialização carrega.
 - **Medição.** `ATLAS_BOOT_TRACE=/tmp/boot.txt <app binary>` acrescenta linhas `<ms since process start> <mark>` (marcas do Rust mais marcas `js:` do `lib/boot.ts`); sem a variável, toda marca é um no-op.
+
+### Movimento e janela em repouso
+
+Uma única animação CSS em execução mantém o processo web, o processo de UI e o compositor do WebKitGTK a 60 fps, por menor que seja (um ponto de 12 px: 13 % de um núcleo com GPU, 44 % com llvmpipe; `docs/perf/linux-webkit-study.md`). Por isso: **um estado estável não anima.** Um serviço, projeto ou pílula de atualização saudável e um tripulante dormindo ou parado ficam imóveis; só o que está mudando (um serviço iniciando, um tripulante trabalhando, um spinner) fica em loop, e uma barra que cresce se move em passos, não por uma `transition` a cada amostra. `steadyMotion.test.ts` e `steadyMotionProject.test.ts` montam os componentes reais com o CSS compilado e falham diante de qualquer animação `infinite` (ou transição em `transform`) numa renderização estável (`test/motion.ts` resolve a cascata, que o happy-dom não resolve).
+
+O WebKitGTK no Wayland nunca informa que uma janela sem foco, ou em outra área de trabalho, está oculta (`visibilityState` continua `visible`, o rAF segue rodando), então "pausar quando oculta" não pode depender de `document.hidden`. O relógio do app (`lib/clock.svelte.ts`) é o sinal: com a janela sem foco além de `blurGraceMs` (60 s) ou o documento oculto, ela está em *repouso*; o app para os próprios temporizadores, define `html[data-resting]` (o `app.css` pausa toda animação CSS sob ele) e avisa os loops por `clock.onRest`. O foco traz tudo de volta de uma vez.
 
 ## Projetos e worktrees
 

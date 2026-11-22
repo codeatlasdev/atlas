@@ -254,19 +254,26 @@ mod imp {
 #[cfg(target_os = "linux")]
 mod imp {
     use super::Proc;
+    use std::path::Path;
 
     pub fn table() -> Vec<Proc> {
-        let Ok(dir) = std::fs::read_dir("/proc") else {
+        table_in(Path::new("/proc"), &boot_time)
+    }
+
+    /// The table of the `/proc`-shaped tree at `root`; `boot` reads the boot time (injected so a test
+    /// can count the reads).
+    pub(super) fn table_in(root: &Path, boot: &dyn Fn() -> Option<u64>) -> Vec<Proc> {
+        let Ok(dir) = std::fs::read_dir(root) else {
             return Vec::new();
         };
         dir.filter_map(|e| e.ok()?.file_name().to_str()?.parse::<u32>().ok())
-            .filter_map(stat)
+            .filter_map(|pid| stat(root, pid, boot))
             .collect()
     }
 
     /// `/proc/<pid>/stat`: `pid (comm) state ppid ... starttime(22)`.
-    fn stat(pid: u32) -> Option<Proc> {
-        let s = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    fn stat(root: &Path, pid: u32, boot: &dyn Fn() -> Option<u64>) -> Option<Proc> {
+        let s = std::fs::read_to_string(root.join(pid.to_string()).join("stat")).ok()?;
         // comm may hold spaces and parentheses: the fields resume after the LAST ')'.
         let (head, rest) = s.rsplit_once(')')?;
         let name = head.split_once('(')?.1.to_string();
@@ -276,7 +283,7 @@ mod imp {
         Some(Proc {
             pid,
             ppid,
-            start: boot_time()? + ticks / clk_tck(),
+            start: boot()? + ticks / clk_tck(),
             name,
         })
     }
@@ -294,11 +301,58 @@ mod imp {
     }
 
     pub fn start_time(pid: u32) -> Option<u64> {
-        stat(pid).map(|p| p.start)
+        stat(Path::new("/proc"), pid, &boot_time).map(|p| p.start)
     }
 
     pub fn environ(pid: u32) -> Option<Vec<u8>> {
         std::fs::read(format!("/proc/{pid}/environ")).ok()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::cell::Cell;
+
+        /// A `/proc` of `n` processes: `<pid>/stat` lines in the kernel's format.
+        fn fake_proc(n: u32) -> tempfile::TempDir {
+            let d = tempfile::tempdir().unwrap();
+            for pid in 2..2 + n {
+                let dir = d.path().join(pid.to_string());
+                std::fs::create_dir(&dir).unwrap();
+                // pid (comm) state ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime stime
+                // cutime cstime priority nice threads itrealvalue starttime(22)
+                let stat = format!("{pid} (weird) name) S 1 0 0 0 0 0 0 0 0 0 0 0 0 0 20 0 1 0 {}", pid * 100);
+                std::fs::write(dir.join("stat"), stat).unwrap();
+            }
+            std::fs::create_dir(d.path().join("self")).unwrap(); // not a pid
+            d
+        }
+
+        // Incident (#289, docs/perf/linux-webkit-study.md): hostd's 2 s sweep read /proc/stat once per
+        // process of the machine (405 x 3 KB per scan, 2.9 % of a core per open terminal, doing nothing).
+        #[test]
+        fn a_scan_reads_the_boot_time_once_however_many_processes_there_are() {
+            let proc = fake_proc(50);
+            let reads = Cell::new(0);
+            let boot = || {
+                reads.set(reads.get() + 1);
+                Some(1_700_000_000)
+            };
+            let rows = table_in(proc.path(), &boot);
+            assert_eq!(rows.len(), 50, "every numeric entry is a row, `self` is not");
+            assert!(reads.get() <= 1, "read the boot time {} times for 50 processes", reads.get());
+            let tck = clk_tck();
+            let row = rows.iter().find(|r| r.pid == 7).unwrap();
+            assert_eq!(row.name, "weird) name", "comm may hold parentheses");
+            assert_eq!(row.ppid, 1);
+            assert_eq!(row.start, 1_700_000_000 + 700 / tck);
+        }
+
+        #[test]
+        fn an_unreadable_boot_time_gives_no_rows_rather_than_start_times_of_zero() {
+            let proc = fake_proc(3);
+            assert!(table_in(proc.path(), &|| None).is_empty());
+        }
     }
 }
 

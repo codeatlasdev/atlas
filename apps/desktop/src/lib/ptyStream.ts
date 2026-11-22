@@ -16,6 +16,11 @@ export function droppedPty(ev: unknown): string | undefined {
 		: undefined;
 }
 
+/** A stream that ends `dropped` within this long of opening is a failed attach, not a reader that stalled. */
+const QUICK_MS = 2000;
+const BACKOFF_MS = 250;
+const MAX_BACKOFF_MS = 30_000;
+
 export function ptyStream(o: {
 	/** Attach with replay: frames start with the history. */
 	open: (onFrame: (f: PtyFrame) => void) => Promise<PtyLink>;
@@ -27,7 +32,10 @@ export function ptyStream(o: {
 	 */
 	write: (bytes: Uint8Array, replay: boolean, done: () => void) => void;
 	reset: () => void;
+	/** Resolves after `ms`; injected so the tests drive the clock. */
+	wait?: (ms: number) => Promise<void>;
 }) {
+	const wait = o.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 	let alive = true;
 	let link: PtyLink | undefined;
 	/**
@@ -45,6 +53,14 @@ export function ptyStream(o: {
 	let wanted = false;
 	/** Bumped by every attach: frames and parse callbacks of an earlier stream are stale. */
 	let epoch = 0;
+	/**
+	 * Streams that ended `dropped` soon after they opened, one after the other. Redrawing from the history is right
+	 * when hostd cut a reader that stalled; when the host closes every stream right away (a pty that just ended, a
+	 * host that refuses) it is a loop of attach, replay of the whole history and re-parse, ~10 times a second, for
+	 * as long as it lasts. The first quick drop redraws at once; each one after it waits twice as long as the one before.
+	 */
+	let quick = 0;
+	let openedAt = 0;
 	/** Redraw from hostd's history: now when xterm is caught up, else as soon as it is (the old stream stops at once). */
 	const attach = () => {
 		epoch++;
@@ -57,6 +73,7 @@ export function ptyStream(o: {
 	const open = () => {
 		wanted = false;
 		const mine = epoch;
+		openedAt = Date.now();
 		o.open((f) => {
 			if (!alive || mine !== epoch) return;
 			switch (f.kind) {
@@ -68,9 +85,20 @@ export function ptyStream(o: {
 					feed(f.bytes, false, mine);
 					break;
 				// hostd cut this reader: redraw from its history.
-				case "dropped":
-					attach();
+				case "dropped": {
+					quick = Date.now() - openedAt < QUICK_MS ? quick + 1 : 0;
+					// The first drop redraws at once (a reader that stalled); only a second one in a row waits.
+					if (quick <= 1) {
+						attach();
+						break;
+					}
+					link?.close();
+					link = undefined;
+					void wait(Math.min(MAX_BACKOFF_MS, BACKOFF_MS * 2 ** (quick - 2))).then(() => {
+						if (alive && mine === epoch) attach();
+					});
 					break;
+				}
 				case "ended":
 					break;
 			}
@@ -100,7 +128,10 @@ export function ptyStream(o: {
 	attach();
 	return {
 		/** The host came back: its replay redraws the terminal from scratch. */
-		reattach: attach,
+		reattach: () => {
+			quick = 0;
+			attach();
+		},
 		dispose() {
 			alive = false;
 			epoch++;

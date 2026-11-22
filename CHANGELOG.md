@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas Desktop on Linux no longer burns CPU on a screen where nothing changes.** A project whose stack is up kept four CSS animations looping (the sidebar dot's ring, the header's halo, one halo per service card), and one running animation keeps WebKitGTK's whole compositing pipeline at 60 fps: 27.8 % of a core on a GPU and 58 % on llvmpipe against 0.5 % for the same screen standing still. Settled states (healthy stack, sleeping or idle crewmate, update pill, space strip) are now still; only something that is changing (a service starting, a crewmate working) animates, and every animation pauses once the window has been blurred past the 60 s grace (WebKitGTK never reports a window behind another one as hidden). Part of #289.
+
 - **Atlas Mobile: a sheet or dialog is never under the tab bar.** Sheets a tab opens (the "Find your computer on Wi-Fi" explanation in Settings, the new-terminal and permission sheets) were drawn on the tab's own navigator, below the floating bar, which hid their buttons and stayed tappable over the scrim. The shell now watches every tab navigator and hides the bar (not tappable, not read by a screen reader) while any popup is open, so no screen has to remember it.
 
 - **Atlas Mobile: a project's stack can be stopped from the phone.** The status panel had Start but nothing once the stack ran; it now has Stop, and hostd's `project_service` takes `op: "down"` (the same stop as the desktop's).

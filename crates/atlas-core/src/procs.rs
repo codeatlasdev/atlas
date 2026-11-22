@@ -266,13 +266,17 @@ mod imp {
         let Ok(dir) = std::fs::read_dir(root) else {
             return Vec::new();
         };
+        // One read for the whole scan: it used to be one per process (405 x 3 KB every 2 s in hostd).
+        let Some(boot) = boot() else {
+            return Vec::new();
+        };
         dir.filter_map(|e| e.ok()?.file_name().to_str()?.parse::<u32>().ok())
             .filter_map(|pid| stat(root, pid, boot))
             .collect()
     }
 
     /// `/proc/<pid>/stat`: `pid (comm) state ppid ... starttime(22)`.
-    fn stat(root: &Path, pid: u32, boot: &dyn Fn() -> Option<u64>) -> Option<Proc> {
+    fn stat(root: &Path, pid: u32, boot: u64) -> Option<Proc> {
         let s = std::fs::read_to_string(root.join(pid.to_string()).join("stat")).ok()?;
         // comm may hold spaces and parentheses: the fields resume after the LAST ')'.
         let (head, rest) = s.rsplit_once(')')?;
@@ -283,7 +287,7 @@ mod imp {
         Some(Proc {
             pid,
             ppid,
-            start: boot()? + ticks / clk_tck(),
+            start: boot + ticks / clk_tck(),
             name,
         })
     }
@@ -293,15 +297,22 @@ mod imp {
         (unsafe { libc::sysconf(libc::_SC_CLK_TCK) }).max(1) as u64
     }
 
+    /// Boot time as Unix seconds. Constant for the life of this process, so `/proc/stat` is read once, not
+    /// per scan (a failed read is not cached).
     fn boot_time() -> Option<u64> {
-        std::fs::read_to_string("/proc/stat")
+        static BOOT: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        if let Some(b) = BOOT.get() {
+            return Some(*b);
+        }
+        let b = std::fs::read_to_string("/proc/stat")
             .ok()?
             .lines()
-            .find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())
+            .find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())?;
+        Some(*BOOT.get_or_init(|| b))
     }
 
     pub fn start_time(pid: u32) -> Option<u64> {
-        stat(Path::new("/proc"), pid, &boot_time).map(|p| p.start)
+        stat(Path::new("/proc"), pid, boot_time()?).map(|p| p.start)
     }
 
     pub fn environ(pid: u32) -> Option<Vec<u8>> {

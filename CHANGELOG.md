@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **hostd no longer burns CPU for every open terminal on Linux.** Its 2-second sweep read `/proc/stat` once per process of the machine (about 400 reads of 3 KB each scan); the boot time is now read once. An idle terminal's hostd went from about 2.9 % to under 1 % of a core (docs/perf/linux-webkit-study.md, #289).
+
 - **Atlas Mobile: a sheet or dialog is never under the tab bar.** Sheets a tab opens (the "Find your computer on Wi-Fi" explanation in Settings, the new-terminal and permission sheets) were drawn on the tab's own navigator, below the floating bar, which hid their buttons and stayed tappable over the scrim. The shell now watches every tab navigator and hides the bar (not tappable, not read by a screen reader) while any popup is open, so no screen has to remember it.
 
 - **Atlas Mobile: a project's stack can be stopped from the phone.** The status panel had Start but nothing once the stack ran; it now has Stop, and hostd's `project_service` takes `op: "down"` (the same stop as the desktop's).

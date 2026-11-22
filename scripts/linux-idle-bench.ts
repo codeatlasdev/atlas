@@ -21,6 +21,8 @@
 //   --seconds S     length of the CPU window (default 30)
 //   --probe S       afterwards, run `debug perf --seconds S` (default 5; 0 skips). The probe's own requestAnimationFrame loop
 //                   forces a frame per vsync, so it runs AFTER the CPU window, never during it.
+//   --max-load L    wait (polling every 10 s) until the 1-minute load is under L before the scenario starts (default 2; 0 = do not wait)
+//   --load-timeout S  give up after S seconds of waiting: exit 1 and write no row (default 1800)
 //   --out FILE      append the scenario's JSON line there (default: print only)
 //
 // CPU is utime+stime from /proc/<pid>/stat at both ends of the window, per process, summed by role; 100 = one core.
@@ -73,6 +75,23 @@ export function commitsPerSecond(log: string, seconds: number): number {
 	const n = (log.match(/ -> wl_surface@\d+\.commit\(\)/g) ?? []).length;
 	return round1(n / seconds);
 }
+
+/**
+ * Waits until the 1-minute load is under `max` (polling every `pollMs`), so a measurement never starts on a machine other agents
+ * are building on: rows measured at load 5-13 made the compositing matrix unreadable. Resolves with the load that let it start;
+ * rejects at `timeoutMs` so the caller exits without writing a row. `load`, `sleep` and `now` are injected for the test.
+ */
+export async function waitForLoad(o: { max: number; pollMs: number; timeoutMs: number; load: () => number; sleep: (ms: number) => Promise<void>; now: () => number }): Promise<number> {
+	const t0 = o.now();
+	for (;;) {
+		const l = o.load();
+		if (l < o.max) return l;
+		if (o.now() - t0 >= o.timeoutMs) throw new Error(`load stayed >= ${o.max} for ${Math.round(o.timeoutMs / 1000)} s (last ${l}): no measurement taken`);
+		await o.sleep(o.pollMs);
+	}
+}
+
+const loadNow = () => Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]);
 
 /**
  * Proof that the state HAPPENED during the window: a bench whose chat never streamed, whose services never listened or whose
@@ -343,6 +362,15 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 let fixturePortsUsed: number[] | undefined;
 
 async function measure() {
+	const maxLoad = Number(arg("max-load", "2"));
+	if (maxLoad > 0) {
+		try {
+			await waitForLoad({ max: maxLoad, pollMs: 10_000, timeoutMs: Number(arg("load-timeout", "1800")) * 1000, load: loadNow, sleep: (ms) => Bun.sleep(ms), now: () => performance.now() });
+		} catch (e) {
+			console.error((e as Error).message);
+			process.exit(1);
+		}
+	}
 	const sock = arg("sock") as string;
 	const atlas = arg("atlas", "target/debug/atlas") as string;
 	const label = arg("label", "run") as string;

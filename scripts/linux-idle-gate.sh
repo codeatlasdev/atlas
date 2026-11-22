@@ -90,7 +90,7 @@ fi
 # The bench and wtype run without the instance's ATLAS_HOSTD_DIR: the bench finds the instance's processes by it, and must not count itself.
 rc=0
 for s in $(bun "$root/scripts/linux-idle-bench.ts" --gate-scenarios); do
-  env -u ATLAS_HOSTD_DIR bun "$root/scripts/linux-idle-bench.ts" --sock "$sock" --atlas "$atlas" --label ci --scenario "$s" --seconds "$seconds" --out "$out/report.jsonl" \
+  env -u ATLAS_HOSTD_DIR bun "$root/scripts/linux-idle-bench.ts" --sock "$sock" --atlas "$atlas" --label ci --max-load 0 --scenario "$s" --seconds "$seconds" --out "$out/report.jsonl" \
     | bun -e 'const r = JSON.parse(await Bun.stdin.text()); console.log(`${r.label}: ${r.totalCpuPct}% of a core over ${r.seconds.toFixed(0)} s ${JSON.stringify(r.cpuPct)}, PSS ${r.pssMb} MB`)' \
     || { echo "FAIL: scenario $s did not run"; rc=1; }
 done

@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { counterLive, cpuWindow, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, levelLive, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
+import { counterLive, cpuWindow, waitForLoad, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, levelLive, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
 
 const sample = (pid: number, role: string, ticks: number, o: Partial<Sample> = {}): Sample => ({ pid, role, comm: role, ticks, rssKb: 100 * 1024, pssKb: 60 * 1024, swapKb: 0, threads: [], ...o });
 
@@ -163,5 +163,35 @@ describe("liveness: a state that did not happen is not a result", () => {
 		// 30 updates/s: 2.5 s is ~75; the counter is written every 30 lines, so at least 30 and a multiple of 30
 		expect(n).toBeGreaterThanOrEqual(30);
 		expect(n % 30).toBe(0);
+	});
+});
+
+// A bench run while other agents build measures their load, not the app's (the 2026-11-22 matrix had rows at load 5-13).
+describe("waitForLoad", () => {
+	const clock = (loads: number[]) => {
+		let t = 0, i = 0;
+		return { slept: [] as number[], load: () => loads[Math.min(i++, loads.length - 1)]!, sleep: async function (this: { slept: number[] }, ms: number) { t += ms; this.slept.push(ms); }, now: () => t };
+	};
+	const run = (c: ReturnType<typeof clock>, max = 2, timeoutMs = 60_000) => waitForLoad({ max, pollMs: 10_000, timeoutMs, load: c.load, sleep: (ms) => c.sleep.call(c, ms), now: c.now });
+	test("an idle machine starts at once and reports the load it started at", async () => {
+		const c = clock([0.4]);
+		expect(await run(c)).toBe(0.4);
+		expect(c.slept).toEqual([]);
+	});
+	test("above the limit it polls every 10 s until the load drops under it", async () => {
+		const c = clock([5, 3.2, 2, 1.9]); // 2.0 is not under 2
+		expect(await run(c)).toBe(1.9);
+		expect(c.slept).toEqual([10_000, 10_000, 10_000]);
+	});
+	test("at the timeout it throws and says the load: the caller exits with no row", async () => {
+		const c = clock([8]);
+		await expect(run(c, 2, 30_000)).rejects.toThrow(/load stayed >= 2 for 30 s \(last 8\)/);
+	});
+	test("the CLI exits 1 with no row when the load never drops (limit below any real load)", () => {
+		const out = join(mkdtempSync(join(tmpdir(), "idle-load-")), "r.jsonl");
+		const r = Bun.spawnSync(["bun", join(import.meta.dir, "linux-idle-bench.ts"), "--max-load", "0.000001", "--load-timeout", "0", "--sock", "/nonexistent", "--out", out], { stderr: "pipe" });
+		expect(r.exitCode).toBe(1);
+		expect(r.stderr.toString()).toContain("no measurement taken");
+		expect(Bun.file(out).size).toBe(0);
 	});
 });

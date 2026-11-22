@@ -174,16 +174,38 @@ function environOf(pid: number): Record<string, string> {
 
 const here = import.meta.dir;
 
+/**
+ * Two ports nobody listens on, picked by the kernel (port 0) and held open until `release()` so that a second reservation made
+ * meanwhile (another bench of this machine, another agent's) cannot get the same ones. Fixed ports made two concurrent benches
+ * start each other's services and measure the wrong stack.
+ */
+export function reservePorts(n = 2): { ports: number[]; release: () => void } {
+	const held = Array.from({ length: n }, () => Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } }));
+	return { ports: held.map((l) => l.port), release: () => held.forEach((l) => l.stop(true)) };
+}
+
+/** The fixture's `atlas.yaml`: two real listeners (`python3 -m http.server`) on the given ports. */
+export function fixtureYaml(ports: number[]): string {
+	const svc = (name: string, port: number) => `  ${name}:\n    command: "python3 -m http.server ${port} --bind 127.0.0.1"\n    port: ${port}\n`;
+	return `name: idle-project\nservices:\n${svc("web", ports[0]!)}${svc("api", ports[1]!)}`;
+}
+
+/** The ports an existing fixture's `atlas.yaml` listens on. */
+export function fixturePorts(yaml: string): number[] {
+	return [...yaml.matchAll(/^    port: (\d+)$/gm)].map((m) => Number(m[1]));
+}
+
 /** A throwaway project the scenarios open: a git repo with `atlas.yaml`, ~2000 files in 40 folders, two linked worktrees and an uncommitted change. */
-function makeFixture(dir: string): string {
+function makeFixture(dir: string): { root: string; ports: number[] } {
 	const git = (cwd: string, ...a: string[]) => {
 		const r = spawnSync(["git", "-c", "user.name=bench", "-c", "user.email=bench@example.com", ...a], { cwd });
 		if (r.exitCode !== 0) throw new Error(`git ${a.join(" ")}: ${r.stderr.toString()}`);
 	};
 	const root = join(dir, "idle-project");
-	if (existsSync(join(root, ".git"))) return root; // built once per instance, every scenario opens the same project
+	if (existsSync(join(root, ".git"))) return { root, ports: fixturePorts(readFileSync(join(root, "atlas.yaml"), "utf8")) }; // built once per instance, every scenario opens the same project (and the same ports)
 	mkdirSync(root, { recursive: true });
-	writeFileSync(join(root, "atlas.yaml"), 'name: idle-project\nservices:\n  web:\n    command: "python3 -m http.server 21001 --bind 127.0.0.1"\n    port: 21001\n  api:\n    command: "python3 -m http.server 21002 --bind 127.0.0.1"\n    port: 21002\n');
+	const reserved = reservePorts();
+	writeFileSync(join(root, "atlas.yaml"), fixtureYaml(reserved.ports));
 	for (let d = 0; d < 40; d++) {
 		mkdirSync(join(root, `dir-${String(d).padStart(2, "0")}`), { recursive: true });
 		for (let f = 0; f < 50; f++) writeFileSync(join(root, `dir-${String(d).padStart(2, "0")}`, `file-${String(f).padStart(3, "0")}.ts`), `export const v${f} = ${d * 100 + f};\n`.repeat(8));
@@ -194,7 +216,8 @@ function makeFixture(dir: string): string {
 	for (const w of ["wt1", "wt2"]) git(root, "worktree", "add", "-q", join(dir, `idle-project-${w}`), "-b", w);
 	writeFileSync(join(root, "dir-00/file-000.ts"), "export const changed = true;\n");
 	writeFileSync(join(root, "untracked.txt"), "new\n");
-	return root;
+	reserved.release();
+	return { root, ports: reserved.ports };
 }
 
 /** Page-side setup (through `debug eval`, which wraps it in an async function) shared by the scenarios. */
@@ -289,6 +312,8 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 	}
 }
 
+let fixturePortsUsed: number[] | undefined;
+
 async function measure() {
 	const sock = arg("sock") as string;
 	const atlas = arg("atlas", "target/debug/atlas") as string;
@@ -315,7 +340,9 @@ async function measure() {
 			return spawnSync(["swaymsg", ...a], { env: { PATH: process.env.PATH ?? "", SWAYSOCK: env.SWAYSOCK } }).stdout.toString();
 		};
 		let project = arg("project") as string | undefined;
-		if (!project && scenario !== "welcome") project = makeFixture(tmp);
+		let fixture: { root: string; ports: number[] } | undefined;
+		if (!project && scenario !== "welcome") (fixture = makeFixture(tmp)), (project = fixture.root);
+		fixturePortsUsed = fixture?.ports;
 		const wt = scenario === "welcome" ? "" : (run(JS.open(project as string)) as string);
 		undo = await enter(scenario as (typeof SCENARIOS)[number], { pid: root, atlas, sock, run, sway, tmp, project: project ?? "", wt });
 	}
@@ -326,7 +353,7 @@ async function measure() {
 	const secs = (performance.now() - t0) / 1000;
 	const after = sample(pids());
 	const w = cpuWindow(`${label}/${scenario ?? "state"}`, secs, before, after);
-	const res: Record<string, unknown> = { ...w, when: new Date().toISOString(), loadAvg1: Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]) };
+	const res: Record<string, unknown> = { ...w, fixturePorts: fixturePortsUsed, when: new Date().toISOString(), loadAvg1: Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]) };
 	if (probeS > 0) res.page = JSON.parse(debug(atlas, sock, "perf", "--seconds", String(probeS)));
 	// What the page believes about itself in this state (the probe above ran in it too).
 	res.pageState = JSON.parse(debug(atlas, sock, "eval", "return { visibility: document.visibilityState, hasFocus: document.hasFocus(), hidden: document.hidden, animations: document.getAnimations().filter((a) => a.playState === 'running').length }"));

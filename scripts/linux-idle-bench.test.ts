@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cpuWindow, GATE_BUDGET, judgeGate, judgeWindow, roleOf, type Sample } from "./linux-idle-bench.ts";
+import { cpuWindow, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
 
 const sample = (pid: number, role: string, ticks: number, o: Partial<Sample> = {}): Sample => ({ pid, role, comm: role, ticks, rssKb: 100 * 1024, pssKb: 60 * 1024, swapKb: 0, threads: [], ...o });
 
@@ -105,5 +105,28 @@ describe("judgeGate", () => {
 		expect(run().stderr.toString()).toContain("workspace: no window measured");
 		writeFileSync(f, `${all(30).map((w) => JSON.stringify(w)).join("\n")}\n`);
 		expect(run().exitCode).toBe(0);
+	});
+});
+
+// Fixed ports 21001/21002 let two benches on one machine (two agents) start each other's services and measure the wrong stack.
+describe("fixture ports", () => {
+	test("two concurrent reservations never share a port, and none is listening", async () => {
+		const a = reservePorts();
+		const b = reservePorts();
+		const all = [...a.ports, ...b.ports];
+		expect(new Set(all).size).toBe(4);
+		for (const p of all) expect(p).toBeGreaterThan(1023);
+		a.release();
+		b.release();
+		// released: a service can now bind them
+		const l = Bun.listen({ hostname: "127.0.0.1", port: a.ports[0]!, socket: { data() {} } });
+		l.stop(true);
+	});
+	test("the yaml carries exactly the ports it was given, for the command and for the readiness check, and they read back", () => {
+		const y = fixtureYaml([31001, 31002]);
+		expect(y).toContain("python3 -m http.server 31001 --bind 127.0.0.1");
+		expect(y).toContain("python3 -m http.server 31002 --bind 127.0.0.1");
+		expect(fixturePorts(y)).toEqual([31001, 31002]);
+		expect(y).not.toMatch(/2100[12]/);
 	});
 });

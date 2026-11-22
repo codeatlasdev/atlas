@@ -188,8 +188,10 @@ const JS = {
 	stop: `[...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "Stop")?.click(); return 1`,
 	close: (tab: string) => `window.__atlas.ws.closeTab(${JSON.stringify(tab)}); return 1`,
 	scroll: `const el = [...document.querySelectorAll(".dock *")].find((e) => e.scrollHeight > e.clientHeight + 20 && getComputedStyle(e).overflowY !== "visible"); if (!el) throw new Error("no scrollable list in the dock"); window.__benchScroll = true; (function step(t0) { if (!window.__benchScroll) return; requestAnimationFrame((t) => { el.scrollTop = ((t - t0) * 0.1) % (el.scrollHeight - el.clientHeight); step(t0); }); })(performance.now()); return el.scrollHeight`,
-	// The crew workspace with three crewmates (idle, working, asleep): every one draws a CrewmateFace with its own frame loop.
-	crew: `const a = window.__atlas; for (const [name, role] of [["Ada", "backend"], ["Bo", "frontend"], ["Cy", "review"]]) await a.crew.createCrewmate("", { name, role, agent: "omp" }); document.dispatchEvent(new KeyboardEvent("keydown", { key: "B", code: "KeyB", ctrlKey: true, shiftKey: true, bubbles: true })); await new Promise((r) => setTimeout(r, 2000)); return document.querySelectorAll("svg[aria-hidden] .eyes").length`,
+	// The crew workspace with three crewmates (idle, working, idle): every one draws a CrewmateFace with its own frame loop. Creating
+	// them needs a crew server on this machine (`atlas crew install`, which the bench must never do), so the store is seeded as a
+	// server that answered with these three; a failed refresh keeps the crewmates it last saw.
+	crew: `const a = window.__atlas; const mate = (id, name, role, state) => ({ id, name, role, agent: "omp", approval: "ask", mode: "ask", state, queued: 0 }); a.crew.servers[0] = { ...a.crew.servers[0], ok: true, error: undefined, crewmates: [mate("bench-ada", "Ada", "backend", "idle"), mate("bench-bo", "Bo", "frontend", "working"), mate("bench-cy", "Cy", "review", "idle")] }; document.dispatchEvent(new KeyboardEvent("keydown", { key: "B", code: "KeyB", ctrlKey: true, shiftKey: true, bubbles: true })); await new Promise((r) => setTimeout(r, 2000)); return document.querySelectorAll("svg[aria-hidden] .eyes").length`,
 	scrollStop: `window.__benchScroll = false; return 1`,
 };
 

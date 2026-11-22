@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Deleting a crewmate (or a crew server, or the Telegram bot) asks in the app again, instead of failing with "Command plugin:dialog|message not allowed by ACL".** The questions used the browser `confirm()`, which the dialog plugin turns into a native-dialog command that Atlas never grants to its pages: the call was refused, the confirmation returned without asking, the crewmate was deleted anyway and a "A background task failed" toast followed. They use the app's own dialog now, and a contract test reads the real capability files and the frontend source so a page can no longer call a command its window is not allowed to run.
+
 - **Atlas Mobile: a sheet or dialog is never under the tab bar.** Sheets a tab opens (the "Find your computer on Wi-Fi" explanation in Settings, the new-terminal and permission sheets) were drawn on the tab's own navigator, below the floating bar, which hid their buttons and stayed tappable over the scrim. The shell now watches every tab navigator and hides the bar (not tappable, not read by a screen reader) while any popup is open, so no screen has to remember it.
 
 - **Atlas Mobile: a project's stack can be stopped from the phone.** The status panel had Start but nothing once the stack ran; it now has Stop, and hostd's `project_service` takes `op: "down"` (the same stop as the desktop's).

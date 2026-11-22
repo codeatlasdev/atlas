@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **A blurred Atlas Desktop window stops its own frame loops and 1 s timers.** WebKitGTK on Wayland never reports a window behind another one (or on another workspace) as hidden, so every crewmate face kept a 60 fps loop and the crew board, automations list, GitHub App card and pairing QR each kept a 1 s timer running. They now stop with the shared clock once the window has been blurred past its 60 s grace and resume when it is back. Part of #289.
+
 - **Atlas Mobile: a sheet or dialog is never under the tab bar.** Sheets a tab opens (the "Find your computer on Wi-Fi" explanation in Settings, the new-terminal and permission sheets) were drawn on the tab's own navigator, below the floating bar, which hid their buttons and stayed tappable over the scrim. The shell now watches every tab navigator and hides the bar (not tappable, not read by a screen reader) while any popup is open, so no screen has to remember it.
 
 - **Atlas Mobile: a project's stack can be stopped from the phone.** The status panel had Start but nothing once the stack ran; it now has Stop, and hostd's `project_service` takes `op: "down"` (the same stop as the desktop's).

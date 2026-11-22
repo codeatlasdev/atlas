@@ -62,12 +62,17 @@
 		}
 	}
 
-	// omp streams the whole message so far in every delta: one apply per frame, newest delta only (rpc.coalesce).
-	const frames = frameBatch<string>((ls) => {
-		applyBatch(chat, ls);
-		chat = chat;
-		after();
-	});
+	// omp streams the whole message so far in every delta (30 a second and more): at most ~8 applies a second, newest delta only
+	// (rpc.coalesce). Applying every delta, or every frame, kept the web and UI processes busy at 30+ updates a second
+	// (36 % of a core on a GPU, docs/perf/linux-webkit-study.md); text appearing in 120 ms steps reads as typing.
+	const frames = frameBatch<string>(
+		(ls) => {
+			applyBatch(chat, ls);
+			chat = chat;
+			after();
+		},
+		{ minIntervalMs: 120 },
+	);
 
 	function feed(bytes: Uint8Array, replay: boolean) {
 		if (replay) {

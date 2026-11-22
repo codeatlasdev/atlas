@@ -7,9 +7,12 @@ import { frameBatch } from "./frameBatch.ts";
 function fakeEnv() {
 	const cbs = new Map<number, () => void>();
 	let n = 0;
+	let t = 0;
 	const add = (cb) => (cbs.set(++n, cb), n);
 	return {
+		advance: (ms: number) => (t += ms),
 		env: {
+			now: () => t,
 			raf: add,
 			cancelRaf: (h) => cbs.delete(h),
 			setTimeout: (cb) => add(cb),
@@ -24,7 +27,7 @@ function fakeEnv() {
 test("everything pushed before the frame is delivered once, in order", () => {
 	const f = fakeEnv();
 	const got: string[][] = [];
-	const b = frameBatch<string>((x) => got.push(x), 100, f.env);
+	const b = frameBatch<string>((x) => got.push(x), { maxWaitMs: 100 }, f.env);
 	b.push(["a"]);
 	b.push(["b", "c"]);
 	b.push([]);
@@ -40,7 +43,7 @@ test("everything pushed before the frame is delivered once, in order", () => {
 test("without a frame the timer delivers, and the late frame does not deliver twice", () => {
 	const f = fakeEnv();
 	const got: string[][] = [];
-	const b = frameBatch<string>((x) => got.push(x), 100, f.env);
+	const b = frameBatch<string>((x) => got.push(x), { maxWaitMs: 100 }, f.env);
 	b.push(["a"]);
 	f.fire(2);
 	expect(got).toEqual([["a"]]);
@@ -50,7 +53,7 @@ test("without a frame the timer delivers, and the late frame does not deliver tw
 test("flushNow hands over what waits; stop forgets it", () => {
 	const f = fakeEnv();
 	const got: string[][] = [];
-	const b = frameBatch<string>((x) => got.push(x), 100, f.env);
+	const b = frameBatch<string>((x) => got.push(x), { maxWaitMs: 100 }, f.env);
 	b.push(["a"]);
 	b.flushNow();
 	expect(got).toEqual([["a"]]);
@@ -59,4 +62,23 @@ test("flushNow hands over what waits; stop forgets it", () => {
 	expect(f.pending()).toBe(0);
 	b.flushNow();
 	expect(got).toEqual([["a"]]);
+});
+
+test("minIntervalMs spaces flushes: a delta that lands inside the interval waits for it, then for a frame", () => {
+	const f = fakeEnv();
+	const got: string[][] = [];
+	const b = frameBatch<string>((x) => got.push(x), { minIntervalMs: 120, maxWaitMs: 100 }, f.env);
+	b.push(["a"]);
+	f.fire(1);
+	expect(got).toEqual([["a"]]);
+	f.advance(30);
+	b.push(["b"]);
+	b.push(["c"]);
+	// A frame does not come first: only the interval timer is pending (plus the safety timer).
+	expect(f.pending()).toBe(2);
+	f.fire(1); // the interval timer: it asks for a frame
+	expect(got).toEqual([["a"]]);
+	f.fire(2); // the frame it asked for
+	expect(got).toEqual([["a"], ["b", "c"]]);
+	expect(f.pending()).toBe(0);
 });

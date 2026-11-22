@@ -122,11 +122,8 @@
 		.pill {
 			animation: rise 260ms var(--ca-ease-spring, ease-out);
 		}
-		.pill::after {
-			animation: glow 3.2s ease-in-out 600ms infinite;
-		}
 	}
-	/* The glow is a static shadow on a pseudo-element whose opacity breathes: the blurred shadow is painted once. */
+	/* A still glow on a pseudo-element: the blurred shadow is painted once, and an update that waits does not loop. */
 	.pill::after {
 		content: "";
 		position: absolute;
@@ -135,13 +132,8 @@
 		box-shadow:
 			0 0 0 0.5px color-mix(in oklab, var(--ca-brand-main) 55%, transparent),
 			0 0 20px 0 color-mix(in oklab, var(--ca-brand-main) 55%, transparent);
-		opacity: 0;
+		opacity: 0.6;
 		pointer-events: none;
-	}
-	@keyframes glow {
-		50% {
-			opacity: 1;
-		}
 	}
 	@keyframes rise {
 		from {

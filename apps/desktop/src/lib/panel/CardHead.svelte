@@ -87,7 +87,7 @@
 		gap: 10px;
 		min-width: 0;
 	}
-	/* A soft halo behind the ring while the service is up: the one looping animation here. */
+	/* A still halo behind the ring while the service is up (a settled state does not loop). */
 	.ring {
 		position: relative;
 		display: grid;
@@ -99,20 +99,9 @@
 		inset: 4px;
 		border-radius: 50%;
 		background: var(--ca-semantic-success);
-		opacity: 0;
-		animation: halo 2.4s ease-out infinite;
+		opacity: 0.18;
+		transform: scale(1.2);
 		pointer-events: none;
-	}
-	@keyframes halo {
-		0% {
-			opacity: 0.35;
-			transform: scale(0.7);
-		}
-		70%,
-		100% {
-			opacity: 0;
-			transform: scale(1.5);
-		}
 	}
 	.id {
 		min-width: 0;

@@ -184,23 +184,11 @@
 		height: 9px;
 		box-shadow: 0 0 0 2px var(--ca-surface-base);
 	}
-	/* A ring that breathes: transform + opacity on a pseudo-element, not a box-shadow repaint per frame. */
+	/* A healthy stack is a settled state: a still ring, no loop (an infinite animation keeps WebKitGTK compositing at 60 fps). */
 	.ico .dot.pulse.ok::after {
 		inset: -3px;
 		background: none;
 		border: 3px solid color-mix(in oklab, var(--dot-ok) 28%, transparent);
-		animation: alive 2.4s ease-in-out infinite;
-	}
-	@keyframes alive {
-		0%,
-		100% {
-			transform: scale(0.7);
-			opacity: 0;
-		}
-		50% {
-			transform: scale(1);
-			opacity: 1;
-		}
 	}
 	.pname {
 		flex: 1;

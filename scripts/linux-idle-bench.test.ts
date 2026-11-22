@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cpuWindow, judgeWindow, roleOf, type Sample } from "./linux-idle-bench.ts";
+import { cpuWindow, GATE_BUDGET, judgeGate, judgeWindow, roleOf, type Sample } from "./linux-idle-bench.ts";
 
 const sample = (pid: number, role: string, ticks: number, o: Partial<Sample> = {}): Sample => ({ pid, role, comm: role, ticks, rssKb: 100 * 1024, pssKb: 60 * 1024, swapKb: 0, threads: [], ...o });
 
@@ -71,5 +71,39 @@ describe("judge", () => {
 		expect(run("5").exitCode).toBe(1);
 		expect(run("5").stderr.toString()).toContain("workspace");
 		expect(run("20").exitCode).toBe(0);
+	});
+});
+
+// CI gate (#289): "Desktop opens (Linux)" fails when a state that is idle on main starts to cost CPU. The danger is a gate that
+// passes because it measured nothing, or one that judges a state against another's budget.
+describe("judgeGate", () => {
+	const win = (scenario: string, ticks: number) => cpuWindow(`ci/${scenario}`, 30, [sample(1, "app", 0)], [sample(1, "app", ticks)]);
+	const all = (ticks: number) => Object.keys(GATE_BUDGET).map((s) => win(s, ticks));
+	test("every gated state inside its budget passes", () => {
+		expect(judgeGate(all(30))).toEqual([]); // 1 % of a core
+	});
+	test("a gated state over its own budget fails and names the state", () => {
+		const bad = judgeGate([...all(30).filter((w) => !w.label.endsWith("/workspace")), win("workspace", 3000)]);
+		expect(bad).toHaveLength(1);
+		expect(bad[0]).toMatch(/ci\/workspace: 100% of a core over 30 s > \d+%/);
+	});
+	test("a gated state that was never measured fails: nothing measured is not a pass", () => {
+		expect(judgeGate([])).toEqual(Object.keys(GATE_BUDGET).map((s) => `${s}: no window measured`));
+		expect(judgeGate(all(30).slice(1))).toEqual([`${Object.keys(GATE_BUDGET)[0]}: no window measured`]);
+	});
+	test("states that are not gated (still costly on main) are not judged", () => {
+		expect(judgeGate([...all(30), win("stack-running", 3000)])).toEqual([]);
+	});
+	test("every window of a gated state is judged, not just the first (a retried scenario)", () => {
+		expect(judgeGate([win("welcome", 30), win("welcome", 3000), ...all(30).slice(1)])).toHaveLength(1);
+	});
+	test("--judge --gate exits 1 on a missing state and 0 on a clean report, with no app", () => {
+		const f = join(mkdtempSync(join(tmpdir(), "idle-gate-")), "r.jsonl");
+		const run = () => Bun.spawnSync(["bun", join(import.meta.dir, "linux-idle-bench.ts"), "--judge", f, "--gate"], { stderr: "pipe" });
+		writeFileSync(f, `${JSON.stringify(win("welcome", 30))}\n`);
+		expect(run().exitCode).toBe(1);
+		expect(run().stderr.toString()).toContain("workspace: no window measured");
+		writeFileSync(f, `${all(30).map((w) => JSON.stringify(w)).join("\n")}\n`);
+		expect(run().exitCode).toBe(0);
 	});
 });

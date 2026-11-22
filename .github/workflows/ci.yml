@@ -188,6 +188,25 @@ jobs:
             --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
             --env ATLAS_BIN="$PWD/target/debug/atlas" target/debug/atlas-desktop
 
+      # What the running app costs in the states a user leaves it in (#289): CPU per process over 30 s in each gated state, on
+      # llvmpipe like every runner. Budgets (GATE_BUDGET in scripts/linux-idle-bench.ts) cover only states that are idle on main;
+      # the PR that removes a known cost adds its state. Fails over budget, or when a gated state could not be measured.
+      - name: Idle CPU gate
+        env:
+          ATLAS_BIN: ${{ github.workspace }}/target/debug/atlas
+        run: |
+          scripts/linux-idle-gate.sh --out idle-gate-out \
+            --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 target/debug/atlas-desktop
+
+      - name: Idle gate report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-linux-idle-gate
+          path: idle-gate-out/
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Screenshot and logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

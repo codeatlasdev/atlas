@@ -1,5 +1,6 @@
 // bun scripts/linux-idle-bench.ts --sock <debug.sock> --atlas <atlas binary> [options]
 // bun scripts/linux-idle-bench.ts --judge <report.jsonl> <label>=<max CPU %> ...     (re-judge saved windows, no app; exit 1 over budget)
+// bun scripts/linux-idle-bench.ts --judge <report.jsonl> --gate                      (the CI budgets, GATE_BUDGET; a gated state with no window fails; scripts/linux-idle-gate.sh)
 //
 // What a RUNNING Atlas Desktop costs while it sits in one state (#289, docs/perf/linux-webkit-study.md): CPU % per
 // process role over a window, RSS and PSS per process, and what the page itself reports (rAF/s, long tasks) from
@@ -70,6 +71,23 @@ export function cpuWindow(label: string, seconds: number, before: Sample[], afte
 export function commitsPerSecond(log: string, seconds: number): number {
 	const n = (log.match(/ -> wl_surface@\d+\.commit\(\)/g) ?? []).length;
 	return round1(n / seconds);
+}
+
+/**
+ * The states CI holds to a CPU budget (% of one core over the window, all processes of the instance, llvmpipe: a GitHub
+ * runner has no GPU). Only states that are already idle on `main`: a state with a known cost is added here by the PR that
+ * removes it (`stack-running` after the animation fix, `terminal-idle` after the hostd fix, `chat-stream`, `terminal-output`),
+ * so the gate never starts red. Each is the worst of 3 runs of this machine plus headroom for a 2-vCPU runner:
+ * docs/perf/linux-webkit-study.md, "Gate".
+ */
+export const GATE_BUDGET: Record<string, number> = { welcome: 3, workspace: 4 };
+
+/** Why the windows saved by a gate run fail: a gated state over its budget, or a gated state that was never measured (nothing measured must not read as a pass). */
+export function judgeGate(windows: Window[], budgets: Record<string, number> = GATE_BUDGET): string[] {
+	return Object.entries(budgets).flatMap(([scenario, budget]) => {
+		const w = windows.filter((x) => x.label.endsWith(`/${scenario}`));
+		return w.length ? w.flatMap((x) => judgeWindow(x, budget)) : [`${scenario}: no window measured`];
+	});
 }
 
 /** Why a saved window fails its budget (empty = passes). */
@@ -320,7 +338,11 @@ async function measure() {
 
 if (import.meta.main) {
 	const j = arg("judge");
-	if (j) {
+	if (process.argv.includes("--gate-scenarios")) console.log(Object.keys(GATE_BUDGET).join(" "));
+	else if (j && process.argv.includes("--gate")) {
+		const bad = judgeGate(readFileSync(j, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as Window));
+		if (bad.length) (console.error(bad.join("\n")), process.exit(1));
+	} else if (j) {
 		const bad = readFileSync(j, "utf8").trim().split("\n").flatMap((l) => {
 			const w = JSON.parse(l) as Window;
 			const b = process.argv.find((a) => a.startsWith(`${w.label}=`))?.split("=")[1];

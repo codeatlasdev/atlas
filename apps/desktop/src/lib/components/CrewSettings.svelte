@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { clock } from "#lib/clock.svelte.ts";
 	import { Button, Switch, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
@@ -66,7 +67,7 @@
 		for (const h of remoteServers) {
 			void loadHost(h.key).catch(() => {});
 		}
-		const t = setInterval(() => {
+		const off = clock.every(1000, () => {
 			now = Date.now();
 			// Keep QR codes ticking; poll for new pairings while a code is live.
 			for (const [key, p] of Object.entries(pairings)) {
@@ -74,8 +75,8 @@
 					void loadHost(key).catch(() => {});
 				}
 			}
-		}, 1000);
-		return () => clearInterval(t);
+		});
+		return off;
 	});
 
 	async function startPair(key: string) {

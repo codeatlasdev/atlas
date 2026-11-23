@@ -453,7 +453,11 @@ mod tests {
         let c = evaluate(&f);
         let t = get(&c, "new terminal");
         assert_eq!(t.status, Status::Fail);
-        assert!(t.fix.as_deref().unwrap().contains("install.sh"));
+        assert!(t.fix.as_deref().unwrap().contains(if cfg!(windows) {
+            "install.ps1"
+        } else {
+            "install.sh"
+        }));
     }
 
     #[test]
@@ -491,6 +495,8 @@ mod tests {
         );
     }
 
+    /// `atlas install` makes the `~/.local/bin/atlas` link on Unix only.
+    #[cfg(unix)]
     #[test]
     fn the_local_bin_link_counts_as_this_install() {
         let mut f = healthy();

@@ -76,3 +76,7 @@ scripts/test-labels.sh             # checks the file: unique names, 6-digit colo
 ```
 
 Changing a label means editing `.github/labels.yml` in a pull request; a maintainer runs the sync after merge. Renaming a label in the file creates a new one: rename it on GitHub first (Issues → Labels → Edit), then change the file, so existing issues keep it. Release notes are written by hand from [`CHANGELOG.md`](https://github.com/codeatlasdev/atlas/blob/main/CHANGELOG.md), so labels do not generate them.
+
+## When a fix ships
+
+`Fixes #N` closes an issue when the pull request merges, which can be days before the alpha that carries it. So the release tells the reporter: the last step of `bun run release` runs `scripts/release-notify.ts`, which comments `Fixed in vX (alpha channel)` and how to get it on every issue closed as completed since the previous release, and on the reports marked as duplicates of it. Issues closed as *not planned*, and issues labelled `type: question`, `status: wontfix` or `status: duplicate`, shipped nothing and are not told. The comment ends with a hidden `atlas-fixed-in:` marker, so nobody is told twice. To see what the last release would say, with nothing written: `bun run release:notify <tag> --dry-run` ([Release](release.md) has the details).

@@ -66,7 +66,16 @@ The variants that only change the allocator do not move the line, so the memory 
 | `tsserver.useSyntaxServer: "never"` | 37, 1,091, 60 | 1,189 MB |
 | + top-level `disableAutomaticTypingAcquisition: true` | 41, 1,094 | 1,136 MB (-212 MB, -16 %) |
 
-Not shipped: both are a behaviour change (no fast first answer while the project loads; no `@types` fetched for untyped JavaScript packages) that needs a user-visible decision, and the cap above removes the multiplication, which is the larger factor. `maxTsServerMemory: 512` made the server die on this project. Note: an option under `tsserver` (`extraArgs`) is silently ignored by `typescript-language-server` 6.0.2; `disableAutomaticTypingAcquisition` and `maxTsServerMemory` are top-level.
+**Shipped** (`perf/tsserver-lean`, maintainer decision 2026-11-23): both options are sent in `initialize` (`caps::init_options`), next to the project's own `tsserver.path`. The cost is a behaviour change: no fast first answer from a separate syntax server while the project loads, and no `@types` fetched for untyped JavaScript packages. `maxTsServerMemory: 512` made the server die on this project, so it is not used. Note: an option under `tsserver` (`extraArgs`) is silently ignored by `typescript-language-server` 6.0.2; `disableAutomaticTypingAcquisition` and `maxTsServerMemory` are top-level.
+
+Measured again with the shipped options (`tsserver-lean-rss.py`, raw lines in `tsserver-lean-rss.jsonl`; `apps/desktop` with its own TypeScript as `tsserver.path`, one file open, 30 s, PSS + swap, two runs each; machine load average 2.1-4.8 while measuring, which moves CPU, not resident memory):
+
+| initializationOptions | processes (MB) | PSS + swap |
+|---|---|---|
+| before (`hostInfo`, `preferences`, `tsserver.path`) | language server 34-36, syntax server 167-171, tsserver 616-617, typingsInstaller 60-67 | 890 / 880 MB |
+| after (+ `useSyntaxServer: "never"`, `disableAutomaticTypingAcquisition: true`) | language server 44-46, tsserver 629-630 | **675 / 675 MB (-205 to -215 MB, -23 %)** |
+
+Both runs still deliver the diagnostics (`diagMsgs` 2 before and after).
 
 ## Ranked by MB
 

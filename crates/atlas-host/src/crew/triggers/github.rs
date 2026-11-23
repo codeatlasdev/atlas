@@ -255,17 +255,9 @@ fn load_seen(path: &std::path::Path) -> HashSet<String> {
 /// first (#293), and the file is cut back to its newest ids once it passes [`SEEN_MAX_BYTES`]: the
 /// events API only lists recent events, so an older id can never come back.
 fn append_seen(path: &std::path::Path, ids: &[&str]) -> std::io::Result<()> {
-    use crate::crew::store::jsonl;
     // Created even for no ids: an empty feed's baseline is the file existing (see `is_new`).
-    let f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
-    for id in ids {
-        jsonl::append_line(path, id, false)?;
-    }
-    f.sync_all()?;
-    let _ = jsonl::trim_to_tail(path, SEEN_MAX_BYTES, SEEN_MAX_BYTES / 2);
+    crate::crew::store::jsonl::append_lines(path, ids, true)?;
+    let _ = crate::crew::store::jsonl::trim_to_tail(path, SEEN_MAX_BYTES, SEEN_MAX_BYTES / 2);
     Ok(())
 }
 

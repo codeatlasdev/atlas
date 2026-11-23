@@ -63,6 +63,7 @@ struct Rig {
 fn fast() -> Config {
     Config {
         idle_shutdown: Duration::from_millis(300),
+        max_idle: 1,
         init_timeout: HANG,
         max_restarts: 3,
         restart_window: Duration::from_secs(60),
@@ -322,6 +323,49 @@ async fn reopening_inside_grace_cancels_idle_shutdown() {
     })
     .await;
     until("process gone", || !pid_alive(pid)).await;
+}
+
+// The RAM incident (#289, docs/perf/linux-webkit-round2.md): a user who browses worktrees keeps one language server per
+// worktree for the whole idle grace after the last file closed, and a TypeScript one is 0.3-1.3 GB. The grace is an
+// hour here so only the cap can stop a server: with the default cap (1) only the most recently idled instance waits
+// out its grace, the older idle ones stop at once, and an instance with an open document is never a candidate.
+#[tokio::test]
+async fn only_the_most_recently_idled_server_waits_out_the_grace_older_idle_ones_stop() {
+    let cfg = Config {
+        idle_shutdown: Duration::from_secs(3600),
+        ..fast()
+    };
+    let r = rig_with(cfg, &[], 0, false);
+    let other = |name: &str| {
+        let root = r._tmp.path().join(name);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("Cargo.toml"), "[package]\nname=\"p\"\n").unwrap();
+        let f = root.join("src/a.rs");
+        std::fs::write(&f, "").unwrap();
+        f.to_string_lossy().into_owned()
+    };
+    let (a, b, c, d) = (r.file("a.rs"), other("w2"), other("w3"), other("w4"));
+    for f in [&a, &b, &c, &d] {
+        r.m.open(f, "rust", String::new(), 1, None).await;
+    }
+    assert_eq!(r.m.instance_count(), 4);
+    let pids = r.m.pids();
+    // d stays open the whole time: it is in use, not idle.
+    r.m.close(&a).await;
+    r.m.close(&b).await;
+    r.m.close(&c).await;
+    until("the older idle servers stop", || r.m.instance_count() == 2).await;
+    assert_eq!(
+        r.m.pids().len(),
+        2,
+        "the open one and the last idled one remain"
+    );
+    assert_eq!(
+        pids.iter().filter(|p| pid_alive(**p)).count(),
+        2,
+        "two of the four processes are gone"
+    );
+    assert_eq!(r.state(&d).await["open"].as_array().unwrap().len(), 1);
 }
 
 #[tokio::test]

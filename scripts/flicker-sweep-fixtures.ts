@@ -3,12 +3,14 @@
 // plus two small neighbours so there are spaces to switch between, and an uncommitted change so Changes has a diff.
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Windows: spawnSync does not add `.exe`, so without it `atlas down` in `cleanup` failed silently and the runners stayed up.
 export const ATLAS = join(import.meta.dir, "../target/debug", process.platform === "win32" ? "atlas.exe" : "atlas");
 
-const BASE = "/private/tmp/flicker-sweep-fixtures";
+// macOS keeps /private/tmp (the agent instance's own sockets live there); Linux and Windows have no such directory (#260).
+const BASE = join(process.platform === "darwin" ? "/private/tmp" : tmpdir(), "flicker-sweep-fixtures");
 
 const git = (cwd: string, ...a: string[]) =>
 	execFileSync("git", ["-c", "user.name=Sweep", "-c", "user.email=sweep@atlas.invalid", "-c", "commit.gpgsign=false", ...a], { cwd, stdio: "ignore" });

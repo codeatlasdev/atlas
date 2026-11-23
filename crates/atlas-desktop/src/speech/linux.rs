@@ -123,7 +123,7 @@ mod tests {
     fn fake(dir: &std::path::Path, secs: u32) -> PathBuf {
         let bin = dir.join("spd-say");
         let script = format!(
-            "#!/bin/sh\nif [ \"$1\" = -C ]; then echo cancel >> '{d}/log'; exit 0; fi\necho \"$@\" > '{d}/args'\ncat > '{d}/text'\nsleep {secs}\n",
+            "#!/bin/sh\nif [ \"$1\" = -C ]; then echo cancel >> '{d}/log'; exit 0; fi\nprintf '%s\\n' \"$*\" > '{d}/args'\ncat > '{d}/text'\nsleep {secs}\n",
             d = dir.display()
         );
         std::fs::write(&bin, script).unwrap();

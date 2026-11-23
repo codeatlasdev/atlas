@@ -426,6 +426,25 @@ export function collectEvidence(dir: string, o: { trace: string; tag: string; ro
 	return e;
 }
 
+/** The window's time when it was not seen before `app_ready`: `app_ready` is what makes Rust show it, so the window maps right after the
+ * mark and the poll that stopped at the mark missed it (#591). Looks every 50 ms for up to `limitMs` (a window maps within ~100 ms of the mark); `null` when it never does. */
+export async function settleWindow(seen: number | null, mapped: () => boolean, now: () => number, sleep: (ms: number) => Promise<void>, limitMs: number): Promise<number | null> {
+	if (seen !== null) return seen;
+	const end = now() + limitMs;
+	while (now() < end) {
+		if (mapped()) return now();
+		await sleep(50);
+	}
+	return null;
+}
+
+/** Whether sway shows a window of one of `tree`'s processes. */
+function windowMapped(tree: { pid: number }[]): boolean {
+	const t = spawnSync(["swaymsg", "-t", "get_tree"]).stdout.toString();
+	const pids = new Set([...t.matchAll(/"pid": (\d+)/g)].map((m) => Number(m[1])));
+	return tree.some((p) => pids.has(p.pid));
+}
+
 async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace: string; tag: string; readyTimeoutS: number; evidenceDir: string }) {
 	const home = process.env.HOME as string;
 	rmSync(o.trace, { force: true });
@@ -449,14 +468,13 @@ async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace
 		if (web === null && tree.some((p) => p.comm.startsWith("WebKitWebProces"))) web = performance.now() - t0;
 		if (win === null && performance.now() - lastSway > 100) {
 			lastSway = performance.now();
-			const t = spawnSync(["swaymsg", "-t", "get_tree"]).stdout.toString();
-			const pids = new Set([...t.matchAll(/"pid": (\d+)/g)].map((m) => Number(m[1])));
-			if (tree.some((p) => pids.has(p.pid))) win = performance.now() - t0;
+			if (windowMapped(tree)) win = performance.now() - t0;
 		}
 		marks = existsSync(o.trace) ? parseTrace(readFileSync(o.trace, "utf8")) : {};
 		if ("js:ready:gate" in marks) break;
 		await Bun.sleep(50);
 	}
+	if (exited === null && "js:ready:gate" in marks) win = await settleWindow(win, () => windowMapped(descendants(readProcs(), root)), () => performance.now() - t0, Bun.sleep, 600);
 	const out = existsSync(`${o.trace}.out`) ? readFileSync(`${o.trace}.out`, "utf8") : "";
 	// One more read: a mark written after the last poll must not make a run that did arrive look like one that did not.
 	if (existsSync(o.trace)) marks = parseTrace(readFileSync(o.trace, "utf8"));
@@ -624,7 +642,7 @@ async function inner() {
 export function render(r: Report): string {
 	const s = summarize(r);
 	const l: string[] = [`cold: app_ready ${s.coldReadyMs} ms`];
-	if (s.warmReady) l.push(`warm (${r.runs.filter((x) => x.kind === "warm").length}): app_ready p50 ${s.warmReady.p50} p95 ${s.warmReady.p95} ms; window p50 ${s.warmWindow?.p50} ms; web process p50 ${s.warmWebProcess?.p50} ms`);
+	if (s.warmReady) l.push(`warm (${r.runs.filter((x) => x.kind === "warm").length}): app_ready p50 ${s.warmReady.p50} p95 ${s.warmReady.p95} ms; window p50 ${s.warmWindow?.p50 ?? "n/a"} ms; web process p50 ${s.warmWebProcess?.p50 ?? "n/a"} ms`);
 	if (r.idle) {
 		l.push(`idle after ${r.idle.settleS} s: PSS ${r.idle.pssMb} MB, RSS ${r.idle.rssMb} MB; largest ${r.idle.dominant.role} ${r.idle.dominant.pssMb} MB (${Math.round(r.idle.dominant.share * 100)}%)`);
 		for (const p of r.idle.processes) l.push(`  ${p.role.padEnd(12)} pid ${String(p.pid).padEnd(7)} PSS ${String(p.pssMb).padStart(7)} MB  RSS ${String(p.rssMb).padStart(7)} MB`);

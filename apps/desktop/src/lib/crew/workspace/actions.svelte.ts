@@ -9,6 +9,7 @@ import { replayCrewOnboarding } from "#lib/crew/crewOnboarding.svelte.ts";
 import { isCrewServerKey } from "#lib/crew/sshTarget.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import { m } from "#lib/i18n/m.ts";
+import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 
 class Recruit {
 	creating = $state(false);
@@ -52,12 +53,15 @@ class Recruit {
 export const recruit = new Recruit();
 
 /** Row context menu: "profile" opens the crewmate, "delete" asks first. */
-export function handleContextAction(hostKey: string, crewmateId: string, action: "profile" | "delete") {
+export async function handleContextAction(hostKey: string, crewmateId: string, action: "profile" | "delete") {
 	if (action === "delete") {
 		const name =
 			crew.servers.find((h) => h.key === hostKey)?.crewmates.find((c) => c.id === crewmateId)?.name ?? "";
-		if (confirm(m.crew_settings_crewmate_dialog_delete_confirm({ name })))
-			void crew.deleteCrewmate(hostKey, crewmateId);
+		const ok = await confirmDialog(m.crew_settings_crewmate_dialog_delete_confirm({ name }), {
+			confirmLabel: m.common_action_delete(),
+			destructive: true,
+		});
+		if (ok) void crew.deleteCrewmate(hostKey, crewmateId);
 	} else {
 		void crew.select(hostKey, crewmateId);
 	}

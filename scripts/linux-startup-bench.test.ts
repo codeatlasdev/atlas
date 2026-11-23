@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUDGET, collectEvidence, countProbes, evidenceLine, explainMissingReady, garbledLines, judge, parseTrace, pct, roleOf, summarize, type Idle, type Report, type Run } from "./linux-startup-bench.ts";
+import { BUDGET, collectEvidence, countProbes, evidenceLine, explainMissingReady, garbledLines, judge, parseTrace, pct, roleOf, settleWindow, summarize, type Idle, type Report, type Run } from "./linux-startup-bench.ts";
 
 const root = join(import.meta.dir, "..");
 const script = join(import.meta.dir, "linux-startup-bench.ts");
@@ -299,7 +299,8 @@ describe("the real script on a private sway", () => {
 		expect(r.runs[0].readyMs).toBe(77.5);
 		expect(r.runs[0].shownBy).toBe("ready");
 		expect(r.runs[0].kind).toBe("cold");
-	});
+		// The fake app maps no window: the run waits out the window poll after the mark, then the 4 s the bench holds a started app.
+	}, 30_000);
 });
 
 describe("ci.yml", () => {
@@ -325,5 +326,33 @@ describe("ci.yml", () => {
 		expect(bench).toBeGreaterThan(launch);
 		expect(steps[bench]["continue-on-error"]).toBeUndefined();
 		expect(steps[bench].run).toContain("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1");
+	});
+});
+
+// #591: CI runs printed `window p50 undefined ms` and `window null ms`. The poll for the window stopped at the page's
+// `js:ready:gate`, and `app_ready` is what makes Rust show the window: a run whose mark landed in the 100 ms between two
+// looks at sway ended before the window it had just shown was seen, and one such run emptied the warm window statistic.
+describe("settleWindow keeps looking for the window after app_ready", () => {
+	const clock = () => {
+		let t = 0;
+		return { now: () => t, sleep: async (ms: number) => void (t += ms) };
+	};
+	test("a window that maps after the page signalled ready is still measured", async () => {
+		const c = clock();
+		const got = await settleWindow(null, () => c.now() >= 150, c.now, c.sleep, 3000);
+		expect(got).toBe(150);
+	});
+	test("a window seen before ready is kept and nothing is polled", async () => {
+		const c = clock();
+		let looks = 0;
+		const got = await settleWindow(1234, () => (looks++, true), c.now, c.sleep, 3000);
+		expect([got, looks]).toEqual([1234, 0]);
+	});
+	test("a window that never maps stays null after the limit, not forever", async () => {
+		const c = clock();
+		const got = await settleWindow(null, () => false, c.now, c.sleep, 3000);
+		expect(got).toBeNull();
+		expect(c.now()).toBeGreaterThanOrEqual(3000);
+		expect(c.now()).toBeLessThan(3100);
 	});
 });

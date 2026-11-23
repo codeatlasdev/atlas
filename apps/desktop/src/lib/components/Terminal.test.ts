@@ -11,26 +11,14 @@ import { prefsMock } from "../../../test/prefsMock.ts";
 
 const log: string[] = [];
 let webgl: FakeWebgl;
-/**
- * The terminal's channel callback as Tauri's page runtime holds it (`transformCallback`), fed as the Rust side would
- * send a frame: `{ message, index }` with the message a kind byte (1 = history, 0 = output), then bytes.
- */
-let channelCb: (raw: { message: ArrayBuffer; index: number }) => void;
-let frameIndex = 0;
-window.__TAURI_INTERNALS__ = {
-	transformCallback: (cb: typeof channelCb) => {
-		channelCb = cb;
-		frameIndex = 0;
-		return 7;
-	},
-	unregisterCallback: () => {},
-};
+/** The terminal's channel, as the Rust side would deliver a frame: kind byte (1 = history, 0 = output), then bytes. */
+let channel: { cb: (b: ArrayBuffer) => void };
 const emit = (p: { data: string; replay: boolean }) => {
 	const bytes = new TextEncoder().encode(atob(p.data));
 	const frame = new Uint8Array(bytes.length + 1);
 	frame[0] = p.replay ? 1 : 0;
 	frame.set(bytes, 1);
-	channelCb({ message: frame.buffer, index: frameIndex++ });
+	channel.cb(frame.buffer);
 };
 let attachDone: () => void;
 let renderCb: () => void;
@@ -149,6 +137,11 @@ const hostFake = {
 };
 mock.module("#lib/host.ts", () => ({ host: hostFake }));
 mock.module("@tauri-apps/api/core", () => ({
+	Channel: class {
+		constructor(public cb: (b: ArrayBuffer) => void) {
+			channel = this;
+		}
+	},
 	// `pty_stream` answers with the stream id when the test says the attach is done.
 	invoke: (cmd: string) =>
 		cmd === "pty_stream"

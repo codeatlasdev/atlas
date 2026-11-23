@@ -2,59 +2,59 @@
 	"tolerance": 0.3,
 	"machine": {
 		"cpu": "AMD Ryzen 7 7735HS with Radeon Graphics",
-		"calibration_mbps": 7138.9,
-		"note": "Ryzen 7 7735HS, Radeon 680M, Mesa 26.2.5, Linux 7.2.15, rustc 1.99.0 release+line-tables, load 1.6-1.9, 3 runs 2026-11-23 (terminal-linux-parser.jsonl)",
+		"calibration_mbps": 7047.6,
+		"note": "Ryzen 7 7735HS, Radeon 680M, Mesa 26.2.5, Linux 7.2.15, rustc 1.99.0 release+line-tables, load 1.1, run 3 of 3 on 2026-11-23 after phase 1 (terminal-linux-parser-phase1.jsonl; run 1 had its calibration timed under a load spike, 5320 MB/s, so its ratios read high)",
 		"os": "linux",
 		"mib": 16
 	},
 	"corpora": {
 		"seq": {
-			"best_mbps": 102.8,
-			"median_mbps": 101.3,
-			"ratio": 0.0144,
-			"floor_mbps": 87
+			"best_mbps": 108.7,
+			"median_mbps": 107.3,
+			"ratio": 0.0154,
+			"floor_mbps": 92
 		},
 		"ascii": {
-			"best_mbps": 90.9,
-			"median_mbps": 90.8,
-			"ratio": 0.0127,
-			"floor_mbps": 77
+			"best_mbps": 125.8,
+			"median_mbps": 124.7,
+			"ratio": 0.0178,
+			"floor_mbps": 106
 		},
 		"sgr": {
-			"best_mbps": 84.7,
-			"median_mbps": 84.3,
-			"ratio": 0.0119,
-			"floor_mbps": 71
+			"best_mbps": 103.8,
+			"median_mbps": 103.3,
+			"ratio": 0.0147,
+			"floor_mbps": 88
 		},
 		"repaint256": {
-			"best_mbps": 139.5,
-			"median_mbps": 138,
-			"ratio": 0.0195,
-			"floor_mbps": 118
+			"best_mbps": 160.8,
+			"median_mbps": 160.3,
+			"ratio": 0.0228,
+			"floor_mbps": 136
 		},
 		"truecolor": {
-			"best_mbps": 139.9,
-			"median_mbps": 139.2,
-			"ratio": 0.0196,
-			"floor_mbps": 118
+			"best_mbps": 162.9,
+			"median_mbps": 161.7,
+			"ratio": 0.0231,
+			"floor_mbps": 138
 		},
 		"ink-2026": {
-			"best_mbps": 153.6,
-			"median_mbps": 152.1,
-			"ratio": 0.0215,
-			"floor_mbps": 130
+			"best_mbps": 184.7,
+			"median_mbps": 180,
+			"ratio": 0.0262,
+			"floor_mbps": 156
 		},
 		"ratatui-diff": {
-			"best_mbps": 177.4,
-			"median_mbps": 170.9,
-			"ratio": 0.0248,
-			"floor_mbps": 150
+			"best_mbps": 204.6,
+			"median_mbps": 201.5,
+			"ratio": 0.029,
+			"floor_mbps": 173
 		},
 		"omp-boxes": {
-			"best_mbps": 168.5,
-			"median_mbps": 165.9,
-			"ratio": 0.0236,
-			"floor_mbps": 143
+			"best_mbps": 209.1,
+			"median_mbps": 204.2,
+			"ratio": 0.0297,
+			"floor_mbps": 177
 		}
 	}
 }

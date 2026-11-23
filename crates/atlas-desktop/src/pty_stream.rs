@@ -195,7 +195,12 @@ mod tests {
         let made = client
             .call(
                 "pty_create",
-                json!({"cwd": tmp.path(), "argv": ["sh", "-c", "echo first; sleep 1; echo second; sleep 30"]}),
+                json!({"cwd": tmp.path(), "argv": atlas_core::sys::shell_argv(if cfg!(windows) {
+                    // `sh` and `sleep` are not on a stock Windows; `ping -n N` waits N-1 seconds.
+                    "echo first & ping -n 2 127.0.0.1 >NUL & echo second & ping -n 31 127.0.0.1 >NUL"
+                } else {
+                    "echo first; sleep 1; echo second; sleep 30"
+                })}),
             )
             .await
             .unwrap();

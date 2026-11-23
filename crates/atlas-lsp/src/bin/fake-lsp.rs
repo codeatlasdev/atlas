@@ -7,7 +7,8 @@
 //! - requests: `test/echo` → params, `test/slow` → never answers until `$/cancelRequest`
 //!   (then records it), `test/state` → what the server observed so far, `test/pid`,
 //!   `test/applyEdit` → asks the client to apply an edit and reports the answer,
-//!   `test/crash` → exits(1) immediately.
+//!   `test/crash` → exits(1) immediately, `test/init` → the `initializationOptions` the client
+//!   sent in `initialize`.
 //! - `FAKE_SEMANTIC=1`: a word-level "language" so the whole editor round trip can be tested
 //!   without a real server: `fn <name>` declares a symbol; diagnostics flag every `TODO`;
 //!   `completion` offers the declared names matching the prefix; `definition` jumps to the
@@ -264,6 +265,7 @@ fn main() {
     let mut cancelled: Vec<i64> = vec![];
     let mut change_log: Vec<Value> = vec![];
     let mut next_server_id = 1000;
+    let mut init_options = Value::Null;
     let mut edit_waiters: HashMap<i64, i64> = HashMap::new(); // our request id → client id
 
     while let Some(m) = read_msg(&mut r) {
@@ -272,6 +274,7 @@ fn main() {
         let params = m.get("params").cloned().unwrap_or(Value::Null);
         match (method, id) {
             ("initialize", Some(id)) => {
+                init_options = params["initializationOptions"].clone();
                 if let Some(ms) = std::env::var("FAKE_INIT_DELAY_MS")
                     .ok()
                     .and_then(|v| v.parse::<u64>().ok())
@@ -374,6 +377,9 @@ fn main() {
                     &json!({"jsonrpc":"2.0","id":next_server_id,"method":"workspace/applyEdit",
                     "params":{"edit":{"changes":{"file:///x":[]}}}}),
                 );
+            }
+            ("test/init", Some(id)) => {
+                send(&json!({"jsonrpc":"2.0","id":id,"result":init_options}))
             }
             ("test/config", Some(id)) => {
                 next_server_id += 1;

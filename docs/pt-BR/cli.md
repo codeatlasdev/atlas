@@ -1,7 +1,7 @@
 ---
 title: "Referência da CLI"
 source: cli.md
-source_sha: "4321aae7eafcedea5db564dbc7f193c4d2da498d"
+source_sha: "420ab6abcb05b8a11323beb9b9ffbfa578994899"
 translation: machine
 ---
 
@@ -158,6 +158,8 @@ Inicia todos os serviços selecionados (tudo, a menos que `SERVICE…` / `--prof
 | `130` | interrompido por Ctrl-C / SIGTERM / SIGHUP (os serviços são parados antes) |
 
 O `--ci` não serve o socket de controle. Tanto o `--ci` quanto o `--headless` rodam o `pre_command` antes de iniciar os serviços (veja [pre_command](configuration.md#pre_command)).
+
+`ATLAS_CI_MIN_WAIT_SECS=<n>` substitui a espera mínima de 10 s (um número de segundos; qualquer outra coisa mantém 10). As suítes de teste do próprio Atlas o definem baixo para serviços que nunca morrem; um pipeline que quer pegar um serviço morrendo logo depois de iniciar deve deixá-lo como está.
 
 ### Uma instância por projeto
 

@@ -44,7 +44,7 @@ export function readDefaultChannel(channelsJson: { default?: unknown }): Channel
 }
 
 /** Which channel a tag was cut for. `null` for a label Atlas does not ship. */
-function channelOfTag(tag: string): Channel | null {
+export function channelOfTag(tag: string): Channel | null {
   const p = parse(tag.replace(/^v/, ""));
   if (!p) return null;
   return p.label === undefined ? "stable" : p.label === "alpha" ? "alpha" : "beta"; // rc is offered on beta

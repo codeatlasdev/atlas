@@ -8,7 +8,6 @@ import { errors } from "#lib/errors/errors.svelte.ts";
 import { hostTextLoaded, parseWire } from "#lib/hostText.ts";
 import { m } from "#lib/i18n/m.ts";
 import { docShapeError, emptyDoc, type Doc } from "#lib/stores/workspaceTypes.ts";
-import { tabTitle } from "#lib/title.ts";
 import { docSerializer } from "#lib/stores/workspaceSnapshot.ts";
 
 const SAVE_DEBOUNCE_MS = 300;
@@ -33,8 +32,7 @@ interface WorkspaceLoad {
 interface Target {
 	doc: Doc;
 	loaded: boolean;
-	titles: Record<string, string>;
-	exited: Record<string, number | null>;
+	ptyEvent(e: { ev: string; pty?: string; title?: string; code?: number | null }): void;
 	hostError: string | null;
 	syncPtys(): Promise<void>;
 }
@@ -57,11 +55,9 @@ export class WorkspacePersist {
 		const [{ doc: raw, recovered }] = await Promise.all([
 			this.#read(),
 			track(
-				listen<{ ev: string; pty?: string; title?: string; code?: number | null }>("host://event", (e) => {
-					const p = e.payload;
-					if (p.ev === "pty_title" && p.pty) ws.titles[p.pty] = tabTitle(p.title ?? "");
-					if (p.ev === "pty_exit" && p.pty) ws.exited[p.pty] = p.code ?? null;
-				}),
+				listen<{ ev: string; pty?: string; title?: string; code?: number | null }>("host://event", (e) =>
+					ws.ptyEvent(e.payload),
+				),
 			),
 			track(
 				// A payload is `{code, args, message}` (or a bare string from an older shell).

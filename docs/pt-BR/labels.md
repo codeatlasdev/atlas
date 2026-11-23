@@ -1,7 +1,7 @@
 ---
 title: "Labels e triagem"
 source: labels.md
-source_sha: "f3af40f2500ecbb091a508a526129986e55ba685"
+source_sha: "9beb42ac28334b6408b3fe6d0331add77309e12b"
 translation: machine
 ---
 
@@ -78,3 +78,7 @@ scripts/test-labels.sh             # verifica o arquivo: nomes únicos, cores de
 ```
 
 Mudar uma label significa editar o `.github/labels.yml` em um pull request; um mantenedor roda a sincronização depois do merge. Renomear uma label no arquivo cria uma nova: renomeie primeiro no GitHub (Issues → Labels → Edit) e depois mude o arquivo, para que as issues existentes a mantenham. As notas de versão são escritas à mão a partir do [`CHANGELOG.md`](https://github.com/codeatlasdev/atlas/blob/main/CHANGELOG.md), então as labels não as geram.
+
+## Quando uma correção sai
+
+O `Fixes #N` fecha uma issue quando o pull request é mesclado, o que pode ser dias antes da alpha que a leva. Por isso a versão avisa quem reportou: o último passo do `bun run release` roda o `scripts/release-notify.ts`, que comenta `Fixed in vX (alpha channel)` e como obtê-la em toda issue fechada como concluída desde a versão anterior, e nos reports marcados como duplicados dela. Issues fechadas como *não planejadas*, e as com as labels `type: question`, `status: wontfix` ou `status: duplicate`, não entregaram nada e não são avisadas. O comentário termina com um marcador oculto `atlas-fixed-in:`, então ninguém é avisado duas vezes. Para ver o que a última versão diria, sem escrever nada: `bun run release:notify <tag> --dry-run` (a página [Publicar uma versão](release.md) tem os detalhes).

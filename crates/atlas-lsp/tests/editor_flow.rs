@@ -412,6 +412,30 @@ async fn initialization_options_override_is_sent_in_initialize() {
     assert_eq!(cfg[0]["checkOnSave"], true, "defaults survive the merge");
 }
 
+// Regression: a TypeScript project cost ~1.35 GB because tsserver spawned its syntax server
+// (~170 MB) and the `typingsInstaller` (~57 MB) next to the semantic one (docs/perf/linux-webkit-round2.md).
+// What the server is told in `initialize` is the only lever, so pin what it receives, with the
+// project's own TypeScript in play too (its `tsserver.path` must not replace the syntax-server option).
+#[tokio::test]
+async fn typescript_is_told_to_spawn_no_syntax_server_and_no_typings_installer() {
+    let r = rig(None, &[]);
+    std::fs::write(r.project.join("package.json"), "{}").unwrap();
+    let lib = r.project.join("node_modules/typescript/lib");
+    std::fs::create_dir_all(&lib).unwrap();
+    std::fs::write(lib.join("tsserver.js"), "").unwrap();
+    let f = r.file("a.ts");
+    r.m.open(&f, "typescript", String::new(), 1, None).await;
+    let sent = r.req(&f, "test/init", Value::Null).await;
+    assert_eq!(sent["tsserver"]["useSyntaxServer"], "never", "{sent}");
+    assert_eq!(sent["disableAutomaticTypingAcquisition"], true, "{sent}");
+    assert_eq!(
+        sent["tsserver"]["path"],
+        lib.join("tsserver.js").to_string_lossy().as_ref(),
+        "the project's TypeScript is still used: {sent}"
+    );
+    assert_eq!(sent["hostInfo"], "atlas", "defaults survive: {sent}");
+}
+
 #[tokio::test]
 async fn crashed_server_status_carries_its_stderr_tail() {
     let mut r = rig(None, &[("FAKE_EXIT_ON_START", "1")]);

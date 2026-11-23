@@ -3,10 +3,12 @@
 	import "./chartMotion.ts";
 	import { fmtMem } from "#lib/format.ts";
 	import { metrics } from "./metrics.svelte.ts";
+	import { liveRev } from "./liveRev.svelte.ts";
 	import { slotLabels } from "./metrics.ts";
 	import { m } from "#lib/i18n/m.ts";
 
 	let { projectId, names }: { projectId: string; names: string[] } = $props();
+	const revision = liveRev();
 
 	/** Points per chart: 5 min at 3 s. */
 	const N = 100;
@@ -14,7 +16,7 @@
 
 	// One derived per tick (`rev` is throttled to 1/s): the arrays are N numbers per series.
 	let model = $derived.by(() => {
-		void metrics.rev;
+		void revision.rev;
 		const end = metrics.end(projectId);
 		const categories = slotLabels(N, end);
 		const top = names

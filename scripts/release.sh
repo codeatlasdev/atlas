@@ -71,6 +71,7 @@ publish_existing() {
   watch_release "$1" "$since"
   sign_release "$1"
   deploy_site "$1"
+  notify_reporters "$1"
 }
 
 [[ -n "$request" || -n "$publish_tag" ]] || die "usage: bun run release <alpha|beta|rc|stable|patch|X.Y.Z[-pre.N]> [--dry-run] [--skip-checks] [--force-soak] [--bump major] | --publish vX.Y.Z[-pre.N]"
@@ -85,6 +86,15 @@ deploy_site() {
   echo "▶ deploying the site"
   if [[ $dry == 1 ]]; then echo "+ bun run site:deploy"; return 0; fi
   bun run site:deploy || echo "⚠ site deploy failed; $1 is published and the site picks it up from GitHub within ~1 minute. Retry: bun run site:deploy" >&2
+}
+
+# Last step: comments "Fixed in <tag> (<channel>)" on the issues closed since the previous release and on their duplicates
+# (scripts/release-notify.ts, docs/release.md "Telling reporters"). Never fails the release: it is already published, and the
+# script is safe to run again by hand: bun run release:notify <tag> [--dry-run].
+notify_reporters() {
+  echo "▶ telling the reporters of the issues this release closed"
+  if [[ $dry == 1 ]]; then echo "+ bun scripts/release-notify.ts $1"; return 0; fi
+  bun scripts/release-notify.ts "$1" || echo "⚠ could not tell every reporter; $1 is published. Retry: bun run release:notify $1" >&2
 }
 
 if [[ -n "$publish_tag" ]]; then
@@ -210,3 +220,4 @@ run git push --atomic origin "$target" "$tag"
 watch_release "$tag" "$since"
 sign_release "$tag"
 deploy_site "$tag"
+notify_reporters "$tag"

@@ -325,6 +325,15 @@ The shipped binaries, the AppImage, `.deb`, `.rpm`, `.dmg` and the NSIS installe
 
 `resolve` looks the frame up as `frame - load_bias - 1` in `symbols/<build_id>.debug`, so a report from a build whose archive was not published says so instead of guessing. The reports stay on the user's machine until he attaches one; nothing is uploaded.
 
+### Fingerprint of a crash
+
+Every crash report names the bug with a `fingerprint` of 16 hex characters, so two reports of one bug can be found by searching an issue for it (#320). A panic report has the line in the file, made from its message and location. A native report (`crash-native-*.toml`) is written in signal context, where nothing can be hashed, so its fingerprint is computed when it is read, from the frames:
+
+- **With the symbols of its build**: `atlas crash-fingerprint <crash.toml> --resolved <output of symbols.sh resolve>` keys it by the first resolved function inside Atlas and its file (no line, no directory, no hash in the name), so the same crash on two releases is one fingerprint.
+- **Without them** (what the app has on a user's machine, which ships no debug info; also `atlas crash-fingerprint <crash.toml>`): by `build_id` and the offset, the first frame inside the executable after the crash handler's own minus `load_bias`. ASLR does not change it, so the same crash of the same build on two machines is one fingerprint; two releases are two, since an offset means nothing outside its build.
+
+A report with no frame inside the executable has no fingerprint and never matches another. The same 16 characters are in the issue body that "Report issue" files (the `Fingerprint:` line), and "Report issue" in the app searches open issues for them before opening a new one.
+
 ## Yanking a bad release
 
 A release that must not be installed is withdrawn in the open and never rewritten. The tag and the assets stay (other clones and the resume logic rely on them); what changes is that every client stops offering it, **without a new release**:

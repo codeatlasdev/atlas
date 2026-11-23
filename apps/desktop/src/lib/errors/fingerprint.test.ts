@@ -1,3 +1,4 @@
+// @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
 import fixtures from "./__fixtures__/fingerprints.json";
 import { fingerprint, frameKey, normalizeMessage } from "./fingerprint.ts";

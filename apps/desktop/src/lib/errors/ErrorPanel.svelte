@@ -28,10 +28,12 @@
 		aiIssuePrompt,
 		causeHint,
 		detailsText,
+		fingerprintOf,
 		issueUrl,
 		markdownReport,
 		type ErrorReport,
 	} from "./report.ts";
+	import { lookupIssue, meTooUrl, type FoundIssue } from "./issueLookup.ts";
 	import { m } from "#lib/i18n/m.ts";
 
 	let {
@@ -61,6 +63,10 @@
 	let actions = $state<HTMLElement | null>(null);
 	let aiOpen = $state(false);
 	const hintCause = $derived(causeHint(report));
+	/** "Report issue" is looking for an issue with this error's fingerprint. */
+	let searching = $state(false);
+	/** An open issue already has it: offer to add to that one before a new one (#320). */
+	let existing = $state<FoundIssue | null>(null);
 
 	/** Each AI action: copy a ready prompt, or hand it straight to an agent when one can be launched. */
 	const ai = $derived([
@@ -97,6 +103,21 @@
 		await navigator.clipboard.writeText(text);
 		copied = id;
 		window.setTimeout(() => copied === id && (copied = null), 1600);
+	}
+
+	/** Look for an open issue with this fingerprint first; the new-issue form opens when there is none or the search fails. */
+	async function reportIssue() {
+		searching = true;
+		const found = await lookupIssue(fingerprintOf(report), api.issueSearch);
+		searching = false;
+		if (found.kind === "found") existing = found;
+		else await api.openUrl(issueUrl(report));
+	}
+
+	/** GitHub has no link that prefills a comment: copy the report, open the issue, the person pastes it. */
+	async function meToo(issue: FoundIssue) {
+		await copyText("meToo", markdownReport(report));
+		await api.openUrl(meTooUrl(issue));
 	}
 
 	/** Open an agent terminal with the prompt when there is a worktree to run it in; always copy as well. */
@@ -156,11 +177,30 @@
 						/>{/if}{/snippet}
 				{copied === "details" ? m.errors_panel_copied() : m.errors_panel_copy_details()}
 			</Button>
-			<Button size="sm" variant="ghost" onclick={() => api.openUrl(issueUrl(report))}>
+			<Button size="sm" variant="ghost" disabled={searching} onclick={reportIssue}>
 				{#snippet leading()}<Bug size={13} />{/snippet}
-				{m.errors_panel_report_issue()}
+				{searching ? m.errors_panel_searching() : m.errors_panel_report_issue()}
 			</Button>
 		</div>
+
+		{#if existing}
+			{@const issue = existing}
+			<div class="cause" role="note">
+				<span class="bulb" aria-hidden="true"><Bug size={14} /></span>
+				<div>
+					<b>{m.errors_panel_already_reported({ number: issue.number, title: issue.title })}</b>
+					<p>{m.errors_panel_me_too_hint()}</p>
+					<div class="actions">
+						<Button size="sm" variant="filled" onclick={() => meToo(issue)}>
+							{m.errors_panel_me_too()}
+						</Button>
+						<Button size="sm" variant="ghost" onclick={() => api.openUrl(issueUrl(report))}>
+							{m.errors_panel_report_anyway()}
+						</Button>
+					</div>
+				</div>
+			</div>
+		{/if}
 
 		{#if hintCause}
 			<div class="cause" role="note">

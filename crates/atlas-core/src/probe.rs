@@ -272,6 +272,8 @@ fn crash_summary(text: &str) -> Option<String> {
 pub struct CrashEntry {
     pub at_ms: u64,
     pub summary: String,
+    /// The report's fingerprint (`crash_fingerprint::of_report`, from the file alone: no symbols are at hand here), when it has one.
+    pub fingerprint: Option<String>,
 }
 
 /// Every crash report in `dir` (`crate::crash::crash_dir`), newest first, read lazily. The time is the one in the
@@ -291,9 +293,11 @@ pub fn crash_entries(dir: &Path) -> impl Iterator<Item = CrashEntry> {
         .collect();
     found.sort_by_key(|a| std::cmp::Reverse(a.0));
     found.into_iter().filter_map(|(at_ms, p)| {
+        let text = std::fs::read_to_string(p).ok()?;
         Some(CrashEntry {
             at_ms,
-            summary: crash_summary(&std::fs::read_to_string(p).ok()?)?,
+            summary: crash_summary(&text)?,
+            fingerprint: crate::crash_fingerprint::of_report(&text, None),
         })
     })
 }

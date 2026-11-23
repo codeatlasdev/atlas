@@ -41,6 +41,8 @@ pub struct Card {
     pub kind: Kind,
     /// Redacted: `atlas <version>: <message> (<location>)` for a crash, the incident text for a host exit.
     pub summary: String,
+    /// What names this crash across reports (`atlas_core::crash_fingerprint`); a host exit has none.
+    pub fingerprint: Option<String>,
 }
 
 fn stamp_path(base: &Path) -> PathBuf {
@@ -94,6 +96,7 @@ pub fn pending(base: &Path, crash_dir: &Path, started_ms: u64) -> Option<Card> {
             at_ms: c.at_ms,
             kind: Kind::Crash,
             summary: c.summary,
+            fingerprint: c.fingerprint,
         });
     let log = std::fs::read_to_string(atlas_host::paths::app_log(base)).unwrap_or_default();
     let exit = hostd_exits(&log)
@@ -103,6 +106,7 @@ pub fn pending(base: &Path, crash_dir: &Path, started_ms: u64) -> Option<Card> {
             at_ms,
             kind: Kind::HostdExited,
             summary: atlas_core::redact::redact(&detail),
+            fingerprint: None,
         });
     match (crash, exit) {
         (Some(c), Some(e)) => Some(if e.at_ms > c.at_ms { e } else { c }),
@@ -199,6 +203,26 @@ mod tests {
             NOW - 1_000,
             "a crash after the stamp shows again"
         );
+    }
+
+    /// #320: the card carries the fingerprint of the crash report (its own line for a panic, the one computed from the
+    /// frames for a native crash), so "Report issue" can look for the issue; a host exit has none to give.
+    #[test]
+    fn a_crash_card_carries_the_fingerprint_of_its_report() {
+        let h = home();
+        std::fs::write(
+            h.crashes.path().join(format!("crash-{}-77.toml", NOW - 5_000)),
+            "version = \"1.5.0\"\nmsg = \"boom\"\nlocation = \"a.rs:1\"\nfingerprint = \"0123456789abcdef\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            h.pending().unwrap().fingerprint.as_deref(),
+            Some("0123456789abcdef")
+        );
+
+        let h = home();
+        h.log(NOW / 1000 - 30, "hostd-exited: terminal host pid 41 ended");
+        assert_eq!(h.pending().unwrap().fingerprint, None);
     }
 
     /// Dismiss persists across launches (a new `pending` call reads the file) and never moves back.
@@ -299,11 +323,12 @@ mod tests {
             at_ms: 5,
             kind: Kind::HostdExited,
             summary: "s".into(),
+            fingerprint: Some("0123456789abcdef".into()),
         })
         .unwrap();
         assert_eq!(
             v,
-            serde_json::json!({"atMs": 5, "kind": "hostd-exited", "summary": "s"})
+            serde_json::json!({"atMs": 5, "kind": "hostd-exited", "summary": "s", "fingerprint": "0123456789abcdef"})
         );
         assert_eq!(
             serde_json::to_value(Kind::Crash).unwrap(),

@@ -15,10 +15,12 @@ rules:
     ignore:
       - release.yml
   # `desktop-linux` restores the main-branch cargo cache (never saved from a pull request, same rule as rust-gate) and uploads
-  # a screenshot and logs. The artifact is read by people, never executed or published.
+  # a screenshot and logs. The artifact is read by people, never executed or published. `scripts` (:464) restores the same
+  # cache only to build the CLI its flicker-sweep fixture tests run; it uploads and publishes nothing.
   cache-poisoning:
     ignore:
       - ci.yml:163
+      - ci.yml:464
   # The one release toolchain action writes a fixed PATH entry and the commit's own time (git log of the checked-out
   # tag) to the environment files, and is only called from release.yml (a v* tag push or a dispatch by someone with write
   # access); `action.yml:36` and `:46` are those two writes in .github/actions/release-toolchain. No attacker-controlled value reaches either file; inlining the writes again would bring back the nine copies.

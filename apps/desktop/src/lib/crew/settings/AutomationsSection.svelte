@@ -1,6 +1,7 @@
 <!-- Automations: the crewmate's triggers (toggle / edit from the list) and the add / edit dialog. -->
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { clock } from "#lib/clock.svelte.ts";
 	import { Button } from "@codeatlasdev/ui";
 	import type { Crewmate, Trigger, TriggerKind } from "#lib/crew.ts";
 	import { describeNext, describeTrigger } from "#lib/crew/automations.ts";
@@ -18,12 +19,7 @@
 
 	// "Next: in 5 min" ticks.
 	let now = $state(Date.now());
-	onMount(() => {
-		const timer = setInterval(() => {
-			now = Date.now();
-		}, 1000);
-		return () => clearInterval(timer);
-	});
+	onMount(() => clock.every(1000, () => (now = Date.now())));
 
 	function openDialog(t: Trigger | null) {
 		editing = t;

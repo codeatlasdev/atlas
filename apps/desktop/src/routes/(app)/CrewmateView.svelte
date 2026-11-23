@@ -5,6 +5,7 @@
 	 * Approval is inline in the thread; Telegram and Pair phone live in the settings dialog.
 	 */
 	import { onMount, untrack } from "svelte";
+	import { clock } from "#lib/clock.svelte.ts";
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
@@ -111,12 +112,7 @@
 		}
 	});
 
-	onMount(() => {
-		const timer = setInterval(() => {
-			now = Date.now();
-		}, 1000);
-		return () => clearInterval(timer);
-	});
+	onMount(() => clock.every(1000, () => (now = Date.now())));
 
 	// Auto-scroll to bottom when new tasks arrive, if already at bottom
 	$effect(() => {

@@ -13,7 +13,7 @@ pub mod wheel;
 
 pub use alacritty_terminal::index::Side;
 pub use alacritty_terminal::selection::SelectionType;
-pub use render::{FontResolution, FontSpec, Renderer, Stats};
+pub use render::{FontResolution, FontSpec, Renderer, Stats, probe};
 pub use vt::{
     Frame, HoverTarget, HyperlinkCell, ImageDraw, Link, LinkKind, SearchStat, SelectionState, Vt,
     VtEvent, WheelState,

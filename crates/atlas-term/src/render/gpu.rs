@@ -30,6 +30,10 @@ static GPU: LazyLock<Result<Gpu, String>> = LazyLock::new(|| {
         ..Default::default()
     }))
     .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    if let Some(why) = unsupported_adapter(&adapter.get_info()) {
+        return Err(why);
+    }
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("atlas-term"),
         ..Default::default()
@@ -51,6 +55,35 @@ static GPU: LazyLock<Result<Gpu, String>> = LazyLock::new(|| {
 
 pub(super) fn gpu() -> Result<&'static Gpu, String> {
     GPU.as_ref().map_err(Clone::clone)
+}
+
+/// Why the Linux native terminal must not run on `info`'s adapter, or `None` when it may. It runs on Vulkan with a
+/// Mesa hardware driver (RADV, ANV, NVK). NVIDIA's proprietary driver and software rasterizers stay on xterm.js
+/// (docs/terminal-linux-design.md): the first is the stack with the known WebKit/DMA-BUF and Wayland-surface trouble and
+/// was not measured; llvmpipe draws slower than the page does.
+#[cfg(any(target_os = "linux", test))]
+pub(super) fn unsupported_adapter(info: &wgpu::AdapterInfo) -> Option<String> {
+    if info.backend != wgpu::Backend::Vulkan {
+        return Some(format!("the {:?} backend is not used on Linux (Vulkan only)", info.backend));
+    }
+    if info.device_type == wgpu::DeviceType::Cpu {
+        return Some(format!("{} is a software rasterizer", info.name));
+    }
+    if info.driver.to_ascii_lowercase().contains("nvidia") {
+        return Some(format!("{}: the proprietary NVIDIA driver is not supported", info.name));
+    }
+    None
+}
+
+/// The composite alpha mode of a surface: opaque when the platform offers it (macOS, a Wayland subsurface), else
+/// whatever it lists first. X11 under XWayland lists only `PreMultiplied` and `Inherit`, and a configure with a mode
+/// the surface does not list is a validation error (design doc 4.2).
+pub(super) fn pick_alpha(modes: &[wgpu::CompositeAlphaMode]) -> wgpu::CompositeAlphaMode {
+    if modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
+        wgpu::CompositeAlphaMode::Opaque
+    } else {
+        modes.first().copied().unwrap_or(wgpu::CompositeAlphaMode::Auto)
+    }
 }
 
 /// The surface size wgpu accepts for a requested pixel size: `Surface::configure` panics on a zero side and on one

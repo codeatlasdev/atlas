@@ -29,8 +29,18 @@ const FACES: [&[u8]; 4] = [
 /// Symbol fallback (powerline, nerd icons); no bold/italic variant.
 const NF: &[u8] = include_bytes!("../fonts/SymbolsNerdFontMono-Regular.ttf");
 
-/// System color-emoji font. Not bundled (Apple's license); other platforms have none.
-const EMOJI_PATH: &str = "/System/Library/Fonts/Apple Color Emoji.ttc";
+/// System color-emoji font, first path that exists. Not bundled (Apple's license; Noto's is 10 MB of bitmaps): macOS
+/// has Apple Color Emoji (sbix); Linux distros put Noto Color Emoji (CBDT) in a few places. None: emoji draw as text.
+#[cfg(target_os = "macos")]
+const EMOJI_PATHS: &[&str] = &["/System/Library/Fonts/Apple Color Emoji.ttc"];
+#[cfg(not(target_os = "macos"))]
+const EMOJI_PATHS: &[&str] = &[
+    "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+    "/usr/share/fonts/google-noto-color-emoji-fonts/NotoColorEmoji.ttf",
+    "/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf",
+    "/usr/share/fonts/noto-color-emoji/NotoColorEmoji.ttf",
+];
 
 /// Side of the R8 (coverage) atlas.
 pub const ATLAS: u32 = 2048;
@@ -175,7 +185,8 @@ fn symbols() -> FontRef<'static> {
 
 /// The system emoji font bytes, read on first use (the file is ~190 MB, so never at
 /// startup). The static owns the buffer for the process lifetime.
-static EMOJI_DATA: LazyLock<Option<Vec<u8>>> = LazyLock::new(|| std::fs::read(EMOJI_PATH).ok());
+static EMOJI_DATA: LazyLock<Option<Vec<u8>>> =
+    LazyLock::new(|| EMOJI_PATHS.iter().find_map(|p| std::fs::read(p).ok()));
 
 fn emoji_face() -> Option<FontRef<'static>> {
     FontRef::from_index(EMOJI_DATA.as_deref()?, 0)

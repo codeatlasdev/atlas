@@ -25,6 +25,11 @@ base64 = { workspace = true }
 flate2 = { workspace = true }
 png = "0.18"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Vulkan only (RADV, ANV, NVK): the Wayland native terminal. No GL backend: it would double the driver matrix for the
+# one session type that has a path today (docs/terminal-linux-design.md section 7, decision 3).
+wgpu = { version = "30", default-features = false, features = ["vulkan"] }
+
 [dev-dependencies]
 serde_json = { workspace = true }
 

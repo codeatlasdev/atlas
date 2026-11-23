@@ -69,21 +69,34 @@ pub struct Resolved {
     pub matched: Option<usize>,
 }
 
-static SCAN: LazyLock<Vec<Entry>> = LazyLock::new(|| scan(&font_dirs()));
+static SCAN: LazyLock<Vec<Entry>> = LazyLock::new(|| scan(&font_dirs(), FONT_DEPTH));
+
+/// How deep below each font directory the scan looks. macOS lists its folders one by one; Linux packages put fonts in
+/// `/usr/share/fonts/<package>/…`, sometimes a level further (`opentype/<family>/`).
+const FONT_DEPTH: u32 = if cfg!(target_os = "macos") { 0 } else { 3 };
 
 fn font_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();
-    if let Some(h) = std::env::var_os("HOME") {
-        v.push(Path::new(&h).join("Library/Fonts"));
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    if cfg!(target_os = "macos") {
+        v.extend(home.map(|h| h.join("Library/Fonts")));
+        v.extend(
+            [
+                "/Library/Fonts",
+                "/System/Library/Fonts",
+                "/System/Library/Fonts/Supplemental",
+            ]
+            .map(PathBuf::from),
+        );
+    } else {
+        // fontconfig's own default roots, user fonts first so they win a name clash.
+        let data = std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| home.as_ref().map(|h| h.join(".local/share")));
+        v.extend(data.map(|d| d.join("fonts")));
+        v.extend(home.map(|h| h.join(".fonts")));
+        v.extend(["/usr/local/share/fonts", "/usr/share/fonts"].map(PathBuf::from));
     }
-    v.extend(
-        [
-            "/Library/Fonts",
-            "/System/Library/Fonts",
-            "/System/Library/Fonts/Supplemental",
-        ]
-        .map(PathBuf::from),
-    );
     v
 }
 
@@ -223,26 +236,37 @@ fn entry(path: &Path, index: u32, data: &[u8]) -> Option<Entry> {
     })
 }
 
-fn scan(dirs: &[PathBuf]) -> Vec<Entry> {
-    let mut out = Vec::new();
-    for dir in dirs {
-        let Ok(rd) = std::fs::read_dir(dir) else {
-            continue;
-        };
-        let mut files: Vec<PathBuf> = rd
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| {
-                p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-                    matches!(e.to_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc")
-                })
+/// Every font file under `dir`, `depth` levels of subdirectories deep (0 = `dir` alone), each directory's files sorted.
+fn font_files(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let paths: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).collect();
+    let mut files: Vec<&PathBuf> = paths
+        .iter()
+        .filter(|p| {
+            p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                matches!(e.to_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc")
             })
-            .collect();
-        files.sort();
-        for p in files {
-            out.extend(scan_file(&p));
+        })
+        .collect();
+    files.sort();
+    out.extend(files.into_iter().cloned());
+    if depth > 0 {
+        let mut subs: Vec<&PathBuf> = paths.iter().filter(|p| p.is_dir()).collect();
+        subs.sort();
+        for s in subs {
+            font_files(s, depth - 1, out);
         }
     }
-    out
+}
+
+fn scan(dirs: &[PathBuf], depth: u32) -> Vec<Entry> {
+    let mut files = Vec::new();
+    for dir in dirs {
+        font_files(dir, depth, &mut files);
+    }
+    files.iter().flat_map(|p| scan_file(p)).collect()
 }
 
 /// Entries whose family matches `name` (case-insensitive, whitespace-trimmed).

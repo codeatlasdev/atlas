@@ -353,10 +353,14 @@ fn flag_is_one_glyph_not_two_regional_indicators() {
     assert_eq!(t.color.len(), 1, "{:?}", t.color);
     // Fitted over the two indicator cells.
     assert!(t.color[0].size[0] > cw && t.color[0].size[0] <= cw * 2.0);
-    // A lone indicator has no glyph of its own: nothing is drawn for it.
+    // Apple's font has no glyph for a lone indicator: nothing is drawn for it (Noto draws its letter glyph).
     let (mut one, f1) = emoji_layout("🇧", 20).unwrap();
     one.layout(&f1);
-    assert!(one.color.is_empty() && one.mono.is_empty());
+    if cfg!(target_os = "macos") {
+        assert!(one.color.is_empty() && one.mono.is_empty());
+    } else {
+        assert_eq!(one.color.len(), 1, "a lone indicator is its own glyph, never merged");
+    }
 }
 
 #[test]
@@ -374,7 +378,8 @@ fn regional_indicators_pair_only_once() {
     // Three indicators: one flag, and the stray third is not merged into it.
     let (mut three, f3) = emoji_layout("🇧🇷🇺", 20).unwrap();
     three.layout(&f3);
-    assert_eq!(three.color.len(), 1);
+    // Apple's font draws nothing for the stray; Noto's draws its own letter glyph, which is still not merged.
+    assert_eq!(three.color.len(), if cfg!(target_os = "macos") { 1 } else { 2 });
 }
 
 #[test]

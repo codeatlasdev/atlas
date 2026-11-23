@@ -11,13 +11,15 @@ mod stats;
 #[cfg(test)]
 mod tests;
 
+#[cfg(target_os = "macos")]
 use std::ffi::c_void;
+#[cfg(target_os = "macos")]
 use std::ptr::NonNull;
 use std::time::Instant;
 
 use gpu::{
     DecoInst, Gpu, ImgInst, Reconfig, Uniforms, VBuf, bind_group, bind_layout, configure_checked,
-    glyph_vertex_layout, gpu, pipeline, surface_extent, texture,
+    glyph_vertex_layout, gpu, pick_alpha, pipeline, surface_extent, texture,
 };
 use images::{Tex, TexCache};
 use stats::Timing;
@@ -62,12 +64,21 @@ pub struct Renderer {
     timing: Timing,
 }
 
+/// Can this process draw a terminal on the GPU? Creates the process-wide device on first use (the one every terminal
+/// shares) and says which adapter it is, or why not (no Vulkan loader or ICD, a refused driver, no device). The desktop
+/// asks before it offers the native terminal, so a machine that cannot keeps xterm.js.
+pub fn probe() -> Result<String, String> {
+    let info = gpu()?.adapter.get_info();
+    Ok(format!("{} ({}, {:?})", info.name, info.driver, info.backend))
+}
+
 impl Renderer {
     /// `font_size` in points, `scale` = backing scale factor, size in physical pixels.
     ///
     /// # Safety
     /// `ns_view` is a live `NSView*` that outlives the renderer. Call on the main thread;
     /// `render` may then run on any thread.
+    #[cfg(target_os = "macos")]
     pub unsafe fn new(
         ns_view: NonNull<c_void>,
         width: u32,
@@ -76,17 +87,46 @@ impl Renderer {
         scale: f32,
         spec: FontSpec,
     ) -> Result<(Self, FontResolution), String> {
-        let g = gpu()?;
-        let (font, resolution) = Font::with_spec(font_size, scale, &spec);
         let handle = raw_window_handle::AppKitWindowHandle::new(ns_view);
         // SAFETY: the caller guarantees the view is valid and outlives the surface.
+        unsafe {
+            Self::new_raw(
+                raw_window_handle::RawDisplayHandle::AppKit(
+                    raw_window_handle::AppKitDisplayHandle::new(),
+                ),
+                raw_window_handle::RawWindowHandle::AppKit(handle),
+                width,
+                height,
+                font_size,
+                scale,
+                spec,
+            )
+        }
+    }
+
+    /// A renderer drawing into the surface of `window` on `display` (Wayland on Linux: a `wl_subsurface`'s `wl_surface`
+    /// on GDK's `wl_display`). Size in physical pixels, `scale` = physical pixels per logical pixel.
+    ///
+    /// # Safety
+    /// Both handles are live and outlive the renderer. Call where the platform wants the surface made (the main
+    /// thread); `render` may then run on any thread.
+    pub unsafe fn new_raw(
+        display: raw_window_handle::RawDisplayHandle,
+        window: raw_window_handle::RawWindowHandle,
+        width: u32,
+        height: u32,
+        font_size: f32,
+        scale: f32,
+        spec: FontSpec,
+    ) -> Result<(Self, FontResolution), String> {
+        let g = gpu()?;
+        let (font, resolution) = Font::with_spec(font_size, scale, &spec);
+        // SAFETY: the caller guarantees both handles are valid and outlive the surface.
         let surface = unsafe {
             g.instance
                 .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
-                    raw_display_handle: Some(raw_window_handle::RawDisplayHandle::AppKit(
-                        raw_window_handle::AppKitDisplayHandle::new(),
-                    )),
-                    raw_window_handle: raw_window_handle::RawWindowHandle::AppKit(handle),
+                    raw_display_handle: Some(display),
+                    raw_window_handle: window,
                 })
         }
         .map_err(|e| e.to_string())?;
@@ -106,7 +146,7 @@ impl Renderer {
         config.format = format;
         config.present_mode = wgpu::PresentMode::Fifo;
         config.desired_maximum_frame_latency = 2;
-        config.alpha_mode = wgpu::CompositeAlphaMode::Opaque;
+        config.alpha_mode = pick_alpha(&caps.alpha_modes);
         // A surface that cannot be configured at all is a failed `new`: the caller keeps its old
         // renderer (a rebuild) or reports the error (an open), instead of panicking the main thread.
         configure_checked(g, &surface, &config)?;

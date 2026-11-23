@@ -167,6 +167,7 @@ macro_rules! handlers {
             cmds::hygiene_fix,
             cmds::projects_add,
             cmds::system_ui_sounds,
+            cmds::audio_output_available,
             cmds::locale_get,
             cmds::locale_set,
             cmds::live_resync,

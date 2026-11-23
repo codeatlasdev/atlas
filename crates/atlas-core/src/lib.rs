@@ -31,6 +31,7 @@ pub mod procs;
 pub mod progress;
 pub mod project_root;
 pub mod redact;
+pub mod release_verify;
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod scaling;
 pub mod seed;

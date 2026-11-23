@@ -196,7 +196,12 @@
 	"cmd_misc_mcp_not_dir": "{path} não é uma pasta. Passe uma pasta de projeto existente com --dir ou rode `atlas mcp` dentro do projeto.",
 	"cmd_misc_release_checksum_mismatch": "o checksum de {name} não confere (esperado {expected}, obtido {actual})",
 	"cmd_misc_release_ctx_missing_asset": "{tag} não tem {asset} (o download falhou ou o arquivo não existe na release)",
+	"cmd_misc_release_ctx_missing_signed": "{missing}; só releases assinadas, o Atlas não instala uma sem assinatura",
 	"cmd_misc_release_no_checksum": "{name} não tem {name}.sha256; o Atlas não instala sem verificar",
+	"cmd_misc_release_predates_signing": "{tag} é anterior à assinatura de releases: só o .sha256 (servido pela mesma release) garante {asset}",
+	"cmd_misc_release_refusing_asset": "{tag}: o Atlas não instala {asset}",
+	"cmd_misc_release_sig_invalid": "{tag}: SHA256SUMS.sig não confere; o Atlas não instala",
+	"cmd_misc_release_signed_by": "SHA256SUMS assinado por {key}",
 	"cmd_misc_run_cache_ctx_key": "não foi possível calcular a chave do cache",
 	"cmd_misc_run_cache_hit": [
 		{

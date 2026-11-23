@@ -5,120 +5,40 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	counterLive,
-	cpuWindow,
-	waitForLoad,
-	fixturePorts,
-	fixtureYaml,
-	GATE_BUDGET,
-	judgeGate,
-	judgeWindow,
-	levelLive,
-	reservePorts,
-	roleOf,
-	type Sample,
-} from "./linux-idle-bench.ts";
+import { counterLive, cpuWindow, waitForLoad, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, levelLive, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
 
-const sample = (
-	pid: number,
-	role: string,
-	ticks: number,
-	o: Partial<Sample> = {},
-): Sample => ({
-	pid,
-	role,
-	comm: role,
-	ticks,
-	rssKb: 100 * 1024,
-	pssKb: 60 * 1024,
-	swapKb: 0,
-	threads: [],
-	...o,
-});
+const sample = (pid: number, role: string, ticks: number, o: Partial<Sample> = {}): Sample => ({ pid, role, comm: role, ticks, rssKb: 100 * 1024, pssKb: 60 * 1024, swapKb: 0, threads: [], ...o });
 
 describe("cpuWindow", () => {
 	test("100 ticks (1 s of CPU) over a 10 s window is 10 % of one core, summed per role", () => {
-		const w = cpuWindow(
-			"x",
-			10,
-			[
-				sample(1, "app", 0),
-				sample(2, "webprocess", 500),
-				sample(3, "webprocess", 0),
-			],
-			[
-				sample(1, "app", 100),
-				sample(2, "webprocess", 650),
-				sample(3, "webprocess", 50),
-			],
-		);
+		const w = cpuWindow("x", 10, [sample(1, "app", 0), sample(2, "webprocess", 500), sample(3, "webprocess", 0)], [sample(1, "app", 100), sample(2, "webprocess", 650), sample(3, "webprocess", 50)]);
 		expect(w.cpuPct).toEqual({ app: 10, webprocess: 20 });
 		expect(w.totalCpuPct).toBe(30);
 	});
 
 	test("a process that appeared during the window has no earlier ticks to subtract: it counts as zero, not as its whole lifetime", () => {
 		// A terminal's shell started 2 s ago with 200 ticks of startup work: that is not idle cost of the state.
-		const w = cpuWindow(
-			"x",
-			10,
-			[sample(1, "app", 0)],
-			[sample(1, "app", 10), sample(9, "bash", 200)],
-		);
+		const w = cpuWindow("x", 10, [sample(1, "app", 0)], [sample(1, "app", 10), sample(9, "bash", 200)]);
 		expect(w.cpuPct.bash).toBe(0);
 		expect(w.totalCpuPct).toBe(1);
 	});
 
 	test("a process that left is not reported", () => {
-		const w = cpuWindow(
-			"x",
-			10,
-			[sample(1, "app", 0), sample(2, "bash", 0)],
-			[sample(1, "app", 10)],
-		);
+		const w = cpuWindow("x", 10, [sample(1, "app", 0), sample(2, "bash", 0)], [sample(1, "app", 10)]);
 		expect(w.processes.map((p) => p.pid)).toEqual([1]);
 	});
 
 	test("memory is the sum of the processes, swapped-out PSS reported on its own", () => {
-		const w = cpuWindow(
-			"x",
-			10,
-			[],
-			[
-				sample(1, "app", 0, {
-					pssKb: 1024 * 100,
-					rssKb: 1024 * 150,
-					swapKb: 1024 * 30,
-				}),
-				sample(2, "webprocess", 0, { pssKb: 1024 * 200, rssKb: 1024 * 250 }),
-			],
-		);
+		const w = cpuWindow("x", 10, [], [sample(1, "app", 0, { pssKb: 1024 * 100, rssKb: 1024 * 150, swapKb: 1024 * 30 }), sample(2, "webprocess", 0, { pssKb: 1024 * 200, rssKb: 1024 * 250 })]);
 		expect([w.pssMb, w.rssMb, w.swapMb]).toEqual([300, 400, 30]);
 	});
 
 	test("threads: the busiest first, wakeups per second from context-switch deltas", () => {
-		const t = (tid: number, name: string, ticks: number, switches: number) => ({
-			tid,
-			name,
-			ticks,
-			switches,
-		});
-		const before = sample(1, "app", 0, {
-			threads: [t(1, "main", 0, 0), t(2, "tokio", 0, 0), t(3, "idle", 0, 0)],
-		});
-		const after = sample(1, "app", 150, {
-			threads: [
-				t(1, "main", 50, 2000),
-				t(2, "tokio", 100, 100),
-				t(3, "idle", 0, 10),
-			],
-		});
+		const t = (tid: number, name: string, ticks: number, switches: number) => ({ tid, name, ticks, switches });
+		const before = sample(1, "app", 0, { threads: [t(1, "main", 0, 0), t(2, "tokio", 0, 0), t(3, "idle", 0, 0)] });
+		const after = sample(1, "app", 150, { threads: [t(1, "main", 50, 2000), t(2, "tokio", 100, 100), t(3, "idle", 0, 10)] });
 		const [p] = cpuWindow("x", 10, [before], [after]).processes;
-		expect(p.threads.map((x) => [x.name, x.cpuPct, x.switchesPerS])).toEqual([
-			["tokio", 10, 10],
-			["main", 5, 200],
-			["idle", 0, 1],
-		]);
+		expect(p.threads.map((x) => [x.name, x.cpuPct, x.switchesPerS])).toEqual([["tokio", 10, 10], ["main", 5, 200], ["idle", 0, 1]]);
 		expect(p.switchesPerS).toBe(211);
 	});
 });
@@ -137,16 +57,9 @@ describe("roleOf", () => {
 });
 
 describe("judge", () => {
-	const w = cpuWindow(
-		"workspace",
-		30,
-		[sample(1, "app", 0)],
-		[sample(1, "app", 300)],
-	);
+	const w = cpuWindow("workspace", 30, [sample(1, "app", 0)], [sample(1, "app", 300)]);
 	test("a window over its budget fails and names the state and the split", () => {
-		expect(judgeWindow(w, 5)[0]).toMatch(
-			/workspace: 10% of a core over 30 s > 5%.*"app":10/,
-		);
+		expect(judgeWindow(w, 5)[0]).toMatch(/workspace: 10% of a core over 30 s > 5%.*"app":10/);
 	});
 	test("a window at or under budget passes", () => {
 		expect(judgeWindow(w, 10)).toEqual([]);
@@ -154,17 +67,7 @@ describe("judge", () => {
 	test("--judge re-judges a saved file by label and exits 1 over budget, with no app", () => {
 		const f = join(mkdtempSync(join(tmpdir(), "idle-bench-")), "r.jsonl");
 		writeFileSync(f, `${JSON.stringify(w)}\n`);
-		const run = (b: string) =>
-			Bun.spawnSync(
-				[
-					"bun",
-					join(import.meta.dir, "linux-idle-bench.ts"),
-					"--judge",
-					f,
-					`workspace=${b}`,
-				],
-				{ stderr: "pipe" },
-			);
+		const run = (b: string) => Bun.spawnSync(["bun", join(import.meta.dir, "linux-idle-bench.ts"), "--judge", f, `workspace=${b}`], { stderr: "pipe" });
 		expect(run("5").exitCode).toBe(1);
 		expect(run("5").stderr.toString()).toContain("workspace");
 		expect(run("20").exitCode).toBe(0);
@@ -174,68 +77,33 @@ describe("judge", () => {
 // CI gate (#289): "Desktop opens (Linux)" fails when a state that is idle on main starts to cost CPU. The danger is a gate that
 // passes because it measured nothing, or one that judges a state against another's budget.
 describe("judgeGate", () => {
-	const win = (scenario: string, ticks: number) =>
-		cpuWindow(
-			`ci/${scenario}`,
-			30,
-			[sample(1, "app", 0)],
-			[sample(1, "app", ticks)],
-		);
-	const all = (ticks: number) =>
-		Object.keys(GATE_BUDGET).map((s) => win(s, ticks));
+	const win = (scenario: string, ticks: number) => cpuWindow(`ci/${scenario}`, 30, [sample(1, "app", 0)], [sample(1, "app", ticks)]);
+	const all = (ticks: number) => Object.keys(GATE_BUDGET).map((s) => win(s, ticks));
 	test("every gated state inside its budget passes", () => {
 		expect(judgeGate(all(30))).toEqual([]); // 1 % of a core
 	});
 	test("a gated state over its own budget fails and names the state", () => {
-		const bad = judgeGate([
-			...all(30).filter((w) => !w.label.endsWith("/workspace")),
-			win("workspace", 3000),
-		]);
+		const bad = judgeGate([...all(30).filter((w) => !w.label.endsWith("/workspace")), win("workspace", 3000)]);
 		expect(bad).toHaveLength(1);
 		expect(bad[0]).toMatch(/ci\/workspace: 100% of a core over 30 s > \d+%/);
 	});
 	test("a gated state that was never measured fails: nothing measured is not a pass", () => {
-		expect(judgeGate([])).toEqual(
-			Object.keys(GATE_BUDGET).map((s) => `${s}: no window measured`),
-		);
-		expect(judgeGate(all(30).slice(1))).toEqual([
-			`${Object.keys(GATE_BUDGET)[0]}: no window measured`,
-		]);
+		expect(judgeGate([])).toEqual(Object.keys(GATE_BUDGET).map((s) => `${s}: no window measured`));
+		expect(judgeGate(all(30).slice(1))).toEqual([`${Object.keys(GATE_BUDGET)[0]}: no window measured`]);
 	});
 	test("states that are not gated (still costly on main) are not judged", () => {
 		expect(judgeGate([...all(30), win("stack-running", 3000)])).toEqual([]);
 	});
 	test("every window of a gated state is judged, not just the first (a retried scenario)", () => {
-		expect(
-			judgeGate([
-				win("welcome", 30),
-				win("welcome", 3000),
-				...all(30).slice(1),
-			]),
-		).toHaveLength(1);
+		expect(judgeGate([win("welcome", 30), win("welcome", 3000), ...all(30).slice(1)])).toHaveLength(1);
 	});
 	test("--judge --gate exits 1 on a missing state and 0 on a clean report, with no app", () => {
 		const f = join(mkdtempSync(join(tmpdir(), "idle-gate-")), "r.jsonl");
-		const run = () =>
-			Bun.spawnSync(
-				[
-					"bun",
-					join(import.meta.dir, "linux-idle-bench.ts"),
-					"--judge",
-					f,
-					"--gate",
-				],
-				{ stderr: "pipe" },
-			);
+		const run = () => Bun.spawnSync(["bun", join(import.meta.dir, "linux-idle-bench.ts"), "--judge", f, "--gate"], { stderr: "pipe" });
 		writeFileSync(f, `${JSON.stringify(win("welcome", 30))}\n`);
 		expect(run().exitCode).toBe(1);
 		expect(run().stderr.toString()).toContain("workspace: no window measured");
-		writeFileSync(
-			f,
-			`${all(30)
-				.map((w) => JSON.stringify(w))
-				.join("\n")}\n`,
-		);
+		writeFileSync(f, `${all(30).map((w) => JSON.stringify(w)).join("\n")}\n`);
 		expect(run().exitCode).toBe(0);
 	});
 });
@@ -251,11 +119,7 @@ describe("fixture ports", () => {
 		a.release();
 		b.release();
 		// released: a service can now bind them
-		const l = Bun.listen({
-			hostname: "127.0.0.1",
-			port: a.ports[0]!,
-			socket: { data() {} },
-		});
+		const l = Bun.listen({ hostname: "127.0.0.1", port: a.ports[0]!, socket: { data() {} } });
 		l.stop(true);
 	});
 	test("the yaml carries exactly the ports it was given, for the command and for the readiness check, and they read back", () => {
@@ -284,83 +148,38 @@ describe("liveness: a state that did not happen is not a result", () => {
 		expect(levelLive("services", 0, 2, 2).ok).toBe(false);
 	});
 	test("the gate fails a window whose state did not happen even when its CPU is under budget", () => {
-		const w = {
-			...cpuWindow(
-				"ci/welcome",
-				30,
-				[sample(1, "app", 0)],
-				[sample(1, "app", 3)],
-			),
-			live: counterLive("x", 0, 0, 30, 1),
-		};
-		const others = Object.keys(GATE_BUDGET)
-			.filter((s) => s !== "welcome")
-			.map((s) =>
-				cpuWindow(`ci/${s}`, 30, [sample(1, "app", 0)], [sample(1, "app", 3)]),
-			);
-		expect(judgeGate([w, ...others])).toEqual([
-			expect.stringContaining("ci/welcome: x grew by 0"),
-		]);
+		const w = { ...cpuWindow("ci/welcome", 30, [sample(1, "app", 0)], [sample(1, "app", 3)]), live: counterLive("x", 0, 0, 30, 1) };
+		const others = Object.keys(GATE_BUDGET).filter((s) => s !== "welcome").map((s) => cpuWindow(`ci/${s}`, 30, [sample(1, "app", 0)], [sample(1, "app", 3)]));
+		expect(judgeGate([w, ...others])).toEqual([expect.stringContaining("ci/welcome: x grew by 0")]);
 	});
 	// Linux only: the bench and its fake engine run on the Linux desktop job; on windows-latest `python3` is the Store
-	// alias and the test failed there (PR #723's "Repo scripts (windows-latest)", 2026-11-23). It waits for the first
-	// written count instead of sleeping a fixed 2.5 s, so a loaded runner is slower, never wrong.
-	test.skipIf(process.platform !== "linux")(
-		"the real fake engine counts what it sends, in steps of 30",
-		async () => {
-			const dir = mkdtempSync(join(tmpdir(), "fake-omp-"));
-			const stream = join(dir, "stream");
-			writeFileSync(stream, "");
-			const p = Bun.spawn(
-				[
-					"python3",
-					join(import.meta.dir, "fixtures/linux-idle/fake-omp.py"),
-					"--mode",
-					"rpc-ui",
-					"--stream-file",
-					stream,
-				],
-				{ stdout: "ignore", stdin: "pipe" },
-			);
-			const sent = `${stream}.sent`;
-			let n = 0;
-			for (let i = 0; i < 200 && n < 30; i++) {
-				await Bun.sleep(50);
-				n = existsSync(sent) ? Number(readFileSync(sent, "utf8")) || 0 : 0;
-			}
-			p.kill();
-			// The counter is written every 30 lines.
-			expect(n).toBeGreaterThanOrEqual(30);
-			expect(n % 30).toBe(0);
-		},
-		15_000,
-	);
+	// alias and the test failed there (PR #723's "Repo scripts (windows-latest)", 2026-11-23). It polls the file the
+	// real subprocess writes (a condition, not a guessed duration), so a loaded runner is slower, never wrong.
+	test.skipIf(process.platform !== "linux")("the real fake engine counts what it sends, in steps of 30", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "fake-omp-"));
+		const stream = join(dir, "stream");
+		writeFileSync(stream, "");
+		const p = Bun.spawn(["python3", join(import.meta.dir, "fixtures/linux-idle/fake-omp.py"), "--mode", "rpc-ui", "--stream-file", stream], { stdout: "ignore", stdin: "pipe" });
+		const sent = `${stream}.sent`;
+		let n = 0;
+		for (let i = 0; i < 200 && n < 30; i++) {
+			await Bun.sleep(50);
+			n = existsSync(sent) ? Number(readFileSync(sent, "utf8")) || 0 : 0;
+		}
+		p.kill();
+		// The counter is written every 30 lines.
+		expect(n).toBeGreaterThanOrEqual(30);
+		expect(n % 30).toBe(0);
+	}, 15_000);
 });
 
 // A bench run while other agents build measures their load, not the app's (the 2026-11-22 matrix had rows at load 5-13).
 describe("waitForLoad", () => {
 	const clock = (loads: number[]) => {
-		let t = 0,
-			i = 0;
-		return {
-			slept: [] as number[],
-			load: () => loads[Math.min(i++, loads.length - 1)]!,
-			sleep: async function (this: { slept: number[] }, ms: number) {
-				t += ms;
-				this.slept.push(ms);
-			},
-			now: () => t,
-		};
+		let t = 0, i = 0;
+		return { slept: [] as number[], load: () => loads[Math.min(i++, loads.length - 1)]!, sleep: async function (this: { slept: number[] }, ms: number) { t += ms; this.slept.push(ms); }, now: () => t };
 	};
-	const run = (c: ReturnType<typeof clock>, max = 2, timeoutMs = 60_000) =>
-		waitForLoad({
-			max,
-			pollMs: 10_000,
-			timeoutMs,
-			load: c.load,
-			sleep: (ms) => c.sleep.call(c, ms),
-			now: c.now,
-		});
+	const run = (c: ReturnType<typeof clock>, max = 2, timeoutMs = 60_000) => waitForLoad({ max, pollMs: 10_000, timeoutMs, load: c.load, sleep: (ms) => c.sleep.call(c, ms), now: c.now });
 	test("an idle machine starts at once and reports the load it started at", async () => {
 		const c = clock([0.4]);
 		expect(await run(c)).toBe(0.4);
@@ -373,32 +192,13 @@ describe("waitForLoad", () => {
 	});
 	test("at the timeout it throws and says the load: the caller exits with no row", async () => {
 		const c = clock([8]);
-		await expect(run(c, 2, 30_000)).rejects.toThrow(
-			/load stayed >= 2 for 30 s \(last 8\)/,
-		);
+		await expect(run(c, 2, 30_000)).rejects.toThrow(/load stayed >= 2 for 30 s \(last 8\)/);
 	});
-	test.skipIf(!existsSync("/proc/loadavg"))(
-		"the CLI exits 1 with no row when the load never drops (limit below any real load)",
-		() => {
-			const out = join(mkdtempSync(join(tmpdir(), "idle-load-")), "r.jsonl");
-			const r = Bun.spawnSync(
-				[
-					"bun",
-					join(import.meta.dir, "linux-idle-bench.ts"),
-					"--max-load",
-					"0.000001",
-					"--load-timeout",
-					"0",
-					"--sock",
-					"/nonexistent",
-					"--out",
-					out,
-				],
-				{ stderr: "pipe" },
-			);
-			expect(r.exitCode).toBe(1);
-			expect(r.stderr.toString()).toContain("no measurement taken");
-			expect(Bun.file(out).size).toBe(0);
-		},
-	);
+	test.skipIf(!existsSync("/proc/loadavg"))("the CLI exits 1 with no row when the load never drops (limit below any real load)", () => {
+		const out = join(mkdtempSync(join(tmpdir(), "idle-load-")), "r.jsonl");
+		const r = Bun.spawnSync(["bun", join(import.meta.dir, "linux-idle-bench.ts"), "--max-load", "0.000001", "--load-timeout", "0", "--sock", "/nonexistent", "--out", out], { stderr: "pipe" });
+		expect(r.exitCode).toBe(1);
+		expect(r.stderr.toString()).toContain("no measurement taken");
+		expect(Bun.file(out).size).toBe(0);
+	});
 });

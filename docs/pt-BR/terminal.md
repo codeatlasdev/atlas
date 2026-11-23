@@ -1,7 +1,7 @@
 ---
 title: "Terminal GPU"
 source: terminal.md
-source_sha: "614dda9de9fceef17a3b3a0a0a7f87a7d15e4a57"
+source_sha: "5ca8b905ec32d1793fde21b91501a9c5b4da7ec3"
 translation: machine
 ---
 
@@ -127,7 +127,7 @@ O evento `paste` da web view só expõe texto, então ⌘V é um gatilho e o hos
 
 Um terminal não carrega um bitmap, então, para uma imagem, o programa lê a área de transferência por conta própria; o Atlas só manda que ele leia. Soltar um arquivo no terminal continua colando o caminho entre aspas. Terminais que usam xterm.js (hosts SSH, ou com Terminal rápido (GPU) desativado) colam só texto.
 
-**Teclas da área de transferência em terminais xterm.js (Linux, hosts SSH).** Ctrl+Shift+C copia a seleção e Ctrl+Shift+V a cola (bracketed); Ctrl+C só copia enquanto há texto selecionado e, fora disso, continua sendo SIGINT. Com `terminal.copy_on_select` (ativado), selecionar também copia. A seleção PRIMARY (colar com o botão do meio) não é preenchida. O macOS mantém ⌘C/⌘V pelo menu Editar.
+**Teclas da área de transferência em terminais xterm.js (Linux, hosts SSH).** Ctrl+Shift+C copia a seleção e Ctrl+Shift+V a cola (bracketed); Ctrl+C só copia enquanto há texto selecionado e, fora disso, continua sendo SIGINT. Com `terminal.copy_on_select` (ativado), selecionar também copia. A seleção PRIMARY (colar com o botão do meio) não é preenchida. O macOS mantém ⌘C/⌘V pelo menu Editar. Ctrl+Shift+V lê a área de transferência pela webview, então no Linux a janela do próprio app tem acesso a ela (as abas do navegador embutido nunca têm); se a leitura for negada mesmo assim, um aviso diz isso e Ctrl+V simples continua colando.
 
 ## Scrollback
 

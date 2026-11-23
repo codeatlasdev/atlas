@@ -14,6 +14,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Linux: Ctrl+Shift+V pastes into the terminal.** WebKitGTK denied the clipboard read, so the key did nothing and said nothing. The app's own window now has clipboard access (never the embedded browser's tabs), and a read that still fails shows a toast pointing at the plain paste shortcut. ([#740](https://github.com/codeatlasdev/atlas/issues/740))
 - **Linux tiling WMs: the title row's buttons no longer touch the window edge.** With no caption buttons (`--caption-controls: 0px`) the project header, Agents, loose-folder and right-sidebar rows lost their right padding (the rule replaced it instead of widening it), so Start/Stop sat flush against the card edge. They keep their own padding now, and still clear the caption buttons where those exist. ([#739](https://github.com/codeatlasdev/atlas/issues/739))
 
 - **A streaming chat in Atlas Desktop costs far less CPU.** omp sends the whole message so far in every delta, about 30 a second; the chat now applies at most about eight batches a second, keeping only the newest delta of each batch, and re-renders only the markdown block that grew instead of the whole message. On a GPU a streaming chat went from 30-38 % of a core to 19-20 %. Part of #289.

@@ -8,5 +8,6 @@
 	"workbench_term_pane_host_unreachable": "Notice when the terminal host does not answer",
 	"workbench_term_pane_raw_protocol_back": "Notice over the raw omp terminal; click returns to the chat view",
 	"workbench_term_pane_restart_host": "Accessible name and hint of the restart button of the host notice",
+	"workbench_term_paste_denied": "Toast when Ctrl+Shift+V in the terminal cannot read the system clipboard (the webview denied it); key is the plain paste shortcut",
 	"workbench_term_search_label": "Accessible name of the terminal find field"
 }

@@ -373,14 +373,25 @@ mod tests {
             "{cmd:?}"
         );
         assert!(!path.contains('%'), "unexpanded reference in {path}");
-        // Every directory of the user's registry Path, expanded, is on the user Path PowerShell reads.
-        for dir in split_win_path(&terminal_path(None, user.as_deref(), |n| {
+        // The user Path as `reg.exe` + our expansion gives it is the one .NET (PowerShell) reads and expands itself.
+        let ours = split_win_path(&terminal_path(None, user.as_deref(), |n| {
             std::env::var(n).ok()
-        })) {
-            assert!(
-                super::super::install::has_user_path(std::path::Path::new(&dir)).unwrap(),
-                "{dir} is in HKCU Path for reg.exe but not for PowerShell"
-            );
-        }
+        }));
+        let ps = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "[Console]::Out.Write([Environment]::GetEnvironmentVariable('Path', 'User'))",
+            ])
+            .output()
+            .expect("powershell");
+        let theirs = split_win_path(&String::from_utf8_lossy(&ps.stdout));
+        let lower = |v: Vec<String>| v.into_iter().map(|d| d.to_lowercase()).collect::<Vec<_>>();
+        assert_eq!(
+            lower(ours),
+            lower(theirs),
+            "HKCU Path: reg.exe vs PowerShell"
+        );
     }
 }

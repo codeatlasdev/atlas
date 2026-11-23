@@ -1,7 +1,7 @@
 ---
 title: "Terminal GPU"
 source: terminal.md
-source_sha: "8cf32ce924d55ca7e0d06859a16e3a06b47a1def"
+source_sha: "c9c833fbfa012e08d45423c09e2194927ec7f4da"
 translation: machine
 ---
 
@@ -128,6 +128,8 @@ O evento `paste` da web view só expõe texto, então ⌘V é um gatilho e o hos
 Um terminal não carrega um bitmap, então, para uma imagem, o programa lê a área de transferência por conta própria; o Atlas só manda que ele leia. Soltar um arquivo no terminal continua colando o caminho entre aspas. Terminais que usam xterm.js (hosts SSH, ou com Terminal rápido (GPU) desativado) colam só texto.
 
 **Como um terminal xterm.js recebe a saída (Linux, Windows, hosts SSH, Terminal rápido desligado).** Cada terminal abre o seu próprio stream bruto até o host dono do pty (`pty_attach_raw`, a mesma conexão que o terminal GPU lê; um host SSH pelo seu túnel) e `crates/atlas-desktop/src/pty_stream.rs` entrega os bytes à página como quadros binários num canal do Tauri (`pty_feed.rs`, decodificados por `lib/ptyChannel.ts`): sem JSON, sem base64 e sem um script executado por trecho. Um quadro é um byte de tipo (saída, histórico depois de um reset, "o hostd cortou este stream", "o programa terminou") e os bytes; no máximo um quadro por quadro de tela (16 ms) sai para um pty, e o primeiro byte de um pty quieto sai na hora. **Controle de fluxo:** a página confirma o que o xterm.js já processou (`pty_stream_ack`) e o Rust nunca tem mais de 2 MiB sem confirmação. Passado isso ele para de ler o socket, a fila bruta do hostd enche e o programa espera, como num terminal nativo, então uma enxurrada não faz a webview crescer (ela ia de 205 a 1.153 MB com `yes`). Nada é descartado em silêncio: um stream que o hostd corta (um leitor que não leu por 2 s) ou que nenhuma página confirma por 60 s termina com um marcador, e a vista se redesenha a partir do histórico do hostd.
+
+**O que fechar um terminal xterm.js libera.** Fechar a aba (ou estacionar o seu espaço) descarta o xterm (scrollback e estado do parser), encerra o seu stream (`pty_stream_stop`, a conexão bruta com o hostd fecha) e perde o seu contexto WebGL na hora: o xterm tira o canvas do renderizador da página ao ser descartado, mas nunca perde o contexto, então sem isso as texturas e o atlas de glifos viviam até uma coleta de lixo e contavam contra o limite do WebKit de contextos vivos. `scripts/linux-terminal-soak.ts` é a verificação: ele abre um terminal que imprime 50 MB, fecha, mede o PSS do web process e conta os elementos `.xterm` e os canvas que a página ainda guarda, por 10 ciclos, e falha quando o PSS termina mais de 100 MB acima da linha de base ociosa ou quando sobra alguma coisa.
 
 **Teclas da área de transferência em terminais xterm.js (Linux, hosts SSH).** Ctrl+Shift+C copia a seleção e Ctrl+Shift+V a cola (bracketed); Ctrl+C só copia enquanto há texto selecionado e, fora disso, continua sendo SIGINT. Com `terminal.copy_on_select` (ativado), selecionar também copia. A seleção PRIMARY (colar com o botão do meio) não é preenchida. O macOS mantém ⌘C/⌘V pelo menu Editar.
 

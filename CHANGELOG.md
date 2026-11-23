@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Linux tiling WMs: the title row's buttons no longer touch the window edge.** With no caption buttons (`--caption-controls: 0px`) the project header, Agents, loose-folder and right-sidebar rows lost their right padding (the rule replaced it instead of widening it), so Start/Stop sat flush against the card edge. They keep their own padding now, and still clear the caption buttons where those exist. ([#739](https://github.com/codeatlasdev/atlas/issues/739))
+
 - **hostd no longer burns CPU for every open terminal on Linux.** Its 2-second sweep read `/proc/stat` once per process of the machine (about 400 reads of 3 KB each scan); the boot time is now read once. An idle terminal's hostd went from about 2.9 % to under 1 % of a core (docs/perf/linux-webkit-study.md, #289).
 - **`atlas update` hands the terminal host over live when no terminal is open.** Every update from alpha.24 to alpha.27 with no terminal running ended in "Live upgrade of the terminal host failed: ... failed to fill whole buffer" and a plain restart: the old host's handoff starts with an empty chunk, and the new host took it for the end of the handoff, never received the pid lock and agent state, found the lock held and exited. The new host now waits for the real terminator and the old side no longer sends the empty chunk. Pinned with the real bytes of an alpha.26 host and a handoff between two real processes. Updating a host older than alpha.28 can still not be handed over live when it has no terminal (the receiving side is the already released new binary), so that update is one restart; from alpha.27 on it hands over live.
 

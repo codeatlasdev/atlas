@@ -2,7 +2,7 @@
 // (a new process counted as if it had run all along, ticks of one process credited to another, a gone process dropped) would
 // make every later "this fix saved N %" claim false, so the arithmetic is pinned here against hand-computed numbers.
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { counterLive, cpuWindow, waitForLoad, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, levelLive, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
@@ -187,7 +187,7 @@ describe("waitForLoad", () => {
 		const c = clock([8]);
 		await expect(run(c, 2, 30_000)).rejects.toThrow(/load stayed >= 2 for 30 s \(last 8\)/);
 	});
-	test("the CLI exits 1 with no row when the load never drops (limit below any real load)", () => {
+	test.skipIf(!existsSync("/proc/loadavg"))("the CLI exits 1 with no row when the load never drops (limit below any real load)", () => {
 		const out = join(mkdtempSync(join(tmpdir(), "idle-load-")), "r.jsonl");
 		const r = Bun.spawnSync(["bun", join(import.meta.dir, "linux-idle-bench.ts"), "--max-load", "0.000001", "--load-timeout", "0", "--sock", "/nonexistent", "--out", out], { stderr: "pipe" });
 		expect(r.exitCode).toBe(1);

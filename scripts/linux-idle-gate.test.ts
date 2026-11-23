@@ -24,7 +24,8 @@ function guard(w: string, env: Record<string, string>) {
 	return { code: r.exitCode, err: r.stderr.toString() };
 }
 
-describe("the gate sends input only to its own private display", () => {
+// Linux only: bash, unix sockets and /proc (the Windows job runs the repo scripts too).
+describe.skipIf(process.platform !== "linux")("the gate sends input only to its own private display", () => {
 	test("its own runtime dir, Wayland socket and sway socket pass", async () => {
 		const w = await work();
 		expect(guard(w, { XDG_RUNTIME_DIR: join(w, "run"), WAYLAND_DISPLAY: "wayland-1", SWAYSOCK: join(w, "run", "sway-ipc.sock") }).code).toBe(0);

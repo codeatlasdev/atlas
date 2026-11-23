@@ -123,6 +123,13 @@ export function sumLatest(tracks: Track[]): number {
 	return t;
 }
 
+/** Whether two series hold the same numbers in the same order (the picture they draw would be identical). */
+export function sameSeries(a: readonly number[], b: readonly number[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+	return true;
+}
+
 /** Element-wise sum of the last `n` slots of several tracks (same `end`). */
 export function stackSum(tracks: Track[], n: number, end: number): number[] {
 	const out = new Array<number>(n).fill(0);

@@ -16,11 +16,16 @@
 	import StateTimeline from "./StateTimeline.svelte";
 	import { hex } from "./color.ts";
 	import { metrics } from "./metrics.svelte.ts";
+	import { provideLiveRev } from "./liveRev.svelte.ts";
+	import { windowFocus } from "#lib/stores/windowFocus.svelte.ts";
 	import { emptyPanel, lastLines, serviceRows, stackKind } from "./overview.ts";
 	import { isGreen, needsAttention } from "./serviceState.ts";
 	import { m } from "#lib/i18n/m.ts";
 
-	let { project }: { project: ProjectView } = $props();
+	/** `visible`: this panel's tab is the one on screen (a mounted tab behind another keeps its component alive). */
+	let { project, visible = true }: { project: ProjectView; visible?: boolean } = $props();
+	// The charts, sparklines and timeline redraw on this revision, which stands still while nobody can see them.
+	const revision = provideLiveRev(() => visible && windowFocus.focused);
 
 	let live = $derived(store.live[project.id]);
 	let cfg = $derived(store.configs[project.id]);
@@ -38,7 +43,7 @@
 
 	// ── KPIs: recomputed once per published metrics revision (≤1/s) ──
 	let kpi = $derived.by(() => {
-		void metrics.rev;
+		void revision.rev;
 		const t = metrics.totals(project.id);
 		return {
 			mem: t.mem,
@@ -60,7 +65,7 @@
 	// Segments mutate in place (no reactivity inside the history): copy per revision so the
 	// timeline sees new objects, and use the sample time as its right edge so bands advance.
 	let timelineData = $derived.by(() => {
-		void metrics.rev;
+		void revision.rev;
 		return {
 			end: Date.now(),
 			lanes: names.map((name) => ({

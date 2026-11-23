@@ -1,0 +1,8 @@
+{"corpus": "ascii.bin", "mode": "acked", "mb": 16.8, "mbps": 8.2, "web_cpu_s": 0.98, "web_cpu_ms_per_mb": 58.4, "load1": 0.1884765625, "web_pss_mb": 384.0}
+{"corpus": "seq.bin", "mode": "acked", "mb": 16.8, "mbps": 7.6, "web_cpu_s": 1.6, "web_cpu_ms_per_mb": 95.4, "load1": 0.17333984375, "web_pss_mb": 401.0}
+{"corpus": "sgr.bin", "mode": "acked", "mb": 16.8, "mbps": 7.9, "web_cpu_s": 1.1, "web_cpu_ms_per_mb": 65.6, "load1": 0.17333984375, "web_pss_mb": 382.0}
+{"corpus": "truecolor.bin", "mode": "acked", "mb": 16.8, "mbps": 8.3, "web_cpu_s": 0.76, "web_cpu_ms_per_mb": 45.1, "load1": 0.47998046875, "web_pss_mb": 381.0}
+{"corpus": "ink-2026.bin", "mode": "acked", "mb": 16.8, "mbps": 8.3, "web_cpu_s": 0.7, "web_cpu_ms_per_mb": 41.7, "load1": 0.60205078125, "web_pss_mb": 378.0}
+{"corpus": "ascii.bin", "mode": "bulk", "mb": 16.8, "mbps": 81.0, "web_cpu_s": 0.42, "web_cpu_ms_per_mb": 25.0, "load1": 0.60205078125, "web_pss_mb": 444.0}
+{"corpus": "seq.bin", "mode": "bulk", "mb": 16.8, "mbps": 20.5, "web_cpu_s": 1.09, "web_cpu_ms_per_mb": 65.0, "load1": 0.60205078125, "web_pss_mb": 227.0}
+{"corpus": "truecolor.bin", "mode": "bulk", "mb": 16.8, "mbps": 67.4, "web_cpu_s": 0.42, "web_cpu_ms_per_mb": 24.9, "load1": 0.60205078125, "web_pss_mb": 263.0}

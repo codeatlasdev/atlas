@@ -58,6 +58,11 @@ pub use out::{OUT_CAP, Out, OutRx, Refused, channel as out_channel};
 pub type RawOut = mpsc::Sender<Vec<u8>>;
 pub const RAW_QUEUE: usize = 16;
 
+/// Ids of the sessions that were dropped (tests only): the way a test asks "did the last reference to this terminal go?".
+#[cfg(test)]
+pub(crate) static RELEASED: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(Default::default);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
     pub cwd: String,
@@ -208,6 +213,13 @@ impl Session {
         {
             None
         }
+    }
+}
+
+#[cfg(test)]
+impl Drop for Session {
+    fn drop(&mut self) {
+        RELEASED.lock().insert(self.id.clone());
     }
 }
 

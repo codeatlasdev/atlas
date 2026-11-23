@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
-import { droppedPty, ptyStream } from "./ptyStream.ts";
+import { ACK_BYTES, ACK_MS, droppedPty, ptyStream } from "./ptyStream.ts";
 
 const enc = (s) => new TextEncoder().encode(s);
 const dec = (b) => new TextDecoder().decode(b);
@@ -107,7 +107,7 @@ describe("ptyStream", () => {
 	});
 
 	// An acknowledgement is an IPC call: a chat that streams ~30 updates a second of ~500 bytes made 30 calls a second
-	// (the +2.8 points of app CPU over main in `chat-stream`). Parsed bytes go out in one batch per 100 ms, or at once
+	// (the +2.8 points of app CPU over main in `chat-stream`). Parsed bytes go out in one batch per 500 ms, or at once
 	// past 64 KiB, and never more than xterm parsed.
 	test("small parsed frames are acked in one batch per interval, the whole of it", async () => {
 		const { h, x, c } = await start("");
@@ -116,7 +116,7 @@ describe("ptyStream", () => {
 			x.parse();
 		}
 		expect(h.acked).toEqual([]);
-		expect(c.waited).toEqual([100]); // one timer for the whole batch, not one per frame
+		expect(c.waited).toEqual([ACK_MS]); // one timer for the whole batch, not one per frame
 		await c.fire();
 		expect(h.acked).toEqual([50_000]);
 		// the next batch starts a new interval
@@ -138,7 +138,7 @@ describe("ptyStream", () => {
 			parsed += 1000;
 			const acked = h.acked.reduce((a, b) => a + b, 0);
 			expect(acked).toBeLessThanOrEqual(parsed); // never credits what xterm has not parsed
-			expect(parsed - acked).toBeLessThan(64 * 1024); // the clock never fired, and the credit still comes back
+			expect(parsed - acked).toBeLessThan(ACK_BYTES); // the clock never fired, and the credit still comes back
 		}
 		h.data("w".repeat(512 * 1024));
 		x.parse();
@@ -256,8 +256,8 @@ describe("ptyStream", () => {
 				attached: async () => {},
 				write: x.write,
 				reset: x.reset,
-				// the 100 ms timer of an ack batch is not a retry wait
-				wait: (ms) => (ms >= 250 && waits.push(ms), new Promise(() => {})),
+				// the timer of an ack batch is not a retry wait
+				wait: (ms) => (ms !== ACK_MS && waits.push(ms), new Promise(() => {})),
 			});
 			await tick();
 			// 60 s of a chat stream, 30 lines a second: one stream, one replay, nothing else.

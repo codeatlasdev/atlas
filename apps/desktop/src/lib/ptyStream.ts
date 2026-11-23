@@ -26,8 +26,8 @@ const MAX_BACKOFF_MS = 30_000;
  * flood parses megabytes at a time, so it is never delayed) or `ACK_MS` after its first byte, so Rust's window
  * (2 MiB) is never short of more than `ACK_BYTES` of parsed output for longer than that.
  */
-const ACK_BYTES = 64 * 1024;
-const ACK_MS = 100;
+export const ACK_BYTES = 64 * 1024;
+export const ACK_MS = 500;
 
 export function ptyStream(o: {
 	/** Attach with replay: frames start with the history. */

@@ -180,14 +180,12 @@ pub fn recv_with_fds(sock: RawFd, buf: &mut [u8]) -> io::Result<(usize, Vec<Owne
 }
 
 /// Chunked wire format on the handoff socket: the bundle is JSON, one `\n`-terminated
-/// line per chunk of ≤ [`MAX_FDS`] fd-carrying sessions. `fd` indices are relative to
-/// the chunk. The last chunk is an empty-sessions line with `lock: true` carrying the
-/// pid-file fd (when given), so the receiver knows it is done.
-pub fn encode_chunks(
-    bundle: &Bundle,
-    fds: &[RawFd],
-    lock_fd: Option<RawFd>,
-) -> Vec<(Vec<u8>, Vec<RawFd>)> {
+/// line per chunk of ≤ [`MAX_FDS`] fd-carrying sessions (no line at all when there is no
+/// session; alpha.26 sent one empty line first, and receivers still accept it).
+/// `fd` indices are relative to the chunk. The last chunk is the one empty-sessions line
+/// with `lock: true`, carrying the pid-file fd and the agents, so the receiver knows it
+/// is done.
+pub fn encode_chunks(bundle: &Bundle, fds: &[RawFd], lock_fd: RawFd) -> Vec<(Vec<u8>, Vec<RawFd>)> {
     let mut out = Vec::new();
     let mut cur = Bundle {
         from_version: bundle.from_version.clone(),
@@ -208,12 +206,14 @@ pub fn encode_chunks(
         }
         cur.sessions.push(s);
     }
-    out.push((line(&cur), cur_fds));
+    if !cur.sessions.is_empty() {
+        out.push((line(&cur), cur_fds));
+    }
     // Terminator: an empty bundle, carrying the lock.
     cur.sessions.clear();
-    cur.lock = lock_fd.is_some();
+    cur.lock = true;
     cur.agents = bundle.agents.clone();
-    out.push((line(&cur), lock_fd.into_iter().collect()));
+    out.push((line(&cur), vec![lock_fd]));
     out
 }
 
@@ -388,7 +388,7 @@ mod tests {
                 .chain([state("dead", None)])
                 .collect(),
         };
-        let chunks = encode_chunks(&b, &fds, Some(1000));
+        let chunks = encode_chunks(&b, &fds, 1000);
         assert_eq!(chunks.len(), 3, "two data chunks + terminator");
         assert_eq!(chunks[0].1.len(), MAX_FDS);
         assert_eq!(chunks[1].1.len(), 5);
@@ -412,6 +412,24 @@ mod tests {
         );
         let t: Bundle = serde_json::from_slice(chunks[2].0.strip_suffix(b"\n").unwrap()).unwrap();
         assert!(t.sessions.is_empty() && t.lock);
+    }
+
+    /// #670: no terminal is one line, the terminator. An empty data chunk before it (what alpha.26 sent) passed for
+    /// the terminator in a receiver that stops at the first empty line.
+    #[test]
+    fn no_session_is_the_terminator_alone() {
+        let b = Bundle {
+            from_version: "x".into(),
+            lock: false,
+            agents: serde_json::json!({"panes": {}}),
+            sessions: Vec::new(),
+        };
+        let chunks = encode_chunks(&b, &[], 1000);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].1, vec![1000]);
+        let t: Bundle = serde_json::from_slice(chunks[0].0.strip_suffix(b"\n").unwrap()).unwrap();
+        assert!(t.sessions.is_empty() && t.lock);
+        assert_eq!(t.agents, b.agents);
     }
 
     #[test]

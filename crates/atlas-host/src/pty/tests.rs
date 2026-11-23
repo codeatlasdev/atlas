@@ -395,6 +395,10 @@ async fn a_tab_without_argv_starts_the_probed_login_shell_not_the_inherited_one(
 /// stays bounded, the program is not slowed, a healthy attacher misses nothing, and a reattach
 /// with replay continues. Unix only: it needs a fast byte source.
 // Regression: #109, hostd queued every `pty_output` for a client that stopped reading, without limit.
+// Flaky on Linux CI (#668): the program started printing the moment it was spawned, and an attach with no replay only
+// gets what comes after it, so a runner that kept the test thread off the CPU for a few ms between `spawn` and `attach`
+// lost the first chunk (`saw 40984581 of 41943040 bytes`). Now the program waits (`read`) for a line the test writes
+// once both clients are attached, and the healthy client is not subject to the cap, whatever stalls the test thread.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming() {
@@ -403,13 +407,15 @@ async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming()
 
     const TOTAL: usize = 40 * 1024 * 1024;
     let dir = tempfile::tempdir().unwrap();
-    let script = format!("head -c {TOTAL} /dev/zero | tr '\\0' a; echo END; sleep 30");
+    let script = format!("read go; head -c {TOTAL} /dev/zero | tr '\\0' a; echo END; sleep 30");
     let s = Session::spawn(shell_req(&script), dir.path()).unwrap();
 
     let (stuck, mut stuck_rx) = super::out_channel();
-    let (healthy, mut healthy_rx) = super::out_channel();
+    // Reads as fast as the test thread runs, and never held to the cap: this one is about the stuck client.
+    let (healthy, mut healthy_rx) = super::out_channel_with_cap(usize::MAX);
     s.attach(1, stuck.clone(), false, true);
     s.attach(2, healthy, false, true);
+    s.write(b"go\n").unwrap();
 
     let decode = |line: &str| -> Option<Vec<u8>> {
         let v: serde_json::Value = serde_json::from_str(line).unwrap();
@@ -428,7 +434,8 @@ async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming()
         );
         while let Some(line) = healthy_rx.try_recv() {
             if let Some(b) = decode(&line) {
-                seen += b.len();
+                // The `a`s the program prints: the echo of `go` and `END` are not counted.
+                seen += b.iter().filter(|&&c| c == b'a').count();
                 text_tail.push_str(&String::from_utf8_lossy(&b));
                 let keep = text_tail.len().saturating_sub(16);
                 text_tail.drain(..keep);
@@ -444,10 +451,7 @@ async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming()
         stuck_max <= OUT_CAP + 128 * 1024,
         "queued {stuck_max} bytes for a client that never reads"
     );
-    assert!(
-        seen >= TOTAL,
-        "the healthy attacher saw {seen} of {TOTAL} bytes"
-    );
+    assert_eq!(seen, TOTAL, "the healthy attacher missed output");
     // The stuck one is unsubscribed, and its queue ends with the reason.
     {
         let b = s.buf.lock();

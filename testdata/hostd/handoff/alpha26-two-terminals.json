@@ -1,0 +1,10 @@
+[
+ {
+  "fds": 1,
+  "data": "{\"from_version\":\"1.5.0-alpha.26\",\"sessions\":[{\"id\":\"1e53b962-e86d-83aa-82bc-0bb3b4ba7b2d\",\"cwd\":\"/tmp\",\"argv\":[\"sh\",\"-c\",\"sleep 300\"],\"scope\":{},\"created_at\":1795359359,\"title\":\"\",\"cols\":80,\"rows\":24,\"pid\":22909,\"file_len\":0,\"exited\":false,\"exit_code\":null,\"fd\":0,\"iso\":null},{\"id\":\"5b54738f-093c-ae5d-cc69-0fe006596996\",\"cwd\":\"/tmp\",\"argv\":[\"sh\",\"-c\",\"echo gone\"],\"scope\":{},\"created_at\":1795359359,\"title\":\"\",\"cols\":80,\"rows\":24,\"pid\":22914,\"file_len\":6,\"exited\":true,\"exit_code\":0,\"fd\":null,\"iso\":null}],\"lock\":false,\"agents\":null}\n"
+ },
+ {
+  "fds": 1,
+  "data": "{\"from_version\":\"1.5.0-alpha.26\",\"sessions\":[],\"lock\":true,\"agents\":{\"panes\":{},\"by_cwd\":{\"omp|/w\":\"p1\"}}}\n"
+ }
+]

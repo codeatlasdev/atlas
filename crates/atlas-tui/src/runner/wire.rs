@@ -203,7 +203,7 @@ mod tests {
     fn probed_manager() -> (tempfile::TempDir, ServiceManager) {
         use crate::config::{ProjectConfig, ReadyProbe, ServiceDef};
         let def = |ready: Option<ReadyProbe>| ServiceDef {
-            command: Some("sleep 30".into()),
+            command: Some(crate::runtime::process::test_sh("sleep 30")),
             port: Some(3000),
             ready,
             ..Default::default()
@@ -319,7 +319,7 @@ mod tests {
         use crate::config::{ProjectConfig, ServiceDef};
         const MB: u64 = 1 << 20;
         let def = |warn: Option<&str>| ServiceDef {
-            command: Some("sleep 30".into()),
+            command: Some(crate::runtime::process::test_sh("sleep 30")),
             memory_warn: warn.map(str::to_string),
             ..Default::default()
         };

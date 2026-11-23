@@ -258,8 +258,6 @@ export const api = {
 	configWrite: (id: string, text: string) => invoke<void>("config_write", { id, text }),
 	openEditor: (id: string) => invoke<void>("open_in_editor", { id }),
 	openUrl: (url: string) => invoke<void>("open_url", { url }),
-	/** The open issue that carries an error's fingerprint (`issue_search.rs`); read it with `parseLookup`. */
-	issueSearch: (fingerprint: string) => invoke<unknown>("issue_search", { fingerprint }),
 	reveal: (id: string) => invoke<void>("reveal", { id }),
 	revealPath: (path: string) => invoke<void>("reveal_path", { path }),
 	/** The OS open panel for one file or folder (`null` = cancelled). Rust asks the native-UI gate first: an agent instance never shows it. */

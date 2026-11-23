@@ -4,7 +4,8 @@
  * answer defensively and turns a found issue into the "me too" link. Any answer but a found issue means "open the
  * new-issue form", which is what the button always did: a search that fails never blocks a report.
  */
-import { REPO_URL } from "./report.ts";
+import { invoke } from "@tauri-apps/api/core";
+import { REPO_URL, withFingerprint, type ErrorReport } from "./report.ts";
 
 export interface FoundIssue {
 	kind: "found";
@@ -30,6 +31,15 @@ export function parseLookup(raw: unknown): Lookup {
 	)
 		return { kind: "found", number: r.number, url: r.url, title: r.title };
 	return { kind: "unavailable" };
+}
+
+/** The lookup for `r` (its fingerprint loads if it has none): `null` when it has none to search by. Never throws. */
+export async function findExisting(
+	r: ErrorReport,
+	search: (fp: string) => Promise<unknown>,
+): Promise<Lookup | null> {
+	const fp = (await withFingerprint(r)).fingerprint;
+	return fp ? lookupIssue(fp, search) : null;
 }
 
 /** Ask `search` (the `issue_search` command) for `fingerprint`; never throws. */

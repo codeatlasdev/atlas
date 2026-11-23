@@ -118,10 +118,7 @@
 	/** Look for an open issue with this fingerprint first; the new-issue form opens when there is none or the search fails. */
 	async function reportIssue() {
 		searching = true;
-		const fp = (await withFingerprint(filed)).fingerprint;
-		const found = fp
-			? await import("./issueLookup.ts").then((l) => l.lookupIssue(fp, api.issueSearch)).catch(() => null)
-			: null;
+		const found = await import("./issueLookup.ts").then((l) => l.findExisting(filed)).catch(() => null);
 		searching = false;
 		if (found?.kind === "found") existing = found;
 		else await api.openUrl(issueUrl(filed));

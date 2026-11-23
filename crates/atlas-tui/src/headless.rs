@@ -81,8 +81,8 @@ pub async fn run_ci(
 
     // Wait at least `min_wait` (10 s by default) for services to start before checking stability,
     // then keep polling until no service is Starting OR deadline is hit.
-    let min_wait_until = tokio::time::Instant::now()
-        + min_wait(std::env::var(CI_MIN_WAIT_ENV).ok().as_deref());
+    let min_wait_until =
+        tokio::time::Instant::now() + min_wait(std::env::var(CI_MIN_WAIT_ENV).ok().as_deref());
     let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs);
     // App services only start after InfraReady; never declare stable before.
     let mut apps_started = false;

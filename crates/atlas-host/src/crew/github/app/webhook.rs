@@ -171,11 +171,8 @@ impl DeliveryLog {
         {
             seen.set.remove(&old);
         }
-        let _ = crate::crew::store::jsonl::trim_to_tail(
-            &self.path,
-            self.max_bytes,
-            self.max_bytes / 2,
-        );
+        let _ =
+            crate::crew::store::jsonl::trim_to_tail(&self.path, self.max_bytes, self.max_bytes / 2);
         Ok(true)
     }
 }

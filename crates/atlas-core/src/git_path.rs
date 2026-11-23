@@ -363,13 +363,20 @@ mod tests {
                     .iter()
                     .find(|x| x.path == *n)
                     .unwrap_or_else(|| panic!("{n:?} quotepath={quotepath}: {f:?}"));
-                assert_eq!(one.old_path.as_deref(), Some(plain_old(i).as_str()), "{n:?}");
+                assert_eq!(
+                    one.old_path.as_deref(),
+                    Some(plain_old(i).as_str()),
+                    "{n:?}"
+                );
                 assert_eq!(one.status, "renamed", "{n:?}");
             }
         }
 
         // name -> plain, and name -> another name
-        for (to, what) in [(&plain_new as &dyn Fn(usize) -> String, "plain"), (&other, "another name")] {
+        for (to, what) in [
+            (&plain_new as &dyn Fn(usize) -> String, "plain"),
+            (&other, "another name"),
+        ] {
             let d = repo_with_distinct(&ns.iter().map(|n| n.to_string()).collect::<Vec<_>>());
             let moves: Vec<_> = ns
                 .iter()
@@ -385,7 +392,11 @@ mod tests {
                         .iter()
                         .find(|x| x.path == to(i))
                         .unwrap_or_else(|| panic!("{what} {n:?} quotepath={quotepath}: {f:?}"));
-                    assert_eq!(one.old_path.as_deref(), Some(*n), "{what} quotepath={quotepath}");
+                    assert_eq!(
+                        one.old_path.as_deref(),
+                        Some(*n),
+                        "{what} quotepath={quotepath}"
+                    );
                     assert_eq!(one.status, "renamed", "{what} {n:?}");
                 }
             }

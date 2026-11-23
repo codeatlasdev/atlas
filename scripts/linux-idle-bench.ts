@@ -12,7 +12,7 @@
 //   --atlas A       the atlas CLI that talks to it (default target/debug/atlas)
 //   --label L       prefix of the window's label in the report (`<label>/<scenario>`), e.g. the renderer or the knob under test
 //   --scenario S    put the app in a state first and measure it: welcome (start with no project), workspace (SCM dock open),
-//                   stack-running, terminal-idle, terminal-output, chat-idle, chat-stream, list-scroll, unfocused, hidden-workspace,
+//                   stack-running, stack-running-unfocused (a second window holds the focus), stack-running-behind-tab (a terminal tab in front of the Panel), terminal-idle, terminal-output, chat-idle, chat-stream, list-scroll, unfocused, hidden-workspace,
 //                   hidden-chat-stream, unfocused-chat-stream, crew (the crew workspace with three faces), crew-unfocused. Without it the app is measured as it is. The scenarios open a
 //                   fixture project (git repo, 2 worktrees, 2000 files) under the instance's HOME and use
 //                   scripts/fixtures/linux-idle/fake-omp.py as the chat engine; "unfocused" needs `foot` and a keyboard on the

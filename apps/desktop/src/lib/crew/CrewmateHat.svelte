@@ -172,9 +172,12 @@
 {/if}
 
 <style>
+	/* The hat's loops run only while the crewmate works (`.hat-live`, set by CrewmateFace): an idle one is still. */
 	.pom {
-		animation: pom 2.4s ease-in-out infinite;
 		transform-origin: 214px 40px;
+	}
+	:global(.hat-live) .pom {
+		animation: pom 2.4s ease-in-out infinite;
 	}
 	@keyframes pom {
 		0%,
@@ -186,9 +189,11 @@
 		}
 	}
 	.sparkle {
-		animation: sparkle 2.2s ease-in-out infinite;
 		transform-box: fill-box;
 		transform-origin: center;
+	}
+	:global(.hat-live) .sparkle {
+		animation: sparkle 2.2s ease-in-out infinite;
 	}
 	@keyframes sparkle {
 		0%,
@@ -201,7 +206,7 @@
 			opacity: 0.7;
 		}
 	}
-	.beacon {
+	:global(.hat-live) .beacon {
 		animation: beacon 1.6s ease-in-out infinite;
 	}
 	@keyframes beacon {
@@ -221,9 +226,11 @@
 	}
 	/* Brim secondary idle tip: occasional gentle tilt, respects reduced-motion */
 	.brim-tip {
-		animation: brim-tip 9s ease-in-out infinite;
 		transform-box: fill-box;
 		transform-origin: 50% 100%;
+	}
+	:global(.hat-live) .brim-tip {
+		animation: brim-tip 9s ease-in-out infinite;
 	}
 	@keyframes brim-tip {
 		0%,

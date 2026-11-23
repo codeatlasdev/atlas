@@ -70,7 +70,26 @@ impl Mode {
 /// never wider at any moment, then set again because the umask may have narrowed it). On any error
 /// the target is untouched and the temp file is removed.
 pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
-    write_atomic_via(path, data, mode, crate::sys::replace_file)
+    write_atomic_budget(path, data, mode, crate::sys::RetryBudget::Full)
+}
+
+/// [`write_atomic`] for a snapshot that is rewritten every tick anyway (`.tui-status.json`, `.tui-metrics.json`): on
+/// Windows a refused replace is retried for about 63 ms instead of 1.2 s, then the write is dropped (`Err`, old file
+/// untouched) and the next tick lands, so the caller's tick is never stalled for long. Not for a write whose loss
+/// matters: those use [`write_atomic`].
+pub fn write_atomic_snapshot(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
+    write_atomic_budget(path, data, mode, crate::sys::RetryBudget::Brief)
+}
+
+fn write_atomic_budget(
+    path: &Path,
+    data: &[u8],
+    mode: Mode,
+    budget: crate::sys::RetryBudget,
+) -> io::Result<()> {
+    write_atomic_via(path, data, mode, |from, to| {
+        crate::sys::replace_file_with(from, to, budget)
+    })
 }
 
 /// [`write_atomic`] with the replace step given: the seam that lets a test run the step Windows falls back to when the
@@ -392,18 +411,55 @@ mod tests {
     /// by a best-effort writer that writes again on its next tick), so a lasting refusal is that and nothing worse.
     #[test]
     fn a_lasting_refusal_is_an_error_for_the_caller_and_costs_nothing_else() {
+        use crate::sys::{RetryBudget, planned_waits, refusal};
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
         write_atomic(&path, b"old", Mode::Default).unwrap();
-        let err = write_atomic_via(&path, b"new", Mode::Default, |from, to| {
-            crate::sys::replace_file_via(from, to, |_, _| Err(io::Error::from_raw_os_error(5)))
-        })
-        .unwrap_err();
+        refusal::refuse_with(5); // ERROR_ACCESS_DENIED, every time, on every OS
+        let err = write_atomic(&path, b"new", Mode::Default).unwrap_err();
+        let tries = refusal::tries();
+        refusal::lift();
         assert_eq!(err.raw_os_error(), Some(5));
+        // A write whose loss matters keeps trying for the whole full budget (about 1.2 s) before it fails.
+        assert_eq!(
+            tries as usize,
+            planned_waits(5, RetryBudget::Full).len() + 1
+        );
         assert_eq!(fs::read_to_string(&path).unwrap(), "old");
         assert_eq!(leftovers(dir.path()), Vec::<String>::new());
         // The next write, the refusal gone, lands.
         write_atomic(&path, b"new", Mode::Default).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+    }
+
+    /// The per-tick snapshots (`.tui-status.json`, `.tui-metrics.json`) are rewritten by the next tick anyway, so under
+    /// a lasting refusal their write gives up after the brief budget, counted in attempts (a few, about 63 ms of
+    /// waits) and not in wall time, instead of stalling the runtime manager's tick for 1.2 s. The old file stays whole
+    /// and the next snapshot lands.
+    #[test]
+    fn a_snapshot_write_under_a_lasting_refusal_gives_up_after_the_brief_budget_and_the_next_one_lands()
+     {
+        use crate::sys::{RetryBudget, planned_waits, refusal};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".tui-status.json");
+        write_atomic(&path, b"old", Mode::Default).unwrap();
+        refusal::refuse_with(5);
+        let err = write_atomic_snapshot(&path, b"new", Mode::Default).unwrap_err();
+        let tries = refusal::tries();
+        refusal::lift();
+        assert_eq!(err.raw_os_error(), Some(5));
+        assert_eq!(
+            tries as usize,
+            planned_waits(5, RetryBudget::Brief).len() + 1
+        );
+        let waited: std::time::Duration = planned_waits(5, RetryBudget::Brief).iter().sum();
+        assert!(
+            waited < std::time::Duration::from_millis(300),
+            "{tries} attempts, {waited:?} of waits"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+        assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+        write_atomic_snapshot(&path, b"new", Mode::Default).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "new");
     }
 

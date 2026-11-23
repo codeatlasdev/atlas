@@ -29,7 +29,11 @@
 
 	let quick = $derived((cfg?.services ?? []).filter((s) => s.target?.how === "browser"));
 	let services = $derived(serviceRows(cfg?.services ?? [], live?.services, project.running));
-	let names = $derived(services.map((s) => s.name));
+	// The names as one string first: the runner re-sends every row every few seconds (a new `services` array with the same
+	// names), and an array of names that is new each time rebuilt the charts' series and the timeline's lanes for nothing
+	// (a canvas redraw per chart, ~6 ms of the web process per event, docs/perf/linux-webkit-study.md). A string compares by value.
+	let nameKey = $derived(services.map((s) => s.name).join("\0"));
+	let names = $derived(nameKey ? nameKey.split("\0") : []);
 	let upNames = $derived(new Set(live?.services.filter(isGreen).map((s) => s.name)));
 
 	// ── KPIs: recomputed once per published metrics revision (≤1/s) ──

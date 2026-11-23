@@ -305,31 +305,15 @@
 		border-radius: 50%;
 		background: var(--c);
 	}
-	/* The expanding halo is a pseudo-element animated with transform + opacity (a box-shadow would repaint each frame). */
+	/* Healthy is a settled state: a still halo, no loop (one infinite animation keeps WebKitGTK compositing at 60 fps). */
 	.dot.pulse::after {
 		content: "";
 		position: absolute;
 		inset: 0;
 		border-radius: 50%;
 		background: color-mix(in oklab, var(--c) 55%, transparent);
-		animation: live 2.4s ease-out infinite;
-	}
-	@keyframes live {
-		0% {
-			transform: scale(1);
-			opacity: 1;
-		}
-		70%,
-		100% {
-			transform: scale(2.8);
-			opacity: 0;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.dot.pulse::after {
-			animation: none;
-			opacity: 0;
-		}
+		transform: scale(2);
+		opacity: 0.5;
 	}
 	.grow {
 		flex: 1 1 24px;

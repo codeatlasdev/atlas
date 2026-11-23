@@ -55,6 +55,8 @@ const KIT_COMPONENTS = [
 const Stub = () => {};
 const kit = {
 	toast: { error() {}, info() {}, success() {} },
+	// The shell store reads the theme from it at import time (steadyMotionProject.test.ts mounts sidebar rows).
+	colorScheme: { preset: "", setPreset() {} },
 	...Object.fromEntries(KIT_COMPONENTS.map((n) => [n, Stub])),
 };
 const publish = () => mock.module("@codeatlasdev/ui", () => ({ ...kit }));

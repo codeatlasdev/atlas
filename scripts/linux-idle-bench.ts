@@ -311,7 +311,7 @@ async function measure() {
 	const res: Record<string, unknown> = { ...w, when: new Date().toISOString(), loadAvg1: Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]) };
 	if (probeS > 0) res.page = JSON.parse(debug(atlas, sock, "perf", "--seconds", String(probeS)));
 	// What the page believes about itself in this state (the probe above ran in it too).
-	res.pageState = JSON.parse(debug(atlas, sock, "eval", "return { visibility: document.visibilityState, hasFocus: document.hasFocus(), hidden: document.hidden, animations: document.getAnimations().filter((a) => a.playState === 'running').length }"));
+	res.pageState = JSON.parse(debug(atlas, sock, "eval", "const run = document.getAnimations().filter((a) => a.playState === 'running'); const sel = (e) => e ? e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + [...e.classList].map((c) => '.' + c).join('') : '?'; return { visibility: document.visibilityState, hasFocus: document.hasFocus(), hidden: document.hidden, animations: run.length, running: run.map((a) => ({ name: a.animationName ?? a.transitionProperty ?? a.constructor.name, target: sel(a.effect?.target), iterations: a.effect?.getComputedTiming().iterations })) }"));
 	undo();
 	console.log(JSON.stringify(res));
 	const out = arg("out");

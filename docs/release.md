@@ -75,6 +75,7 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lists files a
 6. **Bump.** Every `crates/*/Cargo.toml` (including `atlas-desktop`; `tauri.conf.json` has no version of its own and reads it from the crate) gets the same version; `cargo update --workspace --offline` refreshes `Cargo.lock`.
 7. **Commit, tag, push.** Commit `chore(release): vX.Y.Z[-pre.N]`, annotated tag, then `git push --atomic origin <main|release/X.Y> <tag>`: the branch and the tag land together or not at all.
 8. **Push the tag; GitHub runs `release.yml`** (gate → macOS, Linux and Windows builds, Arch package → Linux verification in containers → publish). The script watches the run (`gh run watch`), then deploys the site (kept; it never fails the release).
+9. **Sign and publish** (`scripts/release-sign.sh <tag>`, the same for every channel, a stable promotion included). `release.yml` leaves the release a **draft**, so nothing is public yet. The script downloads `SHA256SUMS`, prints it, signs it with your offline key, checks the signature against the keys in the repository, uploads `SHA256SUMS.sig` and only then publishes the draft ([Release signing](#release-signing)). With a key configured an unsigned release is never published and the site is not deployed. Then it deploys the site.
 
 ### Promotion guard (stable)
 
@@ -126,6 +127,8 @@ Only the newest stable line gets fixes. If a hotfix touches code the next beta a
 7. **`verify-windows`** (`windows-latest`, after `build-windows`): the Windows files are executed, not only cross-built (#312). `scripts/windows-launch-check.ps1` checks every `.sha256`, unpacks the CLI archive and runs `atlas.exe --version`, installs `Atlas-Setup.exe --silent`, opens the installed `atlas-desktop.exe` (a window, still up after a settle, a screen that is not one colour, `~\.atlas\desktop\app.log` empty), uninstalls with `Atlas Uninstall.exe --uninstall --silent --remove-data`, then does the same with the plain NSIS installer `/S` (what `atlas desktop` and `atlas update` run) and its `uninstall.exe /S`. A first step runs the check on a program that is not an app and requires it to fail. Screenshots and logs are the `verify-windows` artifact.
 8. **`verify-macos`** (`macos-latest`, after `build`): `scripts/macos-launch-check.sh` checks every `.sha256`, runs the CLI tarball's `atlas --version`, mounts the `.dmg` and verifies the code signature of the `Atlas.app` in it, unpacks the `.app.tar.gz` (what `atlas desktop` installs) and requires the same bundle version, then opens the app from each (a window on screen, still up after a settle, `~/.atlas/desktop/app.log` empty). Same negative control; the evidence is the `verify-macos` artifact. The app runs from a copy in a temporary directory, never from `/Applications`.
 9. **`publish`** (`ubuntu-latest`, after the builds and the three `verify-*` jobs): `scripts/generate-manifest.py` writes `manifest.json` (`version`, `date`, `assets`, plus `channel`, `prerelease`, `commit` and, for a promotion, `promoted_from`); a `SHA256SUMS` file covers every asset and the manifest; then the GitHub Release (`softprops/action-gh-release`, with the run's own `GITHUB_TOKEN`). `promoted_from` comes from the `Promoted from: …` line in the tag message, which `release.sh stable` writes. The body is the version's `CHANGELOG.md` section followed by the install/update instructions; for a prerelease it opens with a line saying which channel the build is on (and, for a default-channel build that GitHub marks "Latest", that it is still not offered on the Stable channel).
+   A GitHub Release is created as a **draft** (the run's own `GITHUB_TOKEN`, `contents: write`); it becomes public when a maintainer signs `SHA256SUMS` ([Release signing](#release-signing)). The `SHA256SUMS` built here is also kept as the `sha256sums` workflow artifact.
+10. **`attest`** (`ubuntu-latest`, after `publish`, never in a build-only run; `contents: read`, `id-token: write`, `attestations: write`): `actions/attest` with `subject-checksums: SHA256SUMS`, so GitHub records a signed attestation for every asset in the file. It cannot publish or sign a release; it is the second layer, for people and tools that use `gh attestation verify`.
 
 A release is built cold on purpose: there is no cargo cache, because a release is never built from a restored one.
 
@@ -223,6 +226,7 @@ Tauri writes the crate version unchanged into `CFBundleShortVersionString` and `
 
 - **Plan or preflight fails** (wrong branch, soak, guard, tag exists, changelog section): nothing has changed yet; fix and rerun.
 - **Checks fail**: nothing has changed yet.
+- **The Release run succeeded but the release is still a draft** (signing was skipped or failed, e.g. no key, a key not in `release-keys.json`, `ssh-keygen` missing): nothing is public and no client can see it. Run `scripts/release-sign.sh vX.Y.Z --key <your key>`; it is safe to re-run, and a release that already carries a valid signature is only published. `bun run release` does not bump again (the tag exists), so deploy the site afterwards with `bun run site:deploy`.
 - **Push succeeded but the Release run failed**: fix the cause (`gh run view <id> --log-failed`), then rerun `bun run release:publish vX.Y.Z`. It dispatches `release.yml` for the existing tag and watches it. Rerunning the same `bun run release <request>` on that commit does the same (the resume check sees the pushed tag without a Release). Failed jobs can also be re-run from the Actions page.
 - **Push failed halfway**: `--atomic` means neither the branch nor the tag moved on `origin`. A local commit and tag remain: delete the tag (`git tag -d vX.Y.Z`), reset the release commit, and rerun.
 - **First beta failed after the branch was created**: `release/X.Y` exists locally; switch back to `main`, `git branch -D release/X.Y` if nothing was pushed, rerun.
@@ -249,6 +253,8 @@ Run it before a release whenever Linux or packaging changed, and read the `verif
 ## AUR (`codeatlas-atlas-bin`)
 
 After `publish` succeeds, the `publish-aur` job pushes the release's rendered `PKGBUILD` (the one `build-arch` attached; its source is the release's own `.deb`, so it only exists once the release does) and a `.SRCINFO` made with `makepkg --printsrcinfo` to `ssh://aur@aur.archlinux.org/codeatlas-atlas-bin.git`, branch `master`. A re-run of an unchanged version pushes nothing. `build-arch` already fails when the PKGBUILD cannot describe itself (`makepkg --printsrcinfo`, with `ripgrep` among the dependencies). Alphas and betas go to the AUR too: pacman versions drop the `-` of a prerelease (`1.5.0alpha.26`, see `packaging/arch/render.sh`), and Alpha is the default channel.
+
+`publish` creates the release as a draft ([Release signing](#release-signing)), so for the minutes until `scripts/release-sign.sh` publishes it the `.deb` the new PKGBUILD points to is not downloadable yet: an AUR helper that builds in that window gets a 404 and retries later. `bun run release` signs right after the run, so the window is the signing step.
 
 The AUR account is the maintainer's, so the job does nothing until this one-time setup is done (without it the job prints a notice and succeeds; it never blocks a release):
 
@@ -282,6 +288,17 @@ Check the checksums of a download:
 ```bash
 curl -fsSLO https://github.com/codeatlasdev/atlas/releases/download/vX.Y.Z/SHA256SUMS
 shasum -a 256 -c SHA256SUMS --ignore-missing
+```
+
+Check the signature (what clients do), the attestation and GitHub's own release attestation:
+
+```bash
+curl -fsSLO https://github.com/codeatlasdev/atlas/releases/download/vX.Y.Z/SHA256SUMS.sig
+bun scripts/release-keys.ts allowed-signers > allowed_signers          # from a checkout at the tag
+ssh-keygen -Y verify -f allowed_signers -I <key name> -n atlas-release -s SHA256SUMS.sig < SHA256SUMS
+gh attestation verify atlas-X.Y.Z-aarch64-apple-darwin.tar.gz --repo codeatlasdev/atlas
+gh release verify vX.Y.Z --repo codeatlasdev/atlas                       # immutable releases only
+gh release verify-asset vX.Y.Z atlas-X.Y.Z-aarch64-apple-darwin.tar.gz --repo codeatlasdev/atlas
 ```
 
 Users get the new version with `atlas update`, which downloads `atlas-<version>-aarch64-apple-darwin.tar.gz` from the release and then the matching `Atlas-<version>-…app.tar.gz` when Atlas Desktop is installed. Or they click **Update CLI and app** in the app. Check the app asset with `atlas desktop --install --latest --no-open && atlas desktop --status`.
@@ -333,25 +350,87 @@ The manifest (`manifest.json`) has no kill-switch fields: it holds `version`, `c
 | Binaries are ad-hoc signed (`codesign --sign -`) | only when the Developer ID secrets are absent (forks, before they are configured); Gatekeeper then warns on a downloaded `.dmg` |
 | Developer ID signature and notarization (CLI, `Atlas.app`, dmg) | **decided and implemented**; on once the six secrets exist ([macOS signing and notarization](#macos-signing-and-notarization)). Until a release has run with them, treat releases as ad-hoc |
 | Windows Authenticode signature (SignPath Foundation) | **not yet**: the workflow is ready and off; it turns on with the repository variable `SIGNPATH_ENABLED` once the Foundation has accepted the project ([Windows code signing](#windows-code-signing-signpath-foundation)) |
-| Checksums | `.sha256` per asset, `SHA256SUMS` over everything, `manifest.json` |
-| Signed `SHA256SUMS` | **no**; a maintainer decision, commands below |
+| Checksums | `.sha256` per asset (kept for clients older than the first signed release), `SHA256SUMS` over everything, `manifest.json` |
+| Signed `SHA256SUMS` | **built, not enforced yet.** OpenSSH signature (`SHA256SUMS.sig`, namespace `atlas-release`) by a maintainer's offline ed25519 key; the CLI verifies it and takes asset hashes from the signed file. It is enforced from `signed_since` on, which stays unset (and the key list empty) until the first signed release ([Transition](#transition)) |
 | SBOM | CycloneDX JSON of the CLI's dependency tree, when `cargo-cyclonedx` is available |
 | Reproducible builds | partial: `--locked`, `SOURCE_DATE_EPOCH`; `--remap-path-prefix` is not set because it has not been verified against the Tauri build |
 | Built on GitHub-hosted runners from the tag | yes (`release.yml`, triggered by the `v*` tag push) |
-| GitHub artifact attestations (SLSA provenance) | **not enabled**; possible now that builds are hosted |
+| GitHub artifact attestations | **yes** (`attest` job, `actions/attest` over `SHA256SUMS`): a Sigstore attestation from the `release.yml` run for every asset. It is made after the build jobs, from the files `publish` collected, so it says "this workflow run published these bytes", not more |
+| Immutable releases | **off** (repository setting); turn it on at the first signed release ([below](#enable-immutable-releases)) |
 
-**What a hosted build can claim:** the artifacts were built by GitHub Actions from the tagged commit, from locked dependencies, and the manifest records that commit. Without attestations that is at most [SLSA](https://slsa.dev) build level 1 (provenance exists, is not signed by a build service, and is self-asserted). Do not describe the builds as higher than that.
+**What a hosted build can claim:** the artifacts were built by GitHub Actions from the tagged commit, from locked dependencies, and the manifest records that commit. The attestation is GitHub's signed statement about that run; it is not a claim of any SLSA level above build level 1 for the build itself. Do not describe the builds as higher than that.
 
-If the maintainer decides to sign, these are the commands (run after the release is published, on the downloaded `SHA256SUMS`, then attach the result with `gh release upload`):
+## Release signing
+
+The threat: a swapped release (a stolen upload token, a compromised maintainer account or workflow) used to pass every check, because the checksum came from the same release as the file. Now the trust anchor is a **maintainer's offline key**, not GitHub: CI builds a draft, a maintainer signs `SHA256SUMS` on their own machine, and only then is the release public. An attacker who can publish assets but does not hold a key cannot produce a signature clients accept; the worst case is a release that stays a draft. A malicious workflow change still builds a poisoned release a maintainer might sign blindly, so `release-sign.sh` shows the hashes it signs; compare them with the run's attestation (`gh attestation verify`).
+
+| Threat (Y = defeated, N = not, P = partly) | `.sha256` beside the asset (before) | Offline maintainer key + attestation (now) |
+|---|---|---|
+| A stolen release-asset **upload token** replaces assets after CI | N | Y (cannot sign) |
+| A compromised **GitHub account** (maintainer or admin) | N | Y (can publish assets, cannot produce a valid signature; the worst case is withholding, a DoS) |
+| A compromised **CI workflow** (merged malicious change, poisoned action, runner) | N | P (CI cannot sign; a maintainer who signs a poisoned build signs it, so compare the hashes with the attestation first) |
+| **CDN / mirror** tampering | N | Y |
+| Suppressing new releases, or serving an old signed one (rollback) | N | N (the update feed is unsigned; out of scope) |
+
+Custody: two maintainers, two keys, either signs; rotation, expiry and the lost-key procedure below. Sigstore keyless as the *only* trust anchor was rejected (it does not defend a compromised account or workflow, costs 1.7 to 5 MB and 34+ crates in the CLI, and the shell installers cannot verify it); GitHub's attestation is kept as the second, additive layer.
+
+- **Format:** OpenSSH `sshsig` over the whole `SHA256SUMS`, namespace `atlas-release`, key type `ssh-ed25519`, hash `sha512` (the `ssh-keygen -Y sign` default). Plain ed25519 only: FIDO `-sk` keys are rejected by the CLI verifier. A key in `gpg-agent` or on an OpenPGP card is fine when it is a plain ed25519 key.
+- **Keys:** one per maintainer (`mvilacad`, `luancoleto`), either one signs. The list is `crates/atlas-core/data/release-keys.json` (`name`, `pubkey`, `valid_after`, `valid_before`, plus `signed_since`). The CLI embeds it; `bun scripts/release-keys.ts allowed-signers` renders it as an OpenSSH `allowed_signers` file for `ssh-keygen -Y verify`, and `release-sign.sh` checks the signature against it before uploading, so a signature clients would reject is never uploaded.
+- **Where it is checked:** `atlas update`, `atlas desktop` and the download `atlas crew install` makes on your own machine (the fallback that downloads here and uploads to the server) all go through `download_verified` (`crates/atlas-cli/src/commands/release.rs`). A tag at or after `signed_since` needs `SHA256SUMS` and `SHA256SUMS.sig` from the key list; the asset must match its line in the signed file. A missing or invalid signature, or an asset the file does not list, is an error and nothing is installed; there is no environment override in the CLI. A tag before `signed_since` keeps the `.sha256` check and a warning. Release builds ignore `ATLAS_RELEASE_POLICY`, the test seam of debug builds. The shell scripts (`install.sh`, `install.ps1` and the script `atlas crew install` runs on the server) still check only the `.sha256` until [step 3 of the transition](#transition).
+
+### Generate a key (once per maintainer)
+
+On your own machine, never in CI and never in a password manager sync folder:
 
 ```bash
-# Keyless-or-key signature of the checksum file, verifiable offline from the bundle
-cosign sign-blob --bundle SHA256SUMS.sigstore.json SHA256SUMS
-# or, with a minisign key pair
-minisign -Sm SHA256SUMS
+ssh-keygen -t ed25519 -C "atlas-release mvilacad" -f ~/.ssh/atlas-release   # set a passphrase
+cat ~/.ssh/atlas-release.pub
 ```
 
-The install docs say which of the two signatures a release carries.
+Add the key to `release-keys.json` in a pull request, with a `valid_before` 12 to 24 months out (`valid_after` = today), and have the **other maintainer confirm the fingerprint** (`ssh-keygen -lf ~/.ssh/atlas-release.pub`) over a channel other than GitHub. Back the private key up offline (encrypted); it exists nowhere else.
+
+### Sign a release
+
+`bun run release <channel>` ends with it. By hand, for a draft that is waiting:
+
+```bash
+scripts/release-sign.sh vX.Y.Z --key ~/.ssh/atlas-release
+```
+
+It downloads `SHA256SUMS`, shows it, asks, runs `ssh-keygen -Y sign -n atlas-release`, verifies the result against `release-keys.json`, uploads `SHA256SUMS.sig`, and runs `gh release edit --draft=false --latest=<flag>` (the flag `release-version.ts github-flags` gives: alphas are "Latest" while alpha is the default channel). Re-running it is safe.
+
+### Rotate a key
+
+1. Add the new key in release N (a pull request that changes `release-keys.json`), and sign release N with the **old** key: clients that trust only the old key accept N, and from N on they know the new one.
+2. Release N+1 onward may be signed with the new key. Once N is the oldest release you still support, drop the old key in N+k.
+3. Every key carries `valid_before` (12 to 24 months). An unrotated key stops being accepted by new clients on that day by itself, which is the real bound on how long a leaked key is dangerous: clients that never update keep trusting a removed key until then.
+
+### Lost or leaked key
+
+- **Lost** (the other maintainer still has theirs): the other maintainer signs a release that adds a replacement key and removes the lost one. Nothing breaks.
+- **Leaked or suspected**: remove the key from `release-keys.json` and from the installers' `allowed_signers` immediately, ship a release signed by the other maintainer, and say so in the release notes. Releases already signed with it are not retroactively safe; clients trust it until they update or its `valid_before` passes. Prefer short lifetimes.
+- **Both lost**: no release can be signed that existing clients accept. Existing clients will refuse unsigned releases, so recovery is a new install from a source you trust plus a client built with new keys; keep the two keys on two different backups to avoid this.
+
+### Enable immutable releases
+
+Settings › General › Releases › **Enable release immutability** (`gh api repos/codeatlasdev/atlas/immutable-releases` shows `{"enabled": ...}`). Assets can be uploaded while a release is a draft and are frozen at publish, which is the order `release-sign.sh` uses (upload the signature, then publish). A published release can no longer be edited or have assets replaced or its tag moved; GitHub then also attests the release (`gh release verify`). Turn it on when the first signed release is cut; `--clobber` uploads against a published release stop working, by design.
+
+### Transition
+
+Signing ships in steps so that no one is stranded:
+
+1. **Verifier, scripts and workflow, no behaviour change** (this stage): `signed_since` unset, key list empty; the CLI keeps the `.sha256` path; `release.yml` builds drafts and `release-sign.sh` publishes them unsigned with a warning while no key is configured.
+2. **The release PR of the first signed release** (the first release after the one that ships this stage): both public keys in `release-keys.json`, `signed_since` = that tag. The release is published as a draft and signed. Old clients (alpha.26 and earlier, the in-app updater running the old CLI) read the per-asset `.sha256` for this one hop and install it; every hop from then on is signature-verified. Keep publishing the per-asset `.sha256` while clients older than that release may exist.
+3. **`install.sh`, `install.ps1` and the crew download script** get "signature required" (embedded `allowed_signers`, `ssh-keygen -Y verify`, hash from the signed file, fail closed, `ATLAS_ALLOW_UNSIGNED=1` as the explicit opt-out when `ssh-keygen` is missing) in the **same PR that makes the first signed tag the oldest allowed bootstrap**, i.e. step 2's release PR. Until a signed tag is the newest, they keep the legacy path.
+4. Old tags (alpha.26 and earlier) stay unsigned: a signature made today would vouch for whatever bytes are on the release now. Explicit installs of them warn.
+5. `bun run release stable` goes through `release-sign.sh` like every other channel, so a promoted release is signed; otherwise a signature-aware CLI would refuse it.
+
+### Release checklist
+
+1. `bun run release <channel>`; watch the run (`gate` → builds → `verify-linux` → `publish` → `attest`).
+2. At the signing prompt, read the hashes; check one against the attestation: download an asset and `gh attestation verify <asset> --repo codeatlasdev/atlas`.
+3. After it is public: `gh release verify vX.Y.Z --repo codeatlasdev/atlas` (once immutable releases are on), `gh release verify-asset vX.Y.Z <asset> --repo codeatlasdev/atlas`, and `ssh-keygen -Y verify` as in [Verify a release](#verify-a-release).
+4. `atlas update --check` and one real `atlas update` from the previous release.
 
 ## Contrast audit (before every release)
 

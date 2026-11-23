@@ -7,6 +7,7 @@
 //! validate / write), `system` (open in editor / browser / Finder) and `locale` (the display language). This file
 //! holds the registry lookups they share.
 
+mod audio_output;
 mod config_edit;
 pub(crate) mod discover;
 mod heavy;
@@ -28,6 +29,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::registry::{self, Entry};
 
+pub use audio_output::*;
 pub use config_edit::*;
 pub use heavy::*;
 pub use hygiene::*;

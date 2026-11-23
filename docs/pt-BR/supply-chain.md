@@ -1,7 +1,7 @@
 ---
 title: "Cadeia de suprimentos e proveniência"
 source: supply-chain.md
-source_sha: "0d7b752767551ac654dd358f74de71ce1ddb6acc"
+source_sha: "1c9419c6be21ece686806727d1d79ea3d3394240"
 translation: machine
 ---
 
@@ -28,14 +28,14 @@ Esta página é a versão honesta de "quanto você pode confiar em um download d
 
 ## O que deliberadamente não é afirmado
 
-- **Nenhum nível SLSA.** O Atlas compila em runners hospedados do GitHub a partir da tag, mas não publica um documento de proveniência assinado e não afirma nenhum nível SLSA.
-- **Ainda sem attestations de artefatos do GitHub.** Elas precisam do token OIDC do GitHub Actions de uma execução hospedada (`id-token: write`), que os builds de versão já têm, então são possíveis; só não estão ligadas. Um job hospedado que apenas atesta arquivos já enviados provaria "estes bytes foram enviados", não "estes bytes foram compilados a partir deste commit", então atteste a saída do próprio job de build quando isso for ligado.
+- **Nenhum nível SLSA.** O Atlas compila em runners hospedados do GitHub a partir da tag e o job `attest` registra uma attestation do GitHub para os assets publicados, mas não afirma nenhum nível SLSA acima do nível 1 de build.
+- **A attestation é do que o `publish` reuniu, não do que cada job de build produziu.** O job `attest` roda depois dos jobs de build, sobre o `SHA256SUMS` que o `publish` calculou a partir dos artefatos deles, então prova "esta execução do workflow publicou estes bytes", não "estes bytes foram compilados a partir deste commit". Atestar a saída de cada job de build provaria mais; isso não é feito.
 - **A assinatura Developer ID precisa dos secrets.** Um build sem eles (um fork, ou antes de serem configurados) recebe assinatura ad-hoc, e o Gatekeeper pode pedir confirmação na primeira abertura de um app baixado; um build assinado ainda precisa de uma verificação online para um binário de CLI solto, que não pode receber o ticket de notarização anexado (stapling). O instalador e o `atlas update` baixam com `curl`, que é o caminho que funciona sem aviso.
 - **Não é reproduzível bit a bit.** A assinatura de código e o bundle do macOS embutem timestamps; nada aqui promete que dois builds sejam idênticos byte a byte.
-- **Ainda sem arquivo de checksums assinado** (ele está na lista abaixo). O SBOM é feito no melhor esforço, veja a tabela acima.
+- **O arquivo de checksums assinado é obrigatório a partir da primeira versão assinada, não antes.** Até lá, `signed_since` fica sem valor e os clientes verificam só o `.sha256` ([docs/release.md](release.md#assinatura-de-versões)). O SBOM é feito no melhor esforço, veja a tabela acima.
 - **Sem auditoria de terceiros.** As dependências passam pelo `cargo deny`, não são revisadas linha a linha.
 
-Proveniência em uma frase: *compilado em runners hospedados do GitHub a partir da tag, assinado com Developer ID e notarizado no macOS (ad-hoc sem os secrets), com checksum.*
+Proveniência em uma frase: *compilado em runners hospedados do GitHub a partir da tag, assinado com Developer ID e notarizado no macOS (ad-hoc sem os secrets), com checksum, atestado pelo GitHub e (a partir da primeira versão assinada) com o `SHA256SUMS` assinado offline por um mantenedor.*
 
 ## Acréscimo à lista de verificação da versão
 
@@ -140,20 +140,9 @@ Inscreva-se em <https://www.bestpractices.dev> com a URL do repositório. A tabe
 
 O texto dos critérios está no site do badge e muda; releia cada resposta quando se inscrever.
 
-### 9. Um `SHA256SUMS` assinado
+### 9. Um `SHA256SUMS` assinado (construído; obrigatório a partir da primeira versão assinada)
 
-Hoje, um `.sha256` ao lado de um arquivo protege contra um download corrompido, não contra uma versão adulterada, porque os dois vêm do mesmo lugar. Publique um `SHA256SUMS` por versão e assine com uma destas opções:
-
-```bash
-# sem chave (keyless), ligado à identidade do mantenedor, registrado no Rekor; abre um navegador
-shasum -a 256 atlas-*.tar.gz Atlas-*.dmg Atlas-*.app.tar.gz > SHA256SUMS
-cosign sign-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json
-
-# ou um par de chaves comum, sem precisar de rede
-minisign -Sm SHA256SUMS
-```
-
-Verifique com `cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-identity <maintainer email> --certificate-oidc-issuer <issuer> SHA256SUMS`, ou `minisign -Vm SHA256SUMS -P <public key>`. Coloque a chave pública ou a identidade no `SECURITY.md`. O check *Signed-Releases* do Scorecard procura `*.sigstore.json`, `*.minisig`, `*.sig` e `*.asc` entre os arquivos da versão, então isso também melhora essa nota. Ensine o `atlas update` a verificar a assinatura só quando ela sair com uma chave pública fixada; até lá, é documentação, não garantia.
+Um `.sha256` ao lado de um arquivo protege contra um download corrompido, não contra uma versão adulterada, porque os dois vêm do mesmo lugar. O `SHA256SUMS` de cada versão agora é assinado offline por um mantenedor (`sshsig` do OpenSSH, namespace `atlas-release`; `scripts/release-sign.sh`) e a CLI o verifica com as chaves de `crates/atlas-core/data/release-keys.json`, que é o que um token de upload roubado, uma conta comprometida ou um workflow envenenado não conseguem forjar. Por que uma chave SSH offline e não o Sigstore keyless ou o minisign como âncora de confiança, a tabela de ameaças, a rotação de chaves e a transição: [docs/release.md](release.md#assinatura-de-versões) e `SECURITY.md#verifying-downloads`. O check *Signed-Releases* do Scorecard procura `*.sig` entre os arquivos da versão, então a primeira versão assinada também melhora essa nota. Falta: ligar as versões imutáveis (abaixo) nessa versão.
 
 ### 10. Assinatura Developer ID e notarização
 

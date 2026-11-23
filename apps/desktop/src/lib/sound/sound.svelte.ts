@@ -16,12 +16,15 @@ class Sound {
 	/** macOS "Play user interface sound effects"; true until Rust says otherwise (the preference defaults to on). */
 	systemUiSounds = $state(true);
 	foreground = true;
+	/** Linux: false when GStreamer has no audio sink (see `audio_output_available`); true until Rust says otherwise. */
+	audioOutput = true;
 	loaded = $state(false);
 
 	#engine = createEngine({
 		AudioContext:
 			window.AudioContext ??
 			(window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext,
+		output: () => this.audioOutput,
 		formats: earconFormats((mime) => new Audio().canPlayType(mime)),
 		fetchAsset: async (name, format) => {
 			const res = await fetch(`/sounds/${name}.${format}`);
@@ -49,15 +52,17 @@ class Sound {
 
 	/** Load prefs + system switch, start tracking focus and the first gesture. Call once; returns the stop function. */
 	async init(): Promise<() => void> {
-		const [settings, system, focused] = await Promise.all([
+		const [settings, system, output, focused] = await Promise.all([
 			api.settings(),
 			invoke<boolean>("system_ui_sounds").catch(() => true),
+			invoke<boolean>("audio_output_available").catch(() => true),
 			getCurrentWindow()
 				.isFocused()
 				.catch(() => true),
 		]);
 		this.prefs = parseSoundPrefs(settings.sounds);
 		this.systemUiSounds = system;
+		this.audioOutput = output;
 		this.foreground = focused;
 		this.loaded = true;
 

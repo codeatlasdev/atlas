@@ -178,7 +178,13 @@ describe("ptyStream", () => {
 		let now = 1_000_000;
 		Date.now = () => now;
 		try {
-			const p = ptyStream({ open: h.open, attached: async () => {}, write: x.write, reset: x.reset, wait: (ms) => (waits.push(ms), new Promise(() => {})) });
+			const p = ptyStream({
+				open: h.open,
+				attached: async () => {},
+				write: x.write,
+				reset: x.reset,
+				wait: (ms) => (waits.push(ms), new Promise(() => {})),
+			});
 			await tick();
 			// 60 s of a chat stream, 30 lines a second: one stream, one replay, nothing else.
 			for (let i = 0; i < 1800; i++) {

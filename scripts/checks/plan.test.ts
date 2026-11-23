@@ -203,9 +203,9 @@ describe("commands", () => {
 	});
 
 	test("the checks only CI can run are listed with the reason, per touched area", () => {
-		expect(ciOnly().map((k) => k.id)).toEqual(["desktop-opens", "desktop-startup-baseline", "root-tests", "arm64-build", "installer"]);
+		expect(ciOnly().map((k) => k.id)).toEqual(["desktop-opens", "desktop-startup-baseline", "desktop-idle-gate", "root-tests", "arm64-build", "installer"]);
 		expect(ciOnly(plan(["services/push-relay/main.go"], graph))).toEqual([]);
-		expect(ciOnly(plan(["crates/atlas-core/src/lib.rs"], graph)).map((k) => k.id)).toEqual(["desktop-opens", "desktop-startup-baseline", "root-tests", "arm64-build"]);
+		expect(ciOnly(plan(["crates/atlas-core/src/lib.rs"], graph)).map((k) => k.id)).toEqual(["desktop-opens", "desktop-startup-baseline", "desktop-idle-gate", "root-tests", "arm64-build"]);
 		expect(ciOnly().every((k) => k.why.length > 20)).toBe(true);
 	});
 });

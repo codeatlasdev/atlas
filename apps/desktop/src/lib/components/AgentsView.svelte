@@ -196,8 +196,9 @@
 		gap: 10px;
 		padding: 16px 20px 12px;
 	}
+	/* The caption band only widens the row's own padding (see ProjectHeader.svelte, #739). */
 	:global(html.custom-chrome) header {
-		padding-right: var(--caption-controls);
+		padding-right: max(20px, var(--caption-controls));
 	}
 	h1 {
 		margin: 0;

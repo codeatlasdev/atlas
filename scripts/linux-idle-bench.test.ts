@@ -2,7 +2,7 @@
 // (a new process counted as if it had run all along, ticks of one process credited to another, a gone process dropped) would
 // make every later "this fix saved N %" claim false, so the arithmetic is pinned here against hand-computed numbers.
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { counterLive, cpuWindow, waitForLoad, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, levelLive, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
@@ -152,18 +152,25 @@ describe("liveness: a state that did not happen is not a result", () => {
 		const others = Object.keys(GATE_BUDGET).filter((s) => s !== "welcome").map((s) => cpuWindow(`ci/${s}`, 30, [sample(1, "app", 0)], [sample(1, "app", 3)]));
 		expect(judgeGate([w, ...others])).toEqual([expect.stringContaining("ci/welcome: x grew by 0")]);
 	});
-	test("the real fake engine counts what it sends, and stops counting when its stream file goes away", async () => {
+	// Linux only: the bench and its fake engine run on the Linux desktop job; on windows-latest `python3` is the Store
+	// alias and the test failed there (PR #723's "Repo scripts (windows-latest)", 2026-11-23). It polls the file the
+	// real subprocess writes (a condition, not a guessed duration), so a loaded runner is slower, never wrong.
+	test.skipIf(process.platform !== "linux")("the real fake engine counts what it sends, in steps of 30", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "fake-omp-"));
 		const stream = join(dir, "stream");
 		writeFileSync(stream, "");
 		const p = Bun.spawn(["python3", join(import.meta.dir, "fixtures/linux-idle/fake-omp.py"), "--mode", "rpc-ui", "--stream-file", stream], { stdout: "ignore", stdin: "pipe" });
-		await Bun.sleep(2500);
-		const n = Number(await Bun.file(`${stream}.sent`).text());
+		const sent = `${stream}.sent`;
+		let n = 0;
+		for (let i = 0; i < 200 && n < 30; i++) {
+			await Bun.sleep(50);
+			n = existsSync(sent) ? Number(readFileSync(sent, "utf8")) || 0 : 0;
+		}
 		p.kill();
-		// 30 updates/s: 2.5 s is ~75; the counter is written every 30 lines, so at least 30 and a multiple of 30
+		// The counter is written every 30 lines.
 		expect(n).toBeGreaterThanOrEqual(30);
 		expect(n % 30).toBe(0);
-	});
+	}, 15_000);
 });
 
 // A bench run while other agents build measures their load, not the app's (the 2026-11-22 matrix had rows at load 5-13).

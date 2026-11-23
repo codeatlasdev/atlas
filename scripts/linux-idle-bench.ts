@@ -284,6 +284,8 @@ export const SCENARIOS = [
 	"unfocused",
 	"hidden-workspace",
 	"stack-running",
+	"stack-running-unfocused",
+	"stack-running-behind-tab",
 	"hidden-chat-stream",
 	"unfocused-chat-stream",
 	"crew",
@@ -372,6 +374,18 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 			const stop = await enter("chat-stream", c);
 			const off = await enter("unfocused", c);
 			return () => (off(), stop());
+		}
+		case "stack-running-unfocused": {
+			// The window is behind another one: the health panel's charts must not redraw for nobody (#289).
+			const stop = await enter("stack-running", c);
+			const off = await enter("unfocused", c);
+			return () => (off(), stop());
+		}
+		case "stack-running-behind-tab": {
+			// A terminal tab in front of the running stack's Panel: its charts are mounted but not on screen (#289).
+			const stop = await enter("stack-running", c);
+			const t = rpc(["bash", "--norc", "--noprofile", "-i"]);
+			return () => (c.run(JS.close(t)), stop());
 		}
 	}
 }

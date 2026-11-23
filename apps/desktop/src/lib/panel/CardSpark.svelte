@@ -5,6 +5,7 @@
 	import type { Service } from "#lib/stores/projects.svelte.ts";
 	import { metrics } from "./metrics.svelte.ts";
 	import { liveRev } from "./liveRev.svelte.ts";
+	import { sameSeries } from "./metrics.ts";
 	import { memoryNote } from "./memoryFacts.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -30,14 +31,15 @@
 	// derivation that read `service.name` itself re-ran for each one and drew the same sparkline again.
 	let name = $derived(service.name);
 	// Re-read the rings once per revision (published at most once a second, and only while the panel is on screen).
-	let cpu = $derived.by(() => {
-		void revision.rev;
-		return metrics.service(projectId, name).cpu.last(SPARK_POINTS, metrics.end(projectId));
-	});
-	let mem = $derived.by(() => {
-		void revision.rev;
-		return metrics.service(projectId, name).mem.last(SPARK_POINTS, metrics.end(projectId));
-	});
+	// A flat history (an idle service: 0 % and a steady memory) reads the same numbers every time: hand back the array the
+	// chart already drew, so the sparkline is not painted again for a picture that has not changed.
+	const drawn: Record<"cpu" | "mem", number[]> = { cpu: [], mem: [] };
+	const read = (k: "cpu" | "mem") => {
+		const next = metrics.service(projectId, name)[k].last(SPARK_POINTS, metrics.end(projectId));
+		return sameSeries(drawn[k], next) ? drawn[k] : (drawn[k] = next);
+	};
+	let cpu = $derived.by(() => (void revision.rev, read("cpu")));
+	let mem = $derived.by(() => (void revision.rev, read("mem")));
 </script>
 
 <div class="spark-wrap">

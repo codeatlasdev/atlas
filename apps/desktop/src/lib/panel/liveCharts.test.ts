@@ -168,3 +168,15 @@ test("rows re-sent between two samples redraw no sparkline (only a new sample do
 	tick(10);
 	expect(since(m)).toEqual(ONE_SAMPLE);
 });
+
+// A settled idle stack reads the same sparkline numbers sample after sample (0 % cpu, steady memory): its sparklines
+// were painted again every 3 s for a picture that had not changed. Only a series that moved is drawn.
+test("a sparkline is not painted again for a history that did not change, only the series that moved is", () => {
+	open();
+	for (let i = 0; i < 45; i++) tick(1); // the 40-point window is full of the same numbers
+	const m = mark();
+	tick(1);
+	expect(since(m)).toEqual({ line: 1, spark: 0 });
+	tick(9); // the cpu of both services moved, their memory did not
+	expect(since(m)).toEqual({ line: 2, spark: 2 });
+});

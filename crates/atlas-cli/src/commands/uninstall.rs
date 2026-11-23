@@ -63,10 +63,7 @@ pub(crate) struct Env {
 impl Env {
     pub(crate) fn current() -> Result<Self> {
         let atlas_home = atlas_core::paths::atlas_home();
-        #[cfg(windows)]
-        let user_path = super::install::has_user_path(&atlas_home.join("bin")).unwrap_or(false);
-        #[cfg(not(windows))]
-        let user_path = false;
+        let user_path = atlas_core::sys::user_path_has(&atlas_home.join("bin")).unwrap_or(false);
         let shell = ShellEnv::current();
         Ok(Self {
             atlas_home,
@@ -506,17 +503,9 @@ fn apply_item(item: &Item, remove_pkg: &mut dyn FnMut(&Package) -> Result<()>) -
         Item::FishUniversal { dir, shell } => {
             shellrc::fish_forget_universal(shell, dir).map(|_| ())
         }
-        Item::UserPath { dir } => {
-            #[cfg(windows)]
-            {
-                super::install::remove_user_path(dir).map(|_| ())
-            }
-            #[cfg(not(windows))]
-            {
-                let _ = dir;
-                Ok(())
-            }
-        }
+        Item::UserPath { dir } => atlas_core::sys::user_path_remove(dir)
+            .map(|_| ())
+            .map_err(super::install::user_path_error),
     }
 }
 
@@ -599,18 +588,6 @@ fn remove_path(path: &Path) -> Result<()> {
     r.with_context(|| t!("cmd_install_remove_busy", path = path.display().to_string()))
 }
 
-/// Windows cannot delete the running executable (this one, or `atlas hostd`), but it can move it
-/// out of the way to the temp dir, where nothing refers to it.
-#[cfg(windows)]
-fn move_running_exe_aside(bin_dir: &Path) {
-    let exe = bin_dir.join(atlas_core::paths::exe("atlas"));
-    if exe.exists() {
-        let aside =
-            std::env::temp_dir().join(format!("atlas-uninstalled-{}.exe", std::process::id()));
-        let _ = std::fs::rename(&exe, aside);
-    }
-}
-
 /// Ask the running terminal host to stop before its files go. Best effort: no host, or one that
 /// does not answer, is fine; its sockets are removed with the rest.
 async fn stop_hostd() {
@@ -671,8 +648,7 @@ pub async fn handle(yes: bool, purge: bool, list: bool) -> Result<()> {
     }
 
     stop_hostd().await;
-    #[cfg(windows)]
-    move_running_exe_aside(&env.bin_dir());
+    atlas_core::sys::move_running_exe_aside(&env.bin_dir().join(atlas_core::paths::exe("atlas")));
 
     let failures = plan.apply(&mut std::io::stdout());
     println!();

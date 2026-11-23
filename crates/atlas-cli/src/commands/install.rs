@@ -183,13 +183,8 @@ impl Drop for Staging {
     }
 }
 
-/// Copy `src` over `dest` through a temp file in the same folder.
-///
-/// Windows: a running `atlas.exe` (hostd, a dev session, an MCP server another tool spawned)
-/// cannot be overwritten or deleted, only renamed. So an existing file is moved aside to
-/// `.atlas-old-<pid>.exe`, the new one takes its place, and the aside file is deleted right away;
-/// when it is still running that fails and the next install sweeps it (`sweep_old`). If the new
-/// file cannot be put in place the old one is moved back, so there is never no `atlas`.
+/// Copy `src` over `dest` through a temp file in the same folder, then swap it in with
+/// `sys::replace_program` (which also copes with a running `atlas.exe` on Windows).
 fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
     let dir = dest
         .parent()
@@ -207,47 +202,13 @@ fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
             path = tmp.0.display().to_string()
         )
     })?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp.0, std::fs::Permissions::from_mode(0o755))?;
-    }
-
-    // Only a file is moved aside: anything else at `dest` is left for the rename to refuse.
-    #[cfg(windows)]
-    let aside = {
-        let aside = dir.join(format!(".atlas-old-{}.exe", std::process::id()));
-        sweep_old(dir);
-        (dest.is_file() && std::fs::rename(dest, &aside).is_ok()).then_some(aside)
-    };
-    let installed = std::fs::rename(&tmp.0, dest).with_context(|| {
+    atlas_core::sys::make_executable(&tmp.0)?;
+    atlas_core::sys::replace_program(&tmp.0, dest).with_context(|| {
         t!(
             "cmd_install_install_failed",
             path = dest.display().to_string()
         )
-    });
-    #[cfg(windows)]
-    if let Some(aside) = aside {
-        if installed.is_ok() {
-            let _ = std::fs::remove_file(&aside);
-        } else {
-            let _ = std::fs::rename(&aside, dest);
-        }
-    }
-    installed
-}
-
-/// Windows: delete the `.atlas-old-<pid>.exe` files earlier installs moved aside; one still in use
-/// refuses and waits for the next run.
-#[cfg(windows)]
-fn sweep_old(dir: &Path) {
-    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
-        if name.starts_with(".atlas-old-") && name.ends_with(".exe") {
-            let _ = std::fs::remove_file(e.path());
-        }
-    }
+    })
 }
 
 /// What [`install_binary`] did with the CLI at the destination.
@@ -343,7 +304,7 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
         if already_in_path {
             println!("{}", ok(&t!("cmd_install_path_already_win")));
         } else {
-            match add_user_path(&install_dir) {
+            match atlas_core::sys::user_path_add(&install_dir).map_err(user_path_error) {
                 Ok(_) => println!("{}", ok(&t!("cmd_install_path_added_win"))),
                 Err(e) => println!(
                     "{}",
@@ -505,54 +466,14 @@ fn setup_path_unix(install_dir: &Path, dest: &Path) {
     }
 }
 
-/// Windows: put `dir` on the user's `Path` (registry, `HKCU\Environment`), the way installers do,
-/// so new terminals find `atlas`. `Ok(false)` when it is already there. PowerShell's
-/// `SetEnvironmentVariable` writes the full value (never `setx`, which truncates at 1024
-/// characters) and tells running programs the environment changed.
-#[cfg(windows)]
-pub(crate) fn add_user_path(dir: &Path) -> Result<bool> {
-    edit_user_path(dir, "add")
-}
-
-/// Windows: take `dir` off the user's `Path`. `Ok(false)` when it was not there.
-#[cfg(windows)]
-pub(crate) fn remove_user_path(dir: &Path) -> Result<bool> {
-    edit_user_path(dir, "remove")
-}
-
-/// Windows: whether `dir` is on the user's `Path`. Reads only; nothing is written.
-#[cfg(windows)]
-pub(crate) fn has_user_path(dir: &Path) -> Result<bool> {
-    edit_user_path(dir, "has")
-}
-
-/// Runs the one PowerShell script behind add/remove/has. Its answer is `changed` (written),
-/// `same` (nothing to do) or, for `has`, `yes`/`no`; `Ok(true)` is `changed` or `yes`.
-#[cfg(windows)]
-fn edit_user_path(dir: &Path, op: &str) -> Result<bool> {
-    use atlas_core::sys::CommandExt as _;
-    // The dir travels in the environment, never inside the script text.
-    const SCRIPT: &str = "$d = $env:ATLAS_PATH_DIR; $op = $env:ATLAS_PATH_OP; \
-        $cur = [Environment]::GetEnvironmentVariable('Path', 'User'); \
-        $parts = @(if ($cur) { $cur -split ';' | Where-Object { $_ -ne '' } }); \
-        $has = @($parts | Where-Object { $_.TrimEnd('\\') -ieq $d.TrimEnd('\\') }).Count -gt 0; \
-        if ($op -eq 'has') { if ($has) { 'yes' } else { 'no' }; exit }; \
-        if ($op -eq 'add') { if ($has) { 'same'; exit } ; $parts += $d } \
-        else { if (-not $has) { 'same'; exit } ; $parts = @($parts | Where-Object { $_.TrimEnd('\\') -ine $d.TrimEnd('\\') }) } \
-        [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User'); 'changed'";
-    let out = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
-        .env("ATLAS_PATH_DIR", dir)
-        .env("ATLAS_PATH_OP", op)
-        .no_window()
-        .stdin(std::process::Stdio::null())
-        .output()
-        .context(t!("cmd_install_no_powershell"))?;
-    if !out.status.success() {
-        anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
+/// The error of a `sys::user_path_*` call, worded for the user: `ErrorKind::Other` is PowerShell
+/// refusing (its own message), any other kind is that it could not be started at all.
+pub(crate) fn user_path_error(e: std::io::Error) -> anyhow::Error {
+    if e.kind() == std::io::ErrorKind::Other {
+        anyhow::anyhow!("{e}")
+    } else {
+        anyhow::Error::new(e).context(t!("cmd_install_no_powershell"))
     }
-    let answer = String::from_utf8_lossy(&out.stdout);
-    Ok(matches!(answer.trim(), "changed" | "yes"))
 }
 
 /// What putting `dir` on `PATH` did for one shell.

@@ -185,7 +185,36 @@ Bench changes this follow-up needed, all in this PR: fixture ports are picked pe
 
 ## Gate (CI, "Desktop opens (Linux)")
 
-`scripts/linux-idle-gate.sh` runs the bench against the CI build on llvmpipe and `linux-idle-bench.ts --judge --gate` fails over `GATE_BUDGET`: `welcome` 3 %, `workspace` 4 % of a core over 30 s. Measured here on llvmpipe, three runs of the matrix: `welcome` 0.2-0.3 %, `workspace` 0.2-0.5 %; the gate script itself on this machine (15 s windows, the bench's own bun counted in the instance's tree) read 0.3-0.9 and 0.9-1.2 %. The budgets are 4-10x the worst of those because a 2-vCPU runner with a different Mesa and the sandbox off is slower, and a regression the gate must catch is of the order of the animation floor (13-44 %), not 1 point. `stack-running`, `terminal-idle`, `chat-stream` and `terminal-output` are not gated: they are not idle on main (26-60 %, 1.5 % plus hostd's 2.9 %, 33-53 %, 380-420 %); the PR that removes each cost adds its line to `GATE_BUDGET`. The first CI run of the job is what sets the runner's real numbers: the report (`desktop-linux-idle-gate` artifact, per-thread split) is uploaded for that.
+`scripts/linux-idle-gate.sh` runs the bench against the CI build on llvmpipe, one 30 s window per gated state, and `linux-idle-bench.ts --judge --gate` fails when a state is over its budget (`GATE_BUDGET`), was not measured, or did not happen (the liveness proof of each scenario: services listening at both ends, the chat's lines sent, the flood's passes). CI installs `wtype` and `foot` for the unfocused state: the page has focus as a user's does, and the second window exists.
+
+**Budgets** (% of one core, all processes of the instance). Rule: a busy state gets the worst of at least 3 CI samples times 1.5, rounded up; a near-idle state (0.5-4.7 % on the runner for something that does nothing) gets a flat ceiling 2-4x its worst sample, because what it guards costs 50-300 %. The samples are the `desktop-linux-idle-gate` artifacts of workflow_dispatch runs of a branch that looped each state on the real runner (CI runs 45189691892, of which loops 1 and 3 are valid, and 45194302359; loop 2 of the first was contaminated by a crew rail left open, see below). The two runs differ by up to 1.3x (`chat-stream` 68.8-70.1 against 88.1-89.0): that is runner variance, and why the headroom is not smaller.
+
+| state | CI samples | worst | budget | local (llvmpipe, this machine) |
+|---|---|---|---|---|
+| `welcome` | 0.1-0.3 | 0.3 | 3 | 0.2 |
+| `workspace` | 1.3-2.2 | 2.2 | 4 | 0.6 |
+| `stack-running` | 7.2, 6.9, 9.3, 8.4, 8.3 | 9.3 | 15 | 5.0 |
+| `terminal-idle` | 1.4, 1.5, 0.5, 0.6, 0.5 (3.0 and 2.2 in the two builds below with the terminal path changed) | 1.5 | 6 | 1.0 |
+| `chat-stream` | 68.8, 70.1, 88.5, 88.1, 89.0 | 89.0 | 140 | 24.9 |
+| `terminal-output` | 330.0, 325.1, 335.9, 331.9, 336.5 | 336.5 | 510 | 230.7 |
+| `crew-unfocused` (70 s settle) | 3.1, 3.3, 3.2 (4.7 in a build with other fixes reverted) | 3.3 | 8 | 0.6 |
+
+**What the gate catches** (each fix of the list above reverted in a build, gate run on the CI runner and on this machine; the local budgets are the runner's, so a fix that costs 2x here can still pass here):
+
+| reverted | state | runner (CI) | this machine | result |
+|---|---|---|---|---|
+| the infinite halo of a healthy service (#731) | `stack-running` | 312.7 and 300.1 % | 59.4 % (5.0 on main) | **fails** (15 %) |
+| chat deltas applied one by one, no coalescing (#732) | `chat-stream` | 252.2 and 227.8 % | 50.2 % (24.9 on main) | **fails on the runner** (140 %) |
+| the rest of the crew faces in a blurred window (#733) | `crew-unfocused` | 266.7 % | not run | **fails** (8 %) |
+| `/proc/stat` read per process (#730) | `terminal-idle` | 0.5 % (hostd) | 3.0 % (hostd 2.5 vs 0.6) | **passes**: the cost scales with the processes of the machine, a runner has few, and +2 points is inside the noise of a total-CPU gate. Its Rust test (`procs.rs`) holds it. |
+| acknowledgements never sent (#734) | `terminal-output` | not run | 205 % (main 231) | **passes**: the page parses nothing (web 0.7 %) while hostd spins at 203 %; the gate sees the total only. |
+
+So the gate is a net for animations and per-update work, which is what cost 25-60 points; it is not a gate for flow control or for a few points of hostd.
+
+Reading a red gate:
+
+* `crew-unfocused` settles 70 s: the page rests only after `blurGraceMs` (60 s). At the 10 s default it reads 190-205 % on the runner (the faces still run), which is not a regression. The scenario closes the rail it opened (the same Ctrl+Shift+B), because left open its faces animate through every scenario after it (255 % on the next four states of the first run's loop 2) and a second `crew` toggled the rail shut ("drew no crewmate face"). It still runs last: the order is `GATE_BUDGET`'s.
+* `terminal-output` is a saturated producer, not an idle state: its CPU is the cost of moving the flood through xterm, so the budget is a ceiling 1.5x the runner's worst; the liveness floor is 0.3 passes/s of the 20 MB flood (the runner does 0.6-2.6).
 
 ## Memory
 

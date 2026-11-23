@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { counterLive, cpuWindow, waitForLoad, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, levelLive, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
+import { SCENARIOS, counterLive, cpuWindow, waitForLoad, fixturePorts, fixtureYaml, GATE_BUDGET, judgeGate, judgeWindow, levelLive, reservePorts, roleOf, type Sample } from "./linux-idle-bench.ts";
 
 const sample = (pid: number, role: string, ticks: number, o: Partial<Sample> = {}): Sample => ({ pid, role, comm: role, ticks, rssKb: 100 * 1024, pssKb: 60 * 1024, swapKb: 0, threads: [], ...o });
 
@@ -79,6 +79,11 @@ describe("judge", () => {
 describe("judgeGate", () => {
 	const win = (scenario: string, ticks: number) => cpuWindow(`ci/${scenario}`, 30, [sample(1, "app", 0)], [sample(1, "app", ticks)]);
 	const all = (ticks: number) => Object.keys(GATE_BUDGET).map((s) => win(s, ticks));
+	test("the gate names only real scenarios, and the state that opens the crew rail runs last", () => {
+		const names = Object.keys(GATE_BUDGET);
+		for (const n of names) expect(SCENARIOS as readonly string[]).toContain(n);
+		expect(names.at(-1)).toBe("crew-unfocused");
+	});
 	test("every gated state inside its budget passes", () => {
 		expect(judgeGate(all(30))).toEqual([]); // 1 % of a core
 	});
@@ -92,7 +97,7 @@ describe("judgeGate", () => {
 		expect(judgeGate(all(30).slice(1))).toEqual([`${Object.keys(GATE_BUDGET)[0]}: no window measured`]);
 	});
 	test("states that are not gated (still costly on main) are not judged", () => {
-		expect(judgeGate([...all(30), win("stack-running", 3000)])).toEqual([]);
+		expect(judgeGate([...all(30), win("list-scroll", 3000)])).toEqual([]);
 	});
 	test("every window of a gated state is judged, not just the first (a retried scenario)", () => {
 		expect(judgeGate([win("welcome", 30), win("welcome", 3000), ...all(30).slice(1)])).toHaveLength(1);

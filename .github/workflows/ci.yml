@@ -148,7 +148,7 @@ jobs:
         timeout-minutes: 10
         uses: ./.github/actions/apt-packages
         with:
-          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev libssl-dev sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev libssl-dev sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core wtype foot
 
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
@@ -189,8 +189,9 @@ jobs:
             --env ATLAS_BIN="$PWD/target/debug/atlas" target/debug/atlas-desktop
 
       # What the running app costs in the states a user leaves it in (#289): CPU per process over 30 s in each gated state, on
-      # llvmpipe like every runner. Budgets (GATE_BUDGET in scripts/linux-idle-bench.ts) cover only states that are idle on main;
-      # the PR that removes a known cost adds its state. Fails over budget, or when a gated state could not be measured.
+      # llvmpipe like every runner. Budgets (GATE_BUDGET in scripts/linux-idle-bench.ts): a project open, a running stack, an idle
+      # terminal, a streaming chat, a terminal flood, a resting crew window; wtype and foot give the instance's seat a keyboard and
+      # a second window. Fails over budget, or when a gated state could not be measured or did not happen.
       - name: Idle CPU gate
         env:
           ATLAS_BIN: ${{ github.workspace }}/target/debug/atlas

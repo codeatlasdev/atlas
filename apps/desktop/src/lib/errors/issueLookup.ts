@@ -33,10 +33,14 @@ export function parseLookup(raw: unknown): Lookup {
 	return { kind: "unavailable" };
 }
 
-/** The lookup for `r` (its fingerprint loads if it has none): `null` when it has none to search by. Never throws. */
+/**
+ * The lookup for `r` (its fingerprint loads if it has none): `null` when it has none to search by. Never throws.
+ * `search` is the `issue_search` command (called here, not through `api.ts`: only this lazy module uses it, and the
+ * startup bundle has a budget).
+ */
 export async function findExisting(
 	r: ErrorReport,
-	search: (fp: string) => Promise<unknown>,
+	search: (fp: string) => Promise<unknown> = (fingerprint) => invoke("issue_search", { fingerprint }),
 ): Promise<Lookup | null> {
 	const fp = (await withFingerprint(r)).fingerprint;
 	return fp ? lookupIssue(fp, search) : null;

@@ -12,6 +12,7 @@
  * The code never leaves this module except into `crew_github_app_convert`. Failures coded by hostd
  * (`crew.github_app.*`) arrive as `HostError`s already in the app's language (`hostCall`), so `error` shows them as is.
  */
+import { clock } from "#lib/clock.svelte.ts";
 import { invoke } from "@tauri-apps/api/core";
 import { api, errText } from "#lib/api.ts";
 import { hostCall } from "#lib/host.ts";
@@ -49,10 +50,7 @@ export interface Deps {
 
 const realDeps: Deps = {
 	now: () => Date.now(),
-	every: (fn, ms) => {
-		const t = setInterval(fn, ms);
-		return () => clearInterval(t);
-	},
+	every: (fn, ms) => clock.every(ms, fn),
 	openUrl: (url) => api.openUrl(url),
 };
 

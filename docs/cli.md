@@ -201,7 +201,7 @@ atlas doctor --hygiene [--dry-run | --fix] [--json]
 
 Plain `atlas doctor` checks the install, each with the one command that fixes it, and exits 1 when something is broken:
 
-- **new terminal**: starts your account's shell the way a terminal does (Linux: interactive, not login; macOS: login) and asks which `atlas` it runs. Fails when there is none (re-run the installer), warns when another `atlas` comes first on `PATH` or the shell does not answer in 6 s.
+- **new terminal**: starts your account's shell the way a terminal does (Linux: interactive, not login; macOS: login) and asks which `atlas` it runs. On Windows a new terminal takes its `PATH` from the registry, not from a shell, so doctor reads the system `Path` (`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`) and your user `Path` (`HKCU\Environment`), expands `%USERPROFILE%`-style references, and looks for `atlas.exe` along them in that order (with the `PATHEXT` extensions). Fails when there is none (re-run the installer), warns when another `atlas` comes first on `PATH` or the shell does not answer in 6 s (on Windows: when the registry cannot be read).
 - **this terminal**: whether `~/.atlas/bin` is on this shell's `PATH` (prints the `export` line).
 - **desktop app**: installed, and on the CLI's version (`atlas update`); missing with a graphical session suggests `atlas desktop`.
 - **terminal host**: whether hostd answers (it starts on demand, so only a warning).

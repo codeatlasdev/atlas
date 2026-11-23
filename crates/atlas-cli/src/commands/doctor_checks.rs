@@ -52,7 +52,7 @@ pub struct Facts {
 /// error, a refused connection) is shown as it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Why {
-    WindowsUnchecked,
+    RegistryUnreadable,
     ProbeDidNotRun,
     ShellStart { shell: String, error: String },
     ShellSilent { shell: String, secs: u64 },
@@ -64,7 +64,7 @@ pub enum Why {
 impl Why {
     fn text(&self, tag: &str) -> String {
         match self {
-            Self::WindowsUnchecked => t_in!(tag, "cmd_misc_dc_why_windows"),
+            Self::RegistryUnreadable => t_in!(tag, "cmd_misc_dc_why_registry"),
             Self::ProbeDidNotRun => t_in!(tag, "cmd_misc_dc_why_probe_not_run"),
             Self::ShellStart { shell, error } => {
                 t_in!(
@@ -94,7 +94,22 @@ impl Why {
 }
 
 /// The installer line a machine without `atlas` on its PATH runs again.
+#[cfg(not(windows))]
 const INSTALL_COMMAND: &str = "curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh";
+#[cfg(windows)]
+const INSTALL_COMMAND: &str = "irm https://atlas.codeatlas.com.br/install.ps1 | iex";
+
+/// Whether `found` (the `atlas` a new terminal runs) is this install: under `~/.atlas/bin`, or the
+/// `~/.local/bin/atlas` link install makes. Windows compares like Windows: any case, `/` or `\`.
+fn is_this_install(found: &Path, install_dir: &Path) -> bool {
+    if cfg!(windows) {
+        return super::doctor_winpath::is_under_win(
+            &found.to_string_lossy(),
+            &install_dir.to_string_lossy(),
+        );
+    }
+    found.starts_with(install_dir) || found.ends_with(".local/bin/atlas")
+}
 
 fn on_path(path: Option<&str>, dir: &Path) -> bool {
     path.is_some_and(|p| std::env::split_paths(p).any(|e| e == dir))
@@ -126,20 +141,16 @@ pub fn evaluate_in(tag: &str, f: &Facts) -> Vec<Check> {
             fix: Some(t_in!(tag, "cmd_misc_dc_probe_failed_fix")),
         },
         // This install, directly or through the `~/.local/bin/atlas` link install makes.
-        (Some(_), Some(found))
-            if found.starts_with(&f.install_dir) || found.ends_with(".local/bin/atlas") =>
-        {
-            Check {
-                name: "new terminal",
-                status: Status::Ok,
-                detail: t_in!(
-                    tag,
-                    "cmd_misc_dc_atlas_found",
-                    path = found.display().to_string()
-                ),
-                fix: None,
-            }
-        }
+        (Some(_), Some(found)) if is_this_install(found, &f.install_dir) => Check {
+            name: "new terminal",
+            status: Status::Ok,
+            detail: t_in!(
+                tag,
+                "cmd_misc_dc_atlas_found",
+                path = found.display().to_string()
+            ),
+            fix: None,
+        },
         (Some(_), Some(found)) => Check {
             name: "new terminal",
             status: Status::Warn,
@@ -325,8 +336,8 @@ impl Facts {
 /// and would call #265's broken install healthy. Returns `(PATH, atlas or None)`.
 fn terminal_probe() -> Result<(String, Option<PathBuf>), Why> {
     if cfg!(windows) {
-        // A new terminal there reads the registry's user/system Path, not a shell rc: see #340.
-        return Err(Why::WindowsUnchecked);
+        // A new terminal there reads the registry's system and user Path, not a shell rc (#340).
+        return super::doctor_winpath::terminal_view().ok_or(Why::RegistryUnreadable);
     }
     let (shell, _) = atlas_core::login_env::resolve_shell();
     let name = Path::new(&shell)
@@ -458,6 +469,28 @@ mod tests {
         assert!(t.fix.unwrap().contains("/usr/bin/atlas"));
     }
 
+    /// #340, on Windows itself: the registry's `Path` spells the folder with another case and `/`
+    /// than `atlas_home()` does, and the installer's copy must still count as this install.
+    #[cfg(windows)]
+    #[test]
+    fn windows_compares_the_installers_copy_without_case_or_slash_direction() {
+        let mut f = healthy();
+        f.install_dir = PathBuf::from(r"C:\Users\Ana\.atlas\bin");
+        f.login_atlas = Some(PathBuf::from("c:/users/ana/.ATLAS/bin/atlas.exe"));
+        assert_eq!(get(&evaluate(&f), "new terminal").status, Status::Ok);
+        f.login_atlas = Some(PathBuf::from(r"C:\Program Files\Git\cmd\atlas.exe"));
+        assert_eq!(get(&evaluate(&f), "new terminal").status, Status::Warn);
+        f.login_atlas = None;
+        let t = evaluate(&f)
+            .into_iter()
+            .find(|c| c.name == "new terminal")
+            .unwrap();
+        assert!(
+            t.fix.unwrap().contains("install.ps1"),
+            "the fix names the PowerShell installer"
+        );
+    }
+
     #[test]
     fn the_local_bin_link_counts_as_this_install() {
         let mut f = healthy();
@@ -500,7 +533,7 @@ mod tests {
         let shell = || "/bin/zsh".to_string();
         for tag in atlas_i18n::locales() {
             for why in [
-                Why::WindowsUnchecked,
+                Why::RegistryUnreadable,
                 Why::ProbeDidNotRun,
                 Why::ShellStart {
                     shell: shell(),

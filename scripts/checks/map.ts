@@ -19,6 +19,8 @@ export const AREAS: Record<string, string[]> = {
 		"skills/**",
 		"scripts/linux-launch-check.sh",
 		"scripts/linux-startup-bench.ts",
+		"scripts/linux-idle-gate.sh",
+		"scripts/linux-idle-bench.ts",
 		"docs/perf/linux-startup.json",
 	],
 	// The built-in agent list (crates/atlas-core/data/agents.json) is imported by the desktop frontend and generated into
@@ -159,6 +161,13 @@ export const CHECKS: Check[] = [
 		ci: ["desktop-linux"],
 		ciRun: "scripts/linux-startup-bench.ts",
 		why: "starts the Linux build on a headless sway and gates start time, memory per process and idle CPU (docs/perf/linux-startup.json); run scripts/linux-startup-bench.ts on a Linux machine with sway",
+	},
+	{
+		id: "desktop-idle-gate",
+		area: "rust",
+		ci: ["desktop-linux"],
+		ciRun: "scripts/linux-idle-gate.sh",
+		why: "puts the Linux build in its idle states on a headless sway (llvmpipe) and fails over the CPU budgets of GATE_BUDGET in scripts/linux-idle-bench.ts; run scripts/linux-idle-gate.sh on a Linux machine with sway and wtype",
 	},
 	{
 		id: "root-tests",

@@ -8,7 +8,6 @@
  */
 
 import { m } from "#lib/i18n/m.ts";
-import { fingerprint } from "./fingerprint.ts";
 import { machineLines } from "./machine.ts";
 
 /** `{ locale: "en" }` for text that leaves the machine (an issue, an AI prompt), nothing for the screen. */
@@ -533,8 +532,7 @@ function render(r: ErrorReport, b: Budget): string {
 	return [
 		"# Atlas desktop error",
 		"",
-		`Fingerprint: \`${fingerprintOf(r)}\``,
-		"",
+		...(r.fingerprint ? [`Fingerprint: \`${r.fingerprint}\``, ""] : []),
 		"## Error",
 		...fence(redactText(clip(r.message, b.msg))),
 		"",
@@ -660,9 +658,17 @@ export function aiDiagnosePrompt(r: ErrorReport): string {
 }
 
 /**
- * What names this bug across reports: the one the report carries, else the one of its message and stack. Same error
- * fired in a burst (a render loop, a timer) surfaces once, and the issue body says it so a search finds the issue (#320).
+ * The report with the fingerprint that names its bug across reports (`fingerprint.ts`, #320): the one it carries
+ * (a crash file's), else the one of its message and stack. The computation loads on first use, not at startup (the
+ * startup bundle budget); a failed load returns the report as it is, and a report without one files without the line.
+ * The same error fired in a burst (a render loop, a timer) surfaces once, by this value.
  */
-export function fingerprintOf(r: Pick<ErrorReport, "message" | "stack" | "fingerprint">): string {
-	return r.fingerprint ?? fingerprint(r.message, r.stack);
+export async function withFingerprint(r: ErrorReport): Promise<ErrorReport> {
+	if (r.fingerprint) return r;
+	try {
+		const { fingerprint } = await import("./fingerprint.ts");
+		return { ...r, fingerprint: fingerprint(r.message, r.stack) };
+	} catch {
+		return r;
+	}
 }

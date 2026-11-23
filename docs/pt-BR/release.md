@@ -1,7 +1,7 @@
 ---
 title: "Publicar uma versão"
 source: release.md
-source_sha: "2567e4ae2d4decbe31efc08876b56c314732081f"
+source_sha: "cff11e75c0b339aab5c9434051e3950878f87d7d"
 translation: machine
 ---
 
@@ -78,6 +78,7 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lista os arqu
 7. **Commit, tag, push.** Commit `chore(release): vX.Y.Z[-pre.N]`, tag anotada e depois `git push --atomic origin <main|release/X.Y> <tag>`: a branch e a tag chegam juntas ou não chegam.
 8. **Push da tag; o GitHub roda o `release.yml`** (gate → builds para macOS, Linux e Windows, pacote Arch → verificação do Linux em containers → publicação). O script acompanha a execução (`gh run watch`) e depois faz o deploy do site (mantido; ele nunca faz a versão falhar).
 9. **Assinar e publicar** (`scripts/release-sign.sh <tag>`, o mesmo para todo canal, inclusive uma promoção para stable). O `release.yml` deixa a versão como **rascunho**, então nada é público ainda. O script baixa o `SHA256SUMS`, imprime o arquivo, assina com a sua chave offline, confere a assinatura contra as chaves do repositório, envia o `SHA256SUMS.sig` e só então publica o rascunho ([Assinatura de versões](#assinatura-de-versões)). Com uma chave configurada, uma versão sem assinatura nunca é publicada e o site não recebe deploy. Depois ele faz o deploy do site.
+10. **Avisar quem reportou** (`scripts/release-notify.ts <tag>`, por último, depois do site). O `Fixes #N` fecha uma issue no merge, dias antes de a alpha que a leva sair, e não diz o que rodar. O script comenta `Fixed in vX (alpha channel)`, com como obtê-la, em toda issue fechada como concluída (não "não planejada", nem `type: question`, `status: wontfix` ou `status: duplicate`) entre o horário do commit da tag da versão anterior e o desta, e nos reports marcados como duplicados delas. Uma issue que já tem um comentário dele (marcador oculto `<!-- atlas-fixed-in:vX -->`) é deixada em paz, então uma nova execução ou a próxima versão nunca avisa ninguém duas vezes. Ele nunca faz a versão falhar. Para ensaiar ou repetir à mão: `bun run release:notify <tag> --dry-run` imprime uma linha por comentário (e o texto completo uma vez), `bun run release:notify <tag>` os escreve.
 
 ### Guarda de promoção (stable)
 

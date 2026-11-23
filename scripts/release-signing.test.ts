@@ -258,6 +258,22 @@ describe("release.sh", () => {
 		const sign = l.findIndex((x) => x === "+ scripts/release-sign.sh v1.5.0-beta.1");
 		expect(sign, o.out).toBeGreaterThan(l.findIndex((x) => x.startsWith("+ watch the Release run")));
 	});
+
+	// #321: the reporters are told only once the release is public (signed and published), and after the site, so a
+	// failure before it never says "fixed in" about a release nobody can download.
+	test("reporters are told last, after the release is signed and published and the site is deployed", () => {
+		for (const args of [["stable", "--dry-run", "--skip-checks", "--force-soak"], ["--publish", "v1.5.0-beta.1", "--dry-run"]]) {
+			const o = releaseSh(repo(), ...args);
+			expect(o.code, o.err + o.out).toBe(0);
+			const l = lines(o.out);
+			const sign = l.findIndex((x) => x.startsWith("+ scripts/release-sign.sh"));
+			const deploy = l.findIndex((x) => x.includes("deploying the site") || x.includes("site deploy skipped"));
+			const tell = l.findIndex((x) => x.startsWith("+ bun scripts/release-notify.ts v1.5.0"));
+			expect(tell, o.out).toBeGreaterThan(deploy);
+			expect(deploy, o.out).toBeGreaterThan(sign);
+			expect(l.filter(Boolean).at(-1), o.out).toStartWith("+ bun scripts/release-notify.ts v1.5.0");
+		}
+	});
 });
 
 interface Step {

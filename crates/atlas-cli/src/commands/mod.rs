@@ -20,6 +20,7 @@ pub mod dev;
 pub mod doctor;
 pub(crate) mod doctor_bundle;
 pub(crate) mod doctor_checks;
+pub(crate) mod doctor_winpath;
 pub mod down;
 pub mod heavy;
 pub mod hook;

@@ -332,7 +332,10 @@ mod imp {
                 std::fs::create_dir(&dir).unwrap();
                 // pid (comm) state ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime stime
                 // cutime cstime priority nice threads itrealvalue starttime(22)
-                let stat = format!("{pid} (weird) name) S 1 0 0 0 0 0 0 0 0 0 0 0 0 0 20 0 1 0 {}", pid * 100);
+                let stat = format!(
+                    "{pid} (weird) name) S 1 0 0 0 0 0 0 0 0 0 0 0 0 0 20 0 1 0 {}",
+                    pid * 100
+                );
                 std::fs::write(dir.join("stat"), stat).unwrap();
             }
             std::fs::create_dir(d.path().join("self")).unwrap(); // not a pid
@@ -350,8 +353,16 @@ mod imp {
                 Some(1_700_000_000)
             };
             let rows = table_in(proc.path(), &boot);
-            assert_eq!(rows.len(), 50, "every numeric entry is a row, `self` is not");
-            assert!(reads.get() <= 1, "read the boot time {} times for 50 processes", reads.get());
+            assert_eq!(
+                rows.len(),
+                50,
+                "every numeric entry is a row, `self` is not"
+            );
+            assert!(
+                reads.get() <= 1,
+                "read the boot time {} times for 50 processes",
+                reads.get()
+            );
             let tck = clk_tck();
             let row = rows.iter().find(|r| r.pid == 7).unwrap();
             assert_eq!(row.name, "weird) name", "comm may hold parentheses");

@@ -733,7 +733,9 @@ mod tests {
         assert!(cap.join("browsers").is_dir());
     }
 
-    // The scripts are real shell: `sh -n` parses them.
+    // The scripts are real shell: `sh -n` parses them. They run on a Linux crew host, never on Windows, whose stock
+    // PATH has no `sh` (#260); Linux and macOS CI parse them.
+    #[cfg(unix)]
     #[test]
     fn every_script_parses_as_shell() {
         for (name, s) in all_scripts() {

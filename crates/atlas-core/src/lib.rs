@@ -13,6 +13,7 @@ pub mod distro;
 pub mod domain;
 pub mod error;
 pub mod filelist;
+pub mod fingerprint;
 pub mod fs;
 pub mod git_path;
 pub mod git_review;

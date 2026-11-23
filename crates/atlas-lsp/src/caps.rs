@@ -217,7 +217,11 @@ fn path_from_uri_on(uri: &str) -> Option<String> {
 /// Initialization options per server (sent in `initialize`).
 pub fn init_options(server: &str) -> Value {
     match server {
+        // Memory (docs/perf/linux-webkit-round2.md, apps/desktop): no separate syntax server (-160 MB)
+        // and no `typingsInstaller` (-52 MB); the one tsserver answers syntax requests once it loads.
         "typescript-language-server" => json!({
+            "disableAutomaticTypingAcquisition": true,
+            "tsserver": {"useSyntaxServer": "never"},
             "hostInfo": "atlas",
             "preferences": {
                 "includeCompletionsForModuleExports": true,
@@ -244,7 +248,7 @@ pub fn init_options_for(server: &str, root: &str) -> Value {
     if server == "typescript-language-server"
         && let Some(path) = project_tsserver(std::path::Path::new(root))
     {
-        opts["tsserver"] = json!({ "path": path });
+        opts["tsserver"]["path"] = json!(path);
     }
     opts
 }
@@ -414,7 +418,7 @@ mod tests {
     fn without_a_project_typescript_the_bundled_one_is_used() {
         let tmp = tempfile::tempdir().unwrap();
         let opts = init_options_for("typescript-language-server", &tmp.path().to_string_lossy());
-        assert!(opts.get("tsserver").is_none(), "{opts}");
+        assert!(opts["tsserver"].get("path").is_none(), "{opts}");
         assert_eq!(opts["hostInfo"], "atlas");
     }
 
@@ -423,7 +427,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("node_modules/typescript/lib")).unwrap();
         let opts = init_options_for("typescript-language-server", &tmp.path().to_string_lossy());
-        assert!(opts.get("tsserver").is_none());
+        assert!(opts["tsserver"].get("path").is_none());
     }
 
     #[test]

@@ -953,6 +953,21 @@ mod tests {
     use super::TelegramBridge;
     use std::time::Duration;
 
+    /// A Telegram API that is there and hangs up at once. `reply` is fire-and-forget, so what the tests need is
+    /// an answer, not a bot. A closed port (`127.0.0.1:1`) is NOT that on Windows: a connect to a port nobody
+    /// listens on is retried by the stack for about 2 s, so each reply of a 20-iteration test cost 2 s (a 42 s
+    /// test in the Windows job's JUnit report, #520), where Linux refuses at once.
+    fn closed_api() -> String {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming() {
+                drop(s);
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
     #[test]
     fn start_link_generates_six_digit_code() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1001,7 +1016,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let b = std::sync::Arc::new(TelegramBridge::new_with_api(
             tmp.path().to_path_buf(),
-            "http://localhost:1".to_string(),
+            closed_api(),
         ));
         {
             b.config.lock().token = "tok".to_string();
@@ -1032,7 +1047,7 @@ mod tests {
     }
 
     fn bridge(tmp: &tempfile::TempDir) -> TelegramBridge {
-        let b = TelegramBridge::new_with_api(tmp.path().to_path_buf(), "http://127.0.0.1:1");
+        let b = TelegramBridge::new_with_api(tmp.path().to_path_buf(), closed_api());
         b.config.lock().token = "tok".to_string();
         b
     }
@@ -1100,10 +1115,7 @@ mod tests {
     #[tokio::test]
     async fn unlinked_chat_message_returns_quickly() {
         let tmp = tempfile::tempdir().unwrap();
-        let b = TelegramBridge::new_with_api(
-            tmp.path().to_path_buf(),
-            "http://127.0.0.1:1".to_string(),
-        );
+        let b = TelegramBridge::new_with_api(tmp.path().to_path_buf(), closed_api());
         {
             b.config.lock().token = "tok".to_string();
         }

@@ -98,12 +98,16 @@ pub fn write_report_in(
         native.push_str(&format!("frames = [{}]\n", f.join(", ")));
     }
 
+    // What the file shows is what is fingerprinted, so the line can be recomputed from the file alone (and from the
+    // page, for the same text): the redacted message and location.
+    let (msg, location) = (redact(msg), redact(location));
     let report = format!(
-        "{build}timestamp = {ts}\nargs = {args}\nmsg = {msg}\nlocation = {location}\n{native}\nbacktrace = '''\n{backtrace}\n'''\n",
+        "{build}timestamp = {ts}\nargs = {args}\nmsg = {msg}\nlocation = {location}\nfingerprint = \"{fp}\"\n{native}\nbacktrace = '''\n{backtrace}\n'''\n",
         build = build_lines(crate::buildinfo::current()),
-        msg = toml_str(&redact(msg)),
+        fp = crate::fingerprint::fingerprint(&msg, &location),
+        msg = toml_str(&msg),
         args = toml_str(&redact_args(args)),
-        location = toml_str(&redact(location)),
+        location = toml_str(&location),
         backtrace = redact(backtrace).replace("'''", "' ' '"),
     );
 
@@ -300,6 +304,80 @@ mod tests {
         assert!(
             text.contains("atlas login --token"),
             "the command stays readable:\n{text}"
+        );
+    }
+
+    fn fingerprint_of(file: &std::path::Path) -> String {
+        let text = std::fs::read_to_string(file).unwrap();
+        let line = text
+            .lines()
+            .find_map(|l| l.strip_prefix("fingerprint = "))
+            .unwrap_or_else(|| panic!("no fingerprint line:\n{text}"));
+        serde_json::from_str(line).unwrap()
+    }
+
+    /// #320: the same panic reported twice, by two people, on two versions, must carry one fingerprint (so an issue
+    /// search by it finds the earlier report), and another panic another one. The fingerprint is of the message and
+    /// the location as the file shows them, and it is what the page computes for the same text.
+    #[test]
+    fn a_report_carries_the_fingerprint_of_its_message_and_location() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |msg: &str, loc: &str| {
+            fingerprint_of(
+                &super::write_report_in(dir.path(), msg, loc, &argv(&["a"]), "b").unwrap(),
+            )
+        };
+        let linux = write(
+            "called `Option::unwrap()` on a `None` value",
+            "/home/runner/work/atlas/atlas/crates/atlas-core/src/fs.rs:88:9",
+        );
+        let windows = write(
+            "called `Option::unwrap()` on a `None` value",
+            r"C:\Users\ana\atlas\crates\atlas-core\src\fs.rs:91:13",
+        );
+        assert_eq!(
+            linux, windows,
+            "another machine and another line are the same panic"
+        );
+        assert_eq!(linux.len(), 16);
+        assert_eq!(
+            linux,
+            crate::fingerprint::fingerprint(
+                "called `Option::unwrap()` on a `None` value",
+                "crates/atlas-core/src/fs.rs:88:9"
+            )
+        );
+        let other_message = write(
+            "index out of bounds: the len is 3 but the index is 7",
+            "crates/atlas-core/src/fs.rs:88:9",
+        );
+        let other_file = write(
+            "called `Option::unwrap()` on a `None` value",
+            "crates/atlas-core/src/sys.rs:88:9",
+        );
+        assert_ne!(linux, other_message);
+        assert_ne!(linux, other_file);
+    }
+
+    /// The numbers in a message (a port, a count, a pid) are what changes between two reports of one bug.
+    #[test]
+    fn a_panic_message_with_other_numbers_is_the_same_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |msg: &str| {
+            fingerprint_of(
+                &super::write_report_in(
+                    dir.path(),
+                    msg,
+                    "crates/atlas-tui/src/x.rs:1:1",
+                    &argv(&["a"]),
+                    "b",
+                )
+                .unwrap(),
+            )
+        };
+        assert_eq!(
+            write("index out of bounds: the len is 3 but the index is 7"),
+            write("index out of bounds: the len is 12 but the index is 40")
         );
     }
 

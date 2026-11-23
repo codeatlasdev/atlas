@@ -1,0 +1,89 @@
+{
+  "_about": "Contract of crates/atlas-core/src/fingerprint.rs (the source of truth) and apps/desktop/src/lib/errors/fingerprint.ts. Cases of one `group` must give one fingerprint and different groups different ones. Regenerate the values with `UPDATE_FINGERPRINTS=1 cargo test -p atlas-core fingerprint`.",
+  "cases": [
+    {
+      "fingerprint": "2eae8dba921c742c",
+      "group": "js-property",
+      "message": "Cannot read properties of undefined (reading 'path')",
+      "name": "webkit and v8 frames, other lines and machines",
+      "stack": "at openFile (http://tauri.localhost/src/lib/editor/Editor.svelte:45:6)\nat async run (http://tauri.localhost/_app/immutable/chunks/index-AbCd1234.js:1:20)"
+    },
+    {
+      "fingerprint": "2eae8dba921c742c",
+      "group": "js-property",
+      "message": "Cannot read properties of undefined (reading 'path')",
+      "name": "same function after an edit moved it",
+      "stack": "openFile@/Users/ana/atlas/apps/desktop/src/lib/editor/Editor.svelte?t=1700:101:12\nrun@node_modules/svelte/src/runtime.js:3:3"
+    },
+    {
+      "fingerprint": "2eae8dba921c742c",
+      "group": "js-property",
+      "message": "Cannot read properties of undefined (reading 'path')",
+      "name": "a dependency frame first, then the app's",
+      "stack": "at Object.invoke (node_modules/@tauri-apps/api/core.js:20:1)\nat openFile (C:\\Users\\Ana\\atlas\\apps\\desktop\\src\\lib\\editor\\Editor.svelte:7:7)"
+    },
+    {
+      "fingerprint": "87d0539b6c9495e2",
+      "group": "rust-unwrap",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "name": "a panic on Linux CI",
+      "stack": "/home/runner/work/atlas/atlas/crates/atlas-core/src/fs.rs:88:9"
+    },
+    {
+      "fingerprint": "87d0539b6c9495e2",
+      "group": "rust-unwrap",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "name": "the same panic on a Windows machine, another line",
+      "stack": "C:\\Users\\ana\\atlas\\crates\\atlas-core\\src\\fs.rs:91:13"
+    },
+    {
+      "fingerprint": "d3963ab960ebc1be",
+      "group": "port-in-use",
+      "message": "Port 24101 is in use by pid 4821 (atlas 1.5.0-alpha.27)",
+      "name": "a port clash",
+      "stack": "at start (http://tauri.localhost/src/lib/services/start.ts:12:3)"
+    },
+    {
+      "fingerprint": "d3963ab960ebc1be",
+      "group": "port-in-use",
+      "message": "Port 3000 is in use by pid 17 (atlas 1.6.0)",
+      "name": "the same clash, other numbers",
+      "stack": "start@http://localhost:1420/src/lib/services/start.ts:99:1"
+    },
+    {
+      "fingerprint": "5b97fc1cbf932793",
+      "group": "ids",
+      "message": "request 123e4567-e89b-12d3-a456-426614174000 failed at 0x7ffd12ab with token id 3fa9c2d17b04aa",
+      "name": "ids and addresses",
+      "stack": "at fetchIt (Api.ts:5:5)"
+    },
+    {
+      "fingerprint": "5b97fc1cbf932793",
+      "group": "ids",
+      "message": "Request 9b2c4d6e-0f1a-4b3c-8d5e-7a9b1c3d5e7f failed at 0x1000 with token id deadbeef0042",
+      "name": "other ids and addresses",
+      "stack": "fetchIt@Api.ts:77:1"
+    },
+    {
+      "fingerprint": "42a904a59147a296",
+      "group": "other-message",
+      "message": "The terminal host did not answer",
+      "name": "the same function, another message",
+      "stack": "at fetchIt (Api.ts:5:5)"
+    },
+    {
+      "fingerprint": "951359d254c3a996",
+      "group": "other-function",
+      "message": "Port 24101 is in use by pid 4821 (atlas 1.5.0-alpha.27)",
+      "name": "the same message, another function",
+      "stack": "at stop (http://tauri.localhost/src/lib/services/stop.ts:3:3)"
+    },
+    {
+      "fingerprint": "6b1b5562aecc832b",
+      "group": "bare",
+      "message": "Unknown error",
+      "name": "no stack at all",
+      "stack": ""
+    }
+  ]
+}

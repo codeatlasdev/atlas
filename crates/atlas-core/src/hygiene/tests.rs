@@ -10,6 +10,20 @@ fn registry() -> (tempfile::TempDir, Registry) {
     (d, r)
 }
 
+/// A live process that does nothing for 30 s: `sleep 30`, or `ping` on Windows, where a stock PATH has no `sleep`.
+fn idle_child() -> std::process::Child {
+    if cfg!(windows) {
+        crate::sys::shell("ping -n 31 127.0.0.1 >NUL")
+            .spawn()
+            .unwrap()
+    } else {
+        std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap()
+    }
+}
+
 fn proc_row(pid: u32, ppid: u32, start: u64) -> Proc {
     Proc {
         pid,
@@ -1141,10 +1155,7 @@ fn a_cap_trim_never_removes_the_never_index_marker() {
 fn an_update_that_changes_nothing_does_not_rewrite_the_registry_file() {
     let (d, reg) = registry();
     // A live root with no children: `track` records the root itself once, then has nothing new.
-    let mut child = std::process::Command::new("sleep")
-        .arg("30")
-        .spawn()
-        .unwrap();
+    let mut child = idle_child();
     let start = procs::start_time(child.id()).unwrap();
     reg.add_root(root("s", Owner::current(), child.id(), start))
         .unwrap();
@@ -1261,10 +1272,7 @@ fn the_registry_refuses_a_path_that_must_never_be_deleted_whole() {
 #[test]
 fn maintenance_never_recreates_a_registry_folder_that_was_removed() {
     let (d, reg) = registry();
-    let mut child = std::process::Command::new("sleep")
-        .arg("30")
-        .spawn()
-        .unwrap();
+    let mut child = idle_child();
     let start = procs::start_time(child.id()).unwrap();
     reg.add_root(root("s", Owner::current(), child.id(), start))
         .unwrap();

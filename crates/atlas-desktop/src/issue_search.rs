@@ -104,7 +104,7 @@ impl Searcher {
         );
         let answer = fetch(&url).await;
         let mut st = self.state.lock();
-        let out = match answer {
+        match answer {
             None => Lookup::Unavailable {
                 reason: Reason::Failed,
             },
@@ -123,8 +123,7 @@ impl Searcher {
                     reason: Reason::Failed,
                 },
             },
-        };
-        out
+        }
     }
 }
 

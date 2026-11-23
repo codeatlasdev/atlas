@@ -2,8 +2,8 @@ use anyhow::Result;
 
 pub mod cache;
 pub mod config;
-pub mod crew;
 pub mod crash_fingerprint;
+pub mod crew;
 pub mod crew_spawn;
 pub mod deploy;
 pub mod desktop;

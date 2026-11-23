@@ -39,6 +39,7 @@ pub mod ssh;
 pub mod ssh_config;
 pub mod sys;
 mod sys_clone;
+mod sys_install;
 pub mod taskcache;
 pub mod time;
 pub mod update_cache;

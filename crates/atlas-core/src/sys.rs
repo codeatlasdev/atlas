@@ -421,6 +421,13 @@ pub fn shell_script(argv: &[String]) -> Option<&str> {
 /// cannot (never a full copy). See `sys_clone`.
 pub use crate::sys_clone::{clone_dir, clone_file};
 
+/// What installing and uninstalling does per OS: `chmod 755`, replacing a possibly running program
+/// file, moving the running exe aside, the user's `Path`. See `sys_install`.
+pub use crate::sys_install::{
+    make_executable, move_running_exe_aside, replace_program, user_path_add, user_path_has,
+    user_path_remove,
+};
+
 /// [`shell`] for a tokio command.
 pub fn shell_tokio(script: &str) -> tokio::process::Command {
     imp::shell_tokio(script)

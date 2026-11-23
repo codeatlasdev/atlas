@@ -103,8 +103,9 @@ fn write_atomic_via(
         f.write_all(data)?;
         f.sync_all()?;
         drop(f);
-        // Replaces an existing target on every platform. On Windows the POSIX rename leaves no moment in which the name
-        // is missing, but its fallback can (#545, #743): readers cover that with [`read_replaced`].
+        // Replaces an existing target on every platform. On Windows the POSIX rename (retried when refused, never
+        // replaced by the legacy rename for a refusal that lasts) leaves no moment in which the name is missing (#545,
+        // #743); readers still cover a moment with [`read_replaced`].
         replace(&tmp, path)
     })();
     if let Err(e) = written {
@@ -127,10 +128,14 @@ fn write_atomic_via(
 /// Windows, both retried briefly (1, 2, 4... ms), after which the next open finds the new file:
 /// - "Access is denied": the open had already found the old file when the rename marked it for deletion
 ///   (`STATUS_DELETE_PENDING`), which the writer cannot close (#545). Up to 5 retries.
-/// - `NotFound`: the writer's last resort, `std::fs::rename` (`MoveFileExW`, used when the POSIX rename is refused for
-///   good or outlasts its retries), does not promise that the name stays (#743). Retried while the writer's temp
+/// - `NotFound`: a replace that leaves the name missing for a moment (the legacy `std::fs::rename` the writer uses
+///   where the POSIX rename is not supported, or a replace by something else), #743. Retried while the writer's temp
 ///   file exists, up to 8 retries (about 250 ms). A file that does not exist and has no replace in flight is the
 ///   common answer (no run), and is returned at once.
+///
+/// This is a bounded safety net, not a guarantee: the writer keeps the name present itself, and the retries cover the
+/// rest for about 250 ms. A replace that outlasts them (an antivirus scan holding the temp file longer) still shows
+/// as the error.
 pub fn read_replaced(path: &Path) -> io::Result<Vec<u8>> {
     let mut attempt = 0;
     loop {
@@ -313,10 +318,11 @@ mod tests {
         assert_eq!(leftovers(dir.path()), Vec::<String>::new());
     }
 
-    /// #743 (`status_write_is_atomic_under_concurrent_reads`, Windows, `NotFound` at the reader): the writer's last resort,
-    /// `std::fs::rename`, can leave the name missing while the temp file waits to take it, and no retry of the POSIX
-    /// rename can close that. The replace step is given as one that removes the target, waits 5 ms and renames, so the
-    /// window is open on every OS and for every write: a reader still gets the old file or the new one.
+    /// #743 (`status_write_is_atomic_under_concurrent_reads`, Windows, `NotFound` at the reader): the reader's safety
+    /// net. The writer keeps the name present (`sys::replace_file`: POSIX rename, `std::fs::rename` only where that
+    /// cannot be done at all), but a replace of another writer or a filesystem that does leave it missing for a moment
+    /// is not ours to promise about. The replace step is given as one that removes the target, waits 5 ms and renames,
+    /// so the window is open on every OS and for every write: a reader still gets the old file or the new one.
     #[test]
     fn a_reader_survives_a_replace_that_leaves_the_name_missing_for_a_while() {
         let dir = tempfile::tempdir().unwrap();

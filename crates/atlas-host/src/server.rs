@@ -921,7 +921,9 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     let mut shutdown = false;
 
     let mut watchers: HashMap<String, notify::RecommendedWatcher> = HashMap::new();
-    let mut attached: Vec<Arc<Session>> = Vec::new();
+    // Ids, not sessions: a held `Arc<Session>` kept a closed terminal's ring and buffers until the connection ended,
+    // and the desktop's connection lives as long as the app. A session gone from the registry has nothing to detach.
+    let mut attached: std::collections::HashSet<String> = Default::default();
     let mut link = crate::lab::Link::default();
     while let Some(line) = read_line(&mut lines, LongLine::Skip).await {
         // `""` is a line over the limit, skipped. Its id is unreadable, so no reply can
@@ -973,7 +975,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                 output,
             } => hub.get(&pty).map(|s| {
                 let info = s.attach(conn_id, tx.clone(), replay, output);
-                attached.push(s);
+                attached.insert(pty);
                 info
             }),
             HostCmd::PtyAttachRaw { pty, replay } => {
@@ -1016,8 +1018,10 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
         };
         let _ = tx.force(protocol::reply(id, res));
     }
-    for s in attached {
-        s.detach(conn_id);
+    for pty in attached {
+        if let Ok(s) = hub.get(&pty) {
+            s.detach(conn_id);
+        }
     }
     hub.subscribers.lock().remove(&conn_id);
     crate::lsp::connection_closed(&hub, conn_id).await;
@@ -2148,6 +2152,48 @@ mod tests {
             }
         }
         assert_eq!(got, want);
+    }
+
+    /// RAM incident (#289, docs/perf/linux-webkit-round2.md): the desktop keeps ONE connection for its whole run and
+    /// attaches every terminal it opens to it. The connection kept an `Arc<Session>` per attach until it closed, so a
+    /// terminal that printed and was closed kept its 2 MiB ring and buffers: hostd grew ~0.2 MB per terminal, 20 -> 69
+    /// MB in a 40-minute session (120 open/print/close cycles: +28 MB with a view attached, +5 MB without one).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_closed_terminal_is_freed_while_the_connection_that_attached_it_stays_open() {
+        let (_tmp, client, s) = wire().await;
+        let (r, mut w) = ipc::split(s);
+        let mut lines = BufReader::new(r).lines();
+        let pty = client
+            .call(
+                "pty_create",
+                json!({"cwd": "/", "argv": ["/bin/sh", "-c", "head -c 300000 /dev/zero | tr '\\0' x; sleep 30"]}),
+            )
+            .await
+            .unwrap()["pty"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let attach = json!({"id": 1, "cmd": "pty_attach", "args": {"pty": pty, "replay": false, "output": false}});
+        w.write_all(format!("{attach}\n").as_bytes()).await.unwrap();
+        loop {
+            let l = tokio::time::timeout(atlas_core::scaling::HANG, lines.next_line())
+                .await
+                .expect("hostd went quiet")
+                .unwrap()
+                .expect("connection closed");
+            if serde_json::from_str::<Value>(&l).unwrap()["id"] == 1 {
+                break;
+            }
+        }
+        client.call("pty_kill", json!({"pty": pty})).await.unwrap();
+        let t0 = std::time::Instant::now();
+        while !crate::pty::RELEASED.lock().contains(&pty) {
+            assert!(
+                t0.elapsed() < std::time::Duration::from_secs(10),
+                "the connection still holds the killed terminal"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
     }
 
     /// Incident: a request over the line limit was dropped without a word (a big paste

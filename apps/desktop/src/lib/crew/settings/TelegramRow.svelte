@@ -11,6 +11,7 @@
 		type TelegramStatus,
 	} from "#lib/crew/settings/telegram.ts";
 	import { m } from "#lib/i18n/m.ts";
+	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 
 	let { hostKey }: { hostKey: string } = $props();
 
@@ -47,7 +48,11 @@
 		});
 	const remove = () =>
 		run(async () => {
-			if (!confirm(m.crew_settings_telegram_row_remove_confirm())) return;
+			const ok = await confirmDialog(m.crew_settings_telegram_row_remove_confirm(), {
+				confirmLabel: m.common_action_remove(),
+				destructive: true,
+			});
+			if (!ok) return;
 			await setTelegramToken(hostKey, null);
 			code = "";
 		});

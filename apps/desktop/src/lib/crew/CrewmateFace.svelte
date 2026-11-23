@@ -319,7 +319,11 @@
 			<path d="M190 262 Q214 286 238 262" stroke={ink} stroke-width="10" stroke-linecap="round" fill="none" />
 		{/if}
 
-		<g transform="translate(0 {enter.hat?.dy ?? 0}) rotate({p.hat} 214 60)" opacity={enter.hat?.alpha ?? 1}>
+		<g
+			class:hat-live={crewmateState === "working"}
+			transform="translate(0 {enter.hat?.dy ?? 0}) rotate({p.hat} 214 60)"
+			opacity={enter.hat?.alpha ?? 1}
+		>
 			<CrewmateHat hat={l.hat} color={l.color} />
 		</g>
 	</g>
@@ -387,28 +391,15 @@
 		transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
+	/* A sleeping crewmate is a settled state: its z's rest, fading as they rise, and do not loop. */
 	.z {
-		opacity: 0;
-		animation: zfloat 3s ease-out infinite;
+		opacity: 0.7;
 	}
 	.z2 {
-		animation-delay: 0.9s;
+		opacity: 0.45;
 	}
 	.z3 {
-		animation-delay: 1.8s;
-	}
-	@keyframes zfloat {
-		0% {
-			transform: translateY(0);
-			opacity: 0;
-		}
-		20% {
-			opacity: 0.7;
-		}
-		100% {
-			transform: translateY(-60px);
-			opacity: 0;
-		}
+		opacity: 0.25;
 	}
 
 	.paused,

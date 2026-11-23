@@ -67,8 +67,16 @@ function open() {
 		services_total: NAMES.length,
 	};
 	store.projects = [project];
-	store.configs.shop = { services: NAMES.map((name) => ({ name, enabled: true, port: null, depends_on: [] })) };
-	store.live.shop = { services: NAMES.map((n) => row(n, 1)), mode: "up", tunnel: null, events: [], operation: null };
+	store.configs.shop = {
+		services: NAMES.map((name) => ({ name, enabled: true, port: null, depends_on: [] })),
+	};
+	store.live.shop = {
+		services: NAMES.map((n) => row(n, 1)),
+		mode: "up",
+		tunnel: null,
+		events: [],
+		operation: null,
+	};
 	globalThis.__draws = [];
 	window.dispatchEvent(new Event("focus"));
 	metrics.sample(clock);

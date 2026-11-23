@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { BarChart, LineChart } from "@codeatlasdev/ui/charts";
+	import "./chartMotion.ts";
 	import { fmtMem } from "#lib/format.ts";
 	import { metrics } from "./metrics.svelte.ts";
 	import { slotLabels } from "./metrics.ts";

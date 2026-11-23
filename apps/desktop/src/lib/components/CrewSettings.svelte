@@ -28,6 +28,7 @@
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
 	import { m } from "#lib/i18n/m.ts";
+	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 
 	type Device = { node_id: string; name: string; revoked: boolean };
 
@@ -106,7 +107,13 @@
 	}
 
 	async function doRemoveServer(key: string, name: string) {
-		if (!confirm(m.settings_agents_crew_remove_confirm({ name }))) return;
+		if (
+			!(await confirmDialog(m.settings_agents_crew_remove_confirm({ name }), {
+				confirmLabel: m.common_action_remove(),
+				destructive: true,
+			}))
+		)
+			return;
 		try {
 			await crew.removeServer(key);
 			toast.success(m.settings_agents_crew_removed({ name }));

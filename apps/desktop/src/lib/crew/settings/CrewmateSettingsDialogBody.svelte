@@ -24,6 +24,7 @@
 	import AuditSection from "#lib/crew/settings/AuditSection.svelte";
 	import "#lib/crew/settings/settings.css";
 	import { m } from "#lib/i18n/m.ts";
+	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 
 	interface Props {
 		open?: boolean;
@@ -99,7 +100,13 @@
 
 	async function deleteCrewmate() {
 		if (!crew.selected || !crewmate) return;
-		if (!confirm(m.crew_settings_crewmate_dialog_delete_confirm({ name: crewmate.name }))) return;
+		if (
+			!(await confirmDialog(m.crew_settings_crewmate_dialog_delete_confirm({ name: crewmate.name }), {
+				confirmLabel: m.common_action_delete(),
+				destructive: true,
+			}))
+		)
+			return;
 		try {
 			await crew.deleteCrewmate(crew.selected.hostKey, crewmate.id);
 			open = false;

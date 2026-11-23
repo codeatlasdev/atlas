@@ -1,7 +1,7 @@
 ---
 title: "App desktop"
 source: desktop.md
-source_sha: "02d65c729cee8c52f28a77195fafd44b750152eb"
+source_sha: "c53e30bfca62700ecb61e5821cd24c3736b31d42"
 translation: machine
 ---
 
@@ -139,6 +139,11 @@ A janela principal é criada a partir do `tauri.conf.json` (`create: false`) no 
 
 - **O WebKitGTK nunca diz "oculta" no Wayland.** Uma janela sem foco e uma em outro workspace continuam com `document.visibilityState === "visible"`; o `requestAnimationFrame` segue rodando a ~60/s (medido no sway: 61,5/s num workspace que não está à vista, 61,6/s sem foco) e os timers de JS e os eventos de IPC continuam chegando (um chat em streaming num workspace oculto custou 34,8 % de um núcleo contra 36,5 % visível). O GTK3 não recebe sinal de oclusão do compositor, então a página não tem como saber que ninguém está olhando. Qualquer coisa no Atlas que deva pausar "quando oculto" depende, portanto, do **foco da janela mais o período de tolerância** do relógio do app (`lib/clock.svelte.ts`, `blurGraceMs`, 60 s), nunca de `document.hidden`: animações CSS, um chat em streaming e uma enxurrada de saída do terminal ignoram isso e continuam trabalhando para uma janela que ninguém vê. No macOS é diferente (o WKWebView informa a oclusão, veja Inicialização acima e as notas de janela deste arquivo).
 - **Quanto custa um Atlas ocioso** (WebKitGTK 2.54, build de debug, uma máquina; método, tabela por estado e dados brutos em [docs/perf/linux-webkit-study.md](perf/linux-webkit-study.md)): tela de boas-vindas 0,2 % de um núcleo, um projeto aberto 0,5 %; qualquer coisa que anime ou transmita custa bem mais, porque mantém o processo web, o processo de UI e o compositor do WebKit a 60 fps. `bun scripts/linux-idle-bench.ts` mede qualquer estado; o CI roda isso no llvmpipe (`scripts/linux-idle-gate.sh`, job "Desktop opens (Linux)") e falha quando um estado controlado passa do orçamento (`GATE_BUDGET` no script).
+### Movimento e janela em repouso
+
+Uma única animação CSS em execução mantém o processo web, o processo de UI e o compositor do WebKitGTK a 60 fps, por menor que seja (um ponto de 12 px: 13 % de um núcleo com GPU, 44 % com llvmpipe; `docs/perf/linux-webkit-study.md`). Por isso: **um estado estável não anima.** Um serviço, projeto ou pílula de atualização saudável e um tripulante dormindo ou parado ficam imóveis; só o que está mudando (um serviço iniciando, um tripulante trabalhando, um spinner) fica em loop, e uma barra que cresce se move em passos, não por uma `transition` a cada amostra. `steadyMotion.test.ts` e `steadyMotionProject.test.ts` montam os componentes reais com o CSS compilado e falham diante de qualquer animação `infinite` (ou transição em `transform`) numa renderização estável (`test/motion.ts` resolve a cascata, que o happy-dom não resolve).
+
+O WebKitGTK no Wayland nunca informa que uma janela sem foco, ou em outra área de trabalho, está oculta (`visibilityState` continua `visible`, o rAF segue rodando), então "pausar quando oculta" não pode depender de `document.hidden`. O relógio do app (`lib/clock.svelte.ts`) é o sinal: com a janela sem foco além de `blurGraceMs` (60 s) ou o documento oculto, ela está em *repouso*; o app para os próprios temporizadores, define `html[data-resting]` (o `app.css` pausa toda animação CSS sob ele) e avisa os loops por `clock.onRest`. O foco traz tudo de volta de uma vez.
 
 ## Projetos e worktrees
 

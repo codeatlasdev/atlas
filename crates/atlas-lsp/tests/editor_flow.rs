@@ -68,6 +68,7 @@ struct Rig {
 fn cfg() -> Config {
     Config {
         idle_shutdown: Duration::from_millis(300),
+        max_idle: 1,
         init_timeout: HANG,
         max_restarts: 3,
         restart_window: Duration::from_secs(60),

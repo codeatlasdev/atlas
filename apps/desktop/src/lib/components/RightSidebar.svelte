@@ -324,9 +324,10 @@
 		padding: 0 8px;
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
 	}
-	/* Windows: the caption buttons sit over this row's right end (WindowControls.svelte). */
+	/* The caption buttons sit over this row's right end (WindowControls.svelte); the band only widens the row's own
+	   padding, so a tiling WM keeps its 8px (#739). */
 	:global(html.custom-chrome) .tabs {
-		padding-right: var(--caption-controls);
+		padding-right: max(8px, var(--caption-controls));
 	}
 	.skel {
 		display: flex;

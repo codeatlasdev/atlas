@@ -8,15 +8,16 @@
 	import { WebLinksAddon } from "@xterm/addon-web-links";
 	import { WebglAddon } from "@xterm/addon-webgl";
 	import { Unicode11Addon } from "@xterm/addon-unicode11";
+	import { toast } from "@codeatlasdev/ui";
 	import { host } from "#lib/host.ts";
 	import { openPtyStream } from "#lib/ptyChannel.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { imeStagingKey, keepTextareaEmpty } from "#lib/xtermInput.ts";
-	import { copyText, keyAction } from "./terminal/clipboardKeys.ts";
+	import { copyText, keyAction, pasteClipboard } from "./terminal/clipboardKeys.ts";
 	import { browserFontEnv, usableFamilies } from "./terminal/xtermFont.ts";
 	import FindInput from "./FindInput.svelte";
-	import { IS_MAC, primaryKey } from "#lib/keys.ts";
+	import { IS_MAC, kbd, primaryKey } from "#lib/keys.ts";
 	import { xtermKey } from "#lib/termKeys.ts";
 	import { ptyStream } from "#lib/ptyStream.ts";
 	import { hostEvents } from "#lib/hostEventsApp.ts";
@@ -168,10 +169,7 @@
 				e.preventDefault();
 				if (clip === "copy") void copyText(t.getSelection());
 				else if (clip === "paste" && !readonly)
-					void navigator.clipboard.readText().then(
-						(x) => t.paste(x),
-						() => {},
-					);
+					void pasteClipboard(t, () => toast.error(m.workbench_term_paste_denied({ key: kbd("cmd-v") })));
 				return false;
 			}
 			if (e.type !== "keydown") return true;

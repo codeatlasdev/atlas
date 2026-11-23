@@ -315,7 +315,9 @@ jobs:
           unset WATCHDOG_TOKEN
           stop_watchdog() { touch watchdog.stop; sleep 6; kill "$watchdog" 2>/dev/null || true; }
           trap stop_watchdog EXIT
-          cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
+          # The tests run with the PATH of a stock PowerShell: no sh, bash or sleep (#260). Git Bash stays the shell of this step.
+          stock=$(pwsh -NoProfile -File scripts/ci-stock-path.ps1)
+          PATH=$(cygpath -u -p "$stock") cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
 
       - name: Doctests
         if: ${{ needs.plan.outputs.tested != 'true' }}
@@ -422,7 +424,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -440,6 +442,21 @@ jobs:
         uses: ./.github/actions/apt-packages
         with:
           packages: ffmpeg
+
+      # The flicker-sweep fixture tests run the real `atlas config check` and `atlas down` (target/debug/atlas) on Linux and
+      # Windows too (#260). Same cache as the Rust jobs, saved from main only.
+      - name: Rust toolchain
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
+
+      - name: Build the CLI
+        shell: bash
+        run: cargo build --locked -p atlas-cli
 
       - name: PyYAML (scripts/test-labels.sh)
         shell: bash

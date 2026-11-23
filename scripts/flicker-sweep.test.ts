@@ -1,8 +1,7 @@
 // Incident: the site videos showed flicker the app's own checks never saw. The sweep is the guard; these tests run the
 // REAL script as a process (no app needed) and check what a release relies on: that a flickering recording exits 1 with a
 // timestamp, that a clean one exits 0, and that the list of surfaces stays complete. Recordings are real ffmpeg output.
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATLAS, fixtures } from "./flicker-sweep-fixtures.ts";
@@ -111,11 +110,14 @@ describe("the surface list", () => {
 	});
 });
 
-// The fixtures live under /private/tmp and need a built atlas: they belong to the macOS sweep.
-describe.skipIf(process.platform !== "darwin")("the fixture projects", () => {
+// The fixtures need a built atlas (`cargo build -p atlas-cli`). The "Repo scripts" job builds it on Linux and Windows (#260), so
+// in CI a missing binary fails; on a dev machine that has not built it the tests are skipped, not red.
+const noAtlas = !existsSync(ATLAS) && !process.env.CI;
+describe.skipIf(noAtlas)("the fixture projects", () => {
 	// Incident (first full run): the fixture's action used key `m`, a built-in dashboard key, so atlas.yaml was invalid, the
 	// stack never started and the "Panel" surface was filmed with no services at all while reporting a clean pass.
 	test("every fixture atlas.yaml passes the real validator (`atlas config`)", () => {
+		expect(existsSync(ATLAS), `${ATLAS} is missing: run cargo build -p atlas-cli`).toBe(true);
 		const fx = fixtures();
 		try {
 			for (const root of fx.roots) {
@@ -128,13 +130,14 @@ describe.skipIf(process.platform !== "darwin")("the fixture projects", () => {
 	});
 });
 
-describe.skipIf(process.platform !== "darwin")("fixtures.cleanup leaves no process behind", () => {
+describe.skipIf(noAtlas)("fixtures.cleanup leaves no process behind", () => {
 	// Incident (three full sweep runs): the app starts each fixture stack as a detached `atlas dev --runner` (ppid 1). Stopping
 	// the agent instance does not stop them, so every run leaked a runner with its services. cleanup() must `atlas down`.
 	const alive = (root: string) => Bun.spawnSync(["pgrep", "-f", "--", `dev --runner --dir ${root}`]).stdout.toString().trim().split("\n").filter(Boolean);
 
-	// Windows has no pgrep, so the probe saw nothing and the test leaked the runner it started; the sweep is macOS only.
+	// Windows has no pgrep, so the probe saw nothing and the test leaked the runner it started.
 	test.skipIf(process.platform === "win32")("a running fixture stack is stopped by cleanup()", async () => {
+		expect(existsSync(ATLAS), `${ATLAS} is missing: run cargo build -p atlas-cli`).toBe(true);
 		const fx = fixtures();
 		const root = fx.roots[1]!; // sweep-docs: one small service
 		const up = Bun.spawnSync([ATLAS, "dev", "--detach", "--dir", root], { stdout: "pipe", stderr: "pipe" });

@@ -1,0 +1,12 @@
+{
+	"empty_history_then_dropped": [
+		"01",
+		"0078",
+		"02"
+	],
+	"history_then_live_then_exit": [
+		"0150533e20c3a91b5b33316d6469720d0a",
+		"03"
+	],
+	"history_utf8": "PS> é\u001b[31m"
+}

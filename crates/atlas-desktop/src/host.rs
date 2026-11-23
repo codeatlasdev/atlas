@@ -6,9 +6,8 @@
 //! to the host that created it; else a path arg (`cwd`/`path`/`from`) goes to the
 //! host of the registry entry whose root contains it; else `local`.
 //!
-//! Events: `pty://<id>` `{data, replay}` (base64), `host://event` for
-//! `pty_title`/`pty_exit`/`fs_event`, `host://reconnected {host}` after a reconnect
-//! (the frontend re-attaches its terminals).
+//! Events: `host://event` for `pty_title`/`pty_exit`/`fs_event`, `host://reconnected {host}` after a
+//! reconnect (the frontend re-attaches its terminals). Terminal output is not an event: see `pty_stream.rs`.
 //!
 //! The local daemon outlives app updates, so on every (re)connect of it `reconcile` compares
 //! it with this app (`atlas_host::upgrade::decide`) and acts: live `upgrade`, silent restart
@@ -402,7 +401,7 @@ impl HostHub {
             .insert(host.to_string(), why.to_string());
     }
 
-    fn route(&self, args: &Value) -> String {
+    pub(crate) fn route(&self, args: &Value) -> String {
         if let Some(h) = args["host"].as_str() {
             return h.to_string();
         }
@@ -575,62 +574,11 @@ impl HostHub {
     }
 }
 
-/// Terminal output waiting for the next frame (`pty_batch.rs`): one event per pty per frame instead of one per
-/// hostd chunk, which on WebKitGTK (Linux) froze the app with two busy terminals.
-static PTY_OUT: std::sync::LazyLock<Mutex<crate::pty_batch::PtyBatcher>> =
-    std::sync::LazyLock::new(Default::default);
-/// About one display frame.
-const PTY_FLUSH: Duration = Duration::from_millis(16);
-
-fn flush_pty_output(app: &AppHandle) {
-    use base64::Engine;
-    let out = PTY_OUT.lock().drain();
-    for b in out {
-        // Only the main window shows terminals; `emit` also evaluated every chunk in the tray webview.
-        let _ = app.emit_to(
-            "main",
-            &format!("pty://{}", b.pty),
-            json!({
-                "data": base64::engine::general_purpose::STANDARD.encode(&b.bytes),
-                "replay": b.replay
-            }),
-        );
-    }
-}
-
-/// Start the per-frame flusher (once per app).
-fn start_pty_flusher(app: &AppHandle) {
-    static STARTED: std::sync::Once = std::sync::Once::new();
-    let app = app.clone();
-    STARTED.call_once(move || {
-        tauri::async_runtime::spawn(async move {
-            let mut tick = tokio::time::interval(PTY_FLUSH);
-            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            loop {
-                tick.tick().await;
-                if !PTY_OUT.lock().is_empty() {
-                    flush_pty_output(&app);
-                }
-            }
-        });
-    });
-}
-
 fn forward(app: &AppHandle, ev: &Value) {
     match ev["ev"].as_str() {
-        Some(k @ ("pty_output" | "pty_replay")) => {
-            use base64::Engine;
-            let pty = ev["pty"].as_str().unwrap_or_default();
-            let Ok(bytes) =
-                base64::engine::general_purpose::STANDARD.decode(ev["data"].as_str().unwrap_or(""))
-            else {
-                return;
-            };
-            start_pty_flusher(app);
-            if PTY_OUT.lock().push(pty, &bytes, k == "pty_replay") {
-                flush_pty_output(app);
-            }
-        }
+        // Terminal bytes never come this way: a view reads its own raw stream (`pty_stream.rs`), and the app's
+        // connection attaches without output.
+        Some("pty_output" | "pty_replay") => {}
         Some("agent_status") => {
             let _ = app.emit(
                 "agent://status",

@@ -1,7 +1,7 @@
 ---
 title: "Terminal GPU"
 source: terminal.md
-source_sha: "5ca8b905ec32d1793fde21b91501a9c5b4da7ec3"
+source_sha: "cb7e9bfff51da5278bcdad0b5514f9cdb2a7e47a"
 translation: machine
 ---
 
@@ -126,6 +126,8 @@ O evento `paste` da web view só expõe texto, então ⌘V é um gatilho e o hos
 | Vazia | nada |
 
 Um terminal não carrega um bitmap, então, para uma imagem, o programa lê a área de transferência por conta própria; o Atlas só manda que ele leia. Soltar um arquivo no terminal continua colando o caminho entre aspas. Terminais que usam xterm.js (hosts SSH, ou com Terminal rápido (GPU) desativado) colam só texto.
+
+**Como um terminal xterm.js recebe a saída (Linux, Windows, hosts SSH, Terminal rápido desligado).** Cada terminal abre o seu próprio stream bruto até o host dono do pty (`pty_attach_raw`, a mesma conexão que o terminal GPU lê; um host SSH pelo seu túnel) e `crates/atlas-desktop/src/pty_stream.rs` entrega os bytes à página como quadros binários num canal do Tauri (`pty_feed.rs`, decodificados por `lib/ptyChannel.ts`): sem JSON, sem base64 e sem um script executado por trecho. Um quadro é um byte de tipo (saída, histórico depois de um reset, "o hostd cortou este stream", "o programa terminou") e os bytes; no máximo um quadro por quadro de tela (16 ms) sai para um pty, e o primeiro byte de um pty quieto sai na hora. **Controle de fluxo:** a página confirma o que o xterm.js já processou (`pty_stream_ack`) e o Rust nunca tem mais de 2 MiB sem confirmação. Passado isso ele para de ler o socket, a fila bruta do hostd enche e o programa espera, como num terminal nativo, então uma enxurrada não faz a webview crescer (ela ia de 205 a 1.153 MB com `yes`). Nada é descartado em silêncio: um stream que o hostd corta (um leitor que não leu por 2 s) ou que nenhuma página confirma por 60 s termina com um marcador, e a vista se redesenha a partir do histórico do hostd.
 
 **Teclas da área de transferência em terminais xterm.js (Linux, hosts SSH).** Ctrl+Shift+C copia a seleção e Ctrl+Shift+V a cola (bracketed); Ctrl+C só copia enquanto há texto selecionado e, fora disso, continua sendo SIGINT. Com `terminal.copy_on_select` (ativado), selecionar também copia. A seleção PRIMARY (colar com o botão do meio) não é preenchida. O macOS mantém ⌘C/⌘V pelo menu Editar. Ctrl+Shift+V lê a área de transferência pela webview, então no Linux a janela do próprio app tem acesso a ela (as abas do navegador embutido nunca têm); se a leitura for negada mesmo assim, um aviso diz isso e Ctrl+V simples continua colando.
 

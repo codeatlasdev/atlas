@@ -28,10 +28,22 @@ pub struct Remotes {
     tunnels: Mutex<std::collections::HashMap<String, Child>>,
     status: Mutex<std::collections::HashMap<String, String>>,
     forwards: Mutex<Vec<(String, u16, u16, Child)>>,
+    /// Where each connected host's hostd socket (the tunnel's end) is and its token, for the dedicated raw
+    /// connections of terminal views (`pty_stream.rs`).
+    endpoints: Mutex<std::collections::HashMap<String, (PathBuf, String)>>,
 }
 
 pub fn host_id(alias: &str) -> String {
     format!("ssh:{alias}")
+}
+
+/// The tunnel socket and token of the connected SSH host `host` (`ssh:<alias>`).
+pub fn endpoint(app: &AppHandle, host: &str) -> Option<(PathBuf, String)> {
+    app.state::<Arc<Remotes>>()
+        .endpoints
+        .lock()
+        .get(host.strip_prefix("ssh:")?)
+        .cloned()
 }
 
 /// [`valid_target`] with the refusal in the display language: it is shown in Settings and the crew onboarding.
@@ -230,7 +242,13 @@ async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String
     for _ in 0..50 {
         tokio::time::sleep(Duration::from_millis(200)).await;
         match HostClient::connect(&sock, &token, "desktop").await {
-            Ok(c) => return Ok(c),
+            Ok(c) => {
+                app.state::<Arc<Remotes>>()
+                    .endpoints
+                    .lock()
+                    .insert(alias.to_string(), (sock.clone(), token.clone()));
+                return Ok(c);
+            }
             Err(e) => last = format!("{e:#}"),
         }
     }

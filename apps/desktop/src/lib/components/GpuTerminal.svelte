@@ -15,7 +15,8 @@
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { termFocus } from "#lib/stores/termFocus.svelte.ts";
 	import { runCommand } from "#lib/keymap.svelte.ts";
-	import { fontStep, keyToSend, producesInput, termAction, type TermAction } from "#lib/termKeys.ts";
+	import { fontStep, keyToSend, nativeKey, producesInput, termAction, type TermAction } from "#lib/termKeys.ts";
+	import { IS_MAC } from "#lib/keys.ts";
 	import { watchSlot } from "#lib/native/slot.ts";
 	import { shellQuote } from "./terminal/geometry.ts";
 	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
@@ -180,6 +181,15 @@
 		if (action) {
 			e.preventDefault();
 			return runTermAction(action);
+		}
+		// Linux: Ctrl+Shift+C / V / F (the view takes no input of its own; the page forwards).
+		const chord = nativeKey(e, IS_MAC);
+		if (chord) {
+			e.preventDefault();
+			if (chord === "search") return openSearch();
+			if (chord === "copy") return runTermAction({ kind: "copy" });
+			if (!readonly) void invoke("term_paste_clipboard", { tab }).catch(quiet);
+			return;
 		}
 		if (readonly) return void (producesInput(e) && e.preventDefault());
 		const send = keyToSend(e, prefs.value.terminal.option_as_alt, optionSide);

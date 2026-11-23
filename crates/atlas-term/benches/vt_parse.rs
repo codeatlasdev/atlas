@@ -151,7 +151,10 @@ fn main() {
     eprintln!("calibration {calib:.0} MB/s, load {:.2}", load1());
     let mut rows = Vec::new();
     for name in CORPORA {
-        if a.only.as_ref().is_some_and(|o| !o.iter().any(|n| n == name)) {
+        if a.only
+            .as_ref()
+            .is_some_and(|o| !o.iter().any(|n| n == name))
+        {
             continue;
         }
         let data = std::fs::read(dir.join(format!("{name}.bin"))).expect("corpus file");

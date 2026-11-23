@@ -15,7 +15,7 @@
 	"cmd_misc_dc_atlas_elsewhere_fix": "Fix of the new-terminal check when another `atlas` comes first on PATH.",
 	"cmd_misc_dc_atlas_found": "Detail of the new-terminal check when it passes: the path a new terminal resolves `atlas` to.",
 	"cmd_misc_dc_atlas_missing": "Detail of the new-terminal check when it fails (the case behind issue #265).",
-	"cmd_misc_dc_atlas_missing_fix": "Fix of the new-terminal check when it fails; {command} is the curl line of the installer.",
+	"cmd_misc_dc_atlas_missing_fix": "Fix of the new-terminal check when it fails; {command} is the installer line (curl on macOS and Linux, irm on Windows).",
 	"cmd_misc_dc_fix_label": "Label before the command or step that fixes a failing check in `atlas doctor`, under the check's label.",
 	"cmd_misc_dc_host_ok": {
 		"description": "Detail of the terminal-host check when hostd answers the handshake.",
@@ -46,13 +46,13 @@
 	"cmd_misc_dc_unknown_version": "Shown as the version of an installed desktop app whose version could not be read: `<path> is an unknown version, the CLI is 1.5.0`.",
 	"cmd_misc_dc_why_hostd_silent": "Cause of a silent hostd: the handshake timed out.",
 	"cmd_misc_dc_why_probe_not_run": "Cause shown when the probe thread failed to run.",
+	"cmd_misc_dc_why_registry": {
+		"description": "Cause of a failed probe on Windows: neither the system nor the user Path value of the registry (what a new terminal gets its PATH from) could be read.",
+		"platform": "windows"
+	},
 	"cmd_misc_dc_why_shell_no_path": "Cause of a failed probe: the shell answered without a PATH.",
 	"cmd_misc_dc_why_shell_silent": "Cause of a failed probe: the login shell took too long.",
 	"cmd_misc_dc_why_start_failed": "Cause of a failed probe: the login shell could not be started.",
-	"cmd_misc_dc_why_windows": {
-		"description": "Cause of a skipped probe: a new terminal on Windows reads the registry's Path, not a shell rc.",
-		"platform": "windows"
-	},
 	"cmd_misc_dev_runner_already": "Output of `atlas dev --detach` when a runner already owns the project. The two commands stay as typed.",
 	"cmd_misc_dev_runner_started": "Output of `atlas dev --detach` once the background runner answers. The two commands stay as typed.",
 	"cmd_misc_doctor_dir_row": "Row of an Atlas temp or cache folder: its size against its cap.",

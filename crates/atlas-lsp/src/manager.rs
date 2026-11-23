@@ -98,6 +98,10 @@ pub enum State {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub idle_shutdown: Duration,
+    /// Instances with no open document that may wait out `idle_shutdown` at once; when one more goes idle the
+    /// longest idle ones stop immediately. A TypeScript server is 0.3-1.3 GB, and browsing worktrees leaves one per
+    /// worktree (docs/perf/linux-webkit-round2.md).
+    pub max_idle: usize,
     pub init_timeout: Duration,
     /// Restarts allowed inside `restart_window` before the server is left `crashed`.
     pub max_restarts: usize,
@@ -113,6 +117,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             idle_shutdown: Duration::from_secs(300),
+            max_idle: 1,
             init_timeout: Duration::from_secs(120),
             max_restarts: 3,
             restart_window: Duration::from_secs(60),
@@ -174,6 +179,8 @@ struct InstState {
     docs: Vec<String>,
     restarts: VecDeque<Instant>,
     idle_gen: u64,
+    /// Order in which instances went idle (`Inner::idle_seq`); 0 = never idle.
+    idle_at: u64,
     /// How the running (or last started) process was launched.
     launch: Option<(Source, Option<String>)>,
 }
@@ -303,6 +310,7 @@ struct Inner {
     insts: Mutex<HashMap<(String, String), Arc<Inst>>>,
     docs: Mutex<HashMap<String, Doc>>,
     next_gen: AtomicU64,
+    idle_seq: AtomicU64,
     /// Request ids chosen by clients (`rid`) → (peer, server request id), for `lsp_cancel`.
     cancels: Mutex<HashMap<String, (Peer, i64)>>,
     edit_acks: Mutex<HashMap<String, oneshot::Sender<bool>>>,
@@ -435,6 +443,7 @@ impl Manager {
             insts: Mutex::default(),
             docs: Mutex::default(),
             next_gen: AtomicU64::new(1),
+            idle_seq: AtomicU64::new(1),
             cancels: Mutex::default(),
             edit_acks: Mutex::default(),
             installing: Mutex::default(),
@@ -723,6 +732,7 @@ impl Manager {
                             docs: vec![],
                             restarts: VecDeque::new(),
                             idle_gen: 0,
+                            idle_at: 0,
                             launch: None,
                         }),
                         shared,
@@ -1151,6 +1161,7 @@ impl Inner {
         let gen_at = {
             let mut st = inst.st.lock();
             st.idle_gen += 1;
+            st.idle_at = self.idle_seq.fetch_add(1, Ordering::Relaxed);
             st.idle_gen
         };
         let me = self.clone();
@@ -1158,22 +1169,50 @@ impl Inner {
         let grace = self.cfg.clock.sleep(self.cfg.idle_shutdown);
         tokio::spawn(async move {
             grace.await;
-            let still_idle = {
-                let st = inst.st.lock();
-                st.idle_gen == gen_at && st.docs.is_empty()
-            };
-            if !still_idle || me.closed.load(Ordering::Acquire) {
-                return;
-            }
-            me.insts
-                .lock()
-                .remove(&(inst.server.name.to_string(), inst.root.clone()));
-            if let Some(live) = inst.live() {
-                server::shutdown(&live).await;
-            }
-            inst.set_phase(crashed("idle"));
-            me.notify_status();
+            me.stop_if_idle(&inst, gen_at).await;
         });
+        self.evict_idle_over_cap();
+    }
+
+    /// Stop the instance unless a document opened (or a newer idle period began) since `gen_at`.
+    async fn stop_if_idle(&self, inst: &Arc<Inst>, gen_at: u64) {
+        let still_idle = {
+            let st = inst.st.lock();
+            st.idle_gen == gen_at && st.docs.is_empty()
+        };
+        if !still_idle || self.closed.load(Ordering::Acquire) {
+            return;
+        }
+        self.insts
+            .lock()
+            .remove(&(inst.server.name.to_string(), inst.root.clone()));
+        if let Some(live) = inst.live() {
+            server::shutdown(&live).await;
+        }
+        inst.set_phase(crashed("idle"));
+        self.notify_status();
+    }
+
+    /// More idle instances than `max_idle`: the ones idle longest stop now, not after their grace.
+    fn evict_idle_over_cap(self: &Arc<Self>) {
+        let mut idle: Vec<(u64, u64, Arc<Inst>)> = self
+            .insts
+            .lock()
+            .values()
+            .filter_map(|i| {
+                let st = i.st.lock();
+                (st.docs.is_empty() && st.idle_at > 0).then(|| (st.idle_at, st.idle_gen, i.clone()))
+            })
+            .collect();
+        if idle.len() <= self.cfg.max_idle {
+            return;
+        }
+        idle.sort_by_key(|(at, _, _)| *at);
+        let over = idle.len() - self.cfg.max_idle;
+        for (_, gen_at, inst) in idle.into_iter().take(over) {
+            let me = self.clone();
+            tokio::spawn(async move { me.stop_if_idle(&inst, gen_at).await });
+        }
     }
 
     /// The server process went away. Restart if documents are open and the budget allows.

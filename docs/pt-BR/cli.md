@@ -1,7 +1,7 @@
 ---
 title: "Referência da CLI"
 source: cli.md
-source_sha: "fe58f715f9ce48105d34bcfafe0fc3fbe11a8379"
+source_sha: "4321aae7eafcedea5db564dbc7f193c4d2da498d"
 translation: machine
 ---
 
@@ -203,7 +203,7 @@ atlas doctor --hygiene [--dry-run | --fix] [--json]
 
 O `atlas doctor` simples verifica a instalação, cada item com o único comando que o corrige, e sai com 1 quando algo está quebrado:
 
-- **novo terminal**: inicia o shell da sua conta do jeito que um terminal faz (Linux: interativo, não login; macOS: login) e pergunta qual `atlas` ele roda. Falha quando não há nenhum (rode o instalador de novo) e avisa quando outro `atlas` vem antes no `PATH` ou quando o shell não responde em 6 s.
+- **novo terminal**: inicia o shell da sua conta do jeito que um terminal faz (Linux: interativo, não login; macOS: login) e pergunta qual `atlas` ele roda. No Windows um novo terminal pega o `PATH` do registro, não de um shell; por isso o doctor lê o `Path` do sistema (`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`) e o `Path` do seu usuário (`HKCU\Environment`), expande referências como `%USERPROFILE%` e procura o `atlas.exe` ao longo deles, nessa ordem (com as extensões do `PATHEXT`). Falha quando não há nenhum (rode o instalador de novo) e avisa quando outro `atlas` vem antes no `PATH` ou quando o shell não responde em 6 s (no Windows: quando o registro não pode ser lido).
 - **este terminal**: se `~/.atlas/bin` está no `PATH` deste shell (imprime a linha `export`).
 - **app desktop**: instalado e na versão da CLI (`atlas update`); ausente em uma sessão gráfica, sugere `atlas desktop`.
 - **host de terminais**: se o hostd responde (ele inicia sob demanda, então é só um aviso).

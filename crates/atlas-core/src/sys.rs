@@ -634,31 +634,36 @@ mod imp {
     /// new file as `MoveFileExW` does), and `std::fs::rename` when that is refused too or there is nothing to replace.
     /// Neither is a promise to a reader opening the name at that instant, so readers keep [`crate::fs::read_replaced`].
     pub fn fallback_replace(from: &Path, to: &Path) -> io::Result<()> {
-        use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
-        let wide = |p: &Path| -> Vec<u16> { p.as_os_str().encode_wide().chain(Some(0)).collect() };
-        if to.exists() {
-            let (replaced, replacement) = (wide(to), wide(from));
-            // SAFETY: both are NUL-terminated and live for the call; the backup, exclude and reserved arguments are
-            // null, as documented.
-            let ok = unsafe {
-                ReplaceFileW(
-                    replaced.as_ptr(),
-                    replacement.as_ptr(),
-                    std::ptr::null(),
-                    0,
-                    std::ptr::null(),
-                    std::ptr::null(),
-                )
-            };
-            if ok != 0 {
-                return Ok(());
-            }
+        if to.exists() && replace_file_w(from, to).is_ok() {
+            return Ok(());
         }
         std::fs::rename(from, to)
     }
 
-    fn posix_rename(from: &Path, to: &Path) -> io::Result<()> {
+    pub fn replace_file_w(from: &Path, to: &Path) -> io::Result<()> {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
+        let wide = |p: &Path| -> Vec<u16> { p.as_os_str().encode_wide().chain(Some(0)).collect() };
+        let (replaced, replacement) = (wide(to), wide(from));
+        // SAFETY: both are NUL-terminated and live for the call; the backup, exclude and reserved arguments are
+        // null, as documented.
+        let ok = unsafe {
+            ReplaceFileW(
+                replaced.as_ptr(),
+                replacement.as_ptr(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    pub(super) fn posix_rename(from: &Path, to: &Path) -> io::Result<()> {
         use std::os::windows::ffi::OsStrExt;
         use std::os::windows::fs::OpenOptionsExt;
         use windows_sys::Win32::Storage::FileSystem::{
@@ -1244,6 +1249,57 @@ mod tests {
             assert!(opens > 0, "the watcher never opened the file");
             missing
         }
+    }
+
+    /// TEMPORARY DIAGNOSTIC (#744): what a reader's open gets while each replace path runs, by Windows error code.
+    #[cfg(windows)]
+    #[test]
+    fn diagnostic_what_a_reader_gets_per_replace_path() {
+        use std::collections::BTreeMap;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        type Replace = fn(&Path, &Path) -> io::Result<()>;
+        let paths: [(&str, Replace); 3] = [
+            ("posix_rename", imp::posix_rename),
+            ("ReplaceFileW", imp::replace_file_w),
+            ("std::fs::rename", |a, b| std::fs::rename(a, b)),
+        ];
+        let mut report = String::new();
+        for (name, replace) in paths {
+            let dir = tempfile::tempdir().unwrap();
+            let to = dir.path().join("status.json");
+            std::fs::write(&to, "0").unwrap();
+            let stop = std::sync::Arc::new(AtomicBool::new(false));
+            let watcher = {
+                let (to, stop) = (to.clone(), stop.clone());
+                std::thread::spawn(move || {
+                    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
+                    while !stop.load(Ordering::Relaxed) {
+                        let key = match std::fs::read(&to) {
+                            Ok(_) => "ok".to_string(),
+                            Err(e) => format!("{:?}/{:?}", e.kind(), e.raw_os_error()),
+                        };
+                        *seen.entry(key).or_default() += 1;
+                    }
+                    seen
+                })
+            };
+            let mut failed = BTreeMap::<String, u32>::new();
+            for n in 1..300 {
+                let from = dir.path().join(format!("status.json.tmp-{n}"));
+                std::fs::write(&from, n.to_string()).unwrap();
+                if let Err(e) = replace(&from, &to) {
+                    *failed
+                        .entry(format!("{:?}/{:?}", e.kind(), e.raw_os_error()))
+                        .or_default() += 1;
+                }
+            }
+            stop.store(true, Ordering::Relaxed);
+            report += &format!(
+                "\n{name}: reader {:?}, replace failures {failed:?}",
+                watcher.join().unwrap()
+            );
+        }
+        panic!("DIAGNOSTIC{report}");
     }
 
     #[cfg(target_os = "linux")]

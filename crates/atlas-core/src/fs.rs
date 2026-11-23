@@ -345,7 +345,12 @@ mod tests {
         };
         let delete_then_rename = |from: &Path, to: &Path| {
             fs::remove_file(to)?;
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            // Held open by spinning, not sleeping: a sleep on a loaded CI runner (macOS) can outlast the reader's
+            // whole budget, which says nothing about the reader.
+            let until = std::time::Instant::now() + std::time::Duration::from_millis(3);
+            while std::time::Instant::now() < until {
+                std::hint::spin_loop();
+            }
             fs::rename(from, to)
         };
         for n in 1..40 {

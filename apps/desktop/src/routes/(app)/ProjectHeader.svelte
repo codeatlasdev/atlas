@@ -253,9 +253,10 @@
 	:global(html.opaque-window) header.inset {
 		padding-left: 10px;
 	}
-	/* Windows: the caption buttons sit over the row's right end (WindowControls.svelte). */
+	/* Windows and floating Linux: the caption buttons sit over the row's right end (WindowControls.svelte). The band
+	   only widens the row's own padding: a tiling WM has no buttons (--caption-controls 0px) and keeps its 10px (#739). */
 	:global(html.custom-chrome) header {
-		padding-right: var(--caption-controls);
+		padding-right: max(10px, var(--caption-controls));
 	}
 	header > :global(.crumbs) {
 		flex: 0 1 auto;

@@ -87,8 +87,9 @@
 	:global(html.opaque-window) header.inset {
 		padding-left: 10px;
 	}
+	/* The caption band only widens the row's own padding (see ProjectHeader.svelte, #739). */
 	:global(html.custom-chrome) header {
-		padding-right: var(--caption-controls);
+		padding-right: max(10px, var(--caption-controls));
 	}
 	.grow {
 		flex: 1;

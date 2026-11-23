@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { api } from "#lib/api.ts";
 import { IS_MAC } from "#lib/keys.ts";
 import { fromCapability, withSetting, type Capability } from "./gpuCapability.ts";
 
@@ -58,5 +57,5 @@ export function setGpuTerminal(on: boolean) {
 	}
 	if (!capability) return;
 	apply(withSetting(capability, on));
-	void api.settingsPatch({ gpuTerminal: on }).catch(() => {});
+	void invoke("settings_patch", { patch: { gpuTerminal: on } }).catch(() => {});
 }

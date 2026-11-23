@@ -1,7 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
 import fixture from "./__fixtures__/pty-frames.json";
-import { decodeFrame } from "./ptyChannel.ts";
+import { decodeFrame, orderedChannel } from "./ptyChannel.ts";
 import { ptyStream } from "./ptyStream.ts";
 
 /** The channel delivers each frame as an ArrayBuffer. */
@@ -52,5 +52,91 @@ describe("frames from the Rust feed", () => {
 
 	test("a frame kind this page does not know is an error, not a silent skip", () => {
 		expect(() => decodeFrame(frame("09"))).toThrow(/unknown terminal frame kind 9/);
+	});
+});
+
+// Tauri sends a frame of 1 KiB or more through a fetch (asynchronous) and a smaller one through an eval, so a later
+// frame can reach the page first; a terminal fed out of order draws garbage. `orderedChannel` is what the library's
+// `Channel` does, kept here so the library class stays out of startup JS.
+describe("orderedChannel", () => {
+	const setup = () => {
+		const got: number[] = [];
+		const released: number[] = [];
+		let raw;
+		const ch = orderedChannel(
+			{
+				transformCallback: (cb) => ((raw = cb), 42),
+				unregisterCallback: (id) => released.push(id),
+			},
+			(m: number) => got.push(m),
+		);
+		return {
+			ch,
+			got,
+			released,
+			send: (index: number, message?: number) =>
+				raw(message === undefined ? { index, end: true } : { index, message }),
+		};
+	};
+
+	test("messages arrive in the order Rust sent them, whatever order they reached the page", () => {
+		const { ch, got, send } = setup();
+		expect(ch.id).toBe(42);
+		send(2, 20);
+		send(1, 10);
+		expect(got).toEqual([]);
+		send(0, 0);
+		expect(got).toEqual([0, 10, 20]);
+		send(3, 30);
+		expect(got).toEqual([0, 10, 20, 30]);
+	});
+
+	test("the callback is released once the end message and everything before it were delivered", () => {
+		const { got, released, send } = setup();
+		send(1, 1);
+		send(2); // end, before message 0 arrived
+		expect(released).toEqual([]);
+		send(0, 0);
+		expect(got).toEqual([0, 1]);
+		expect(released).toEqual([42]);
+		const b = setup();
+		b.send(0, 0);
+		b.send(1); // end, in order
+		expect(b.released).toEqual([42]);
+	});
+
+	test("a muted channel delivers nothing more but keeps the callback until Rust ends it", () => {
+		const { ch, got, released, send } = setup();
+		send(0, 0);
+		ch.mute();
+		send(1, 1);
+		expect(got).toEqual([0]);
+		expect(released).toEqual([]);
+		send(2);
+		expect(released).toEqual([42]);
+	});
+
+	test("a handler that throws does not stall the channel, and the error is still reported", () => {
+		const got: number[] = [];
+		let raw;
+		orderedChannel(
+			{ transformCallback: (cb) => ((raw = cb), 1), unregisterCallback: () => {} },
+			(m: number) => {
+				got.push(m);
+				if (m === 0) throw new Error("boom");
+			},
+		);
+		const queued: (() => void)[] = [];
+		const real = globalThis.queueMicrotask;
+		globalThis.queueMicrotask = (f) => void queued.push(f);
+		try {
+			raw({ index: 0, message: 0 });
+			raw({ index: 1, message: 1 });
+		} finally {
+			globalThis.queueMicrotask = real;
+		}
+		expect(got).toEqual([0, 1]);
+		expect(queued).toHaveLength(1);
+		expect(queued[0]).toThrow("boom");
 	});
 });

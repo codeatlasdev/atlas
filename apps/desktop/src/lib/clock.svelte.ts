@@ -45,11 +45,13 @@ export function createClock(env: ClockEnv) {
 
 	const awake = () => env.visible() && !asleep;
 	let resting = false;
+	const restListeners = new Set<(resting: boolean) => void>();
 	/** Tell the page whether it rests, on change only (WebKitGTK on Wayland never reports hidden, so blur is the signal). */
 	const rest = () => {
 		if (resting === !awake()) return;
 		resting = !awake();
 		env.rest(resting);
+		for (const f of restListeners) f(resting);
 	};
 	const step = () => Math.min(...[...subs].map((s) => s.ms));
 
@@ -119,6 +121,15 @@ export function createClock(env: ClockEnv) {
 		/** Reactive "now", refreshed on every tick while someone is subscribed and visible. */
 		get now() {
 			return stamp;
+		},
+		/** Hidden, or blurred past the grace: loops of the app's own (rAF, timers) stop until `onRest(false)`. */
+		get resting() {
+			return resting;
+		},
+		/** Call `fn(resting)` whenever that changes. Returns the unsubscribe function. */
+		onRest(fn: (resting: boolean) => void): () => void {
+			restListeners.add(fn);
+			return () => restListeners.delete(fn);
 		},
 		/** Re-read "now" immediately (a window re-shown without a visibility change). */
 		refresh() {

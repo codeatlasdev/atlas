@@ -26,6 +26,7 @@ mod browser_keys_mac;
 #[cfg(windows)]
 mod browser_keys_win;
 mod capture;
+mod clipboard_scope;
 mod cmds;
 mod commit_msg;
 mod crash_card;
@@ -552,7 +553,9 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .find(|w| w.label == "main")
         .ok_or_else(|| tauri::Error::WindowNotFound)?;
     let (theme, script) = boot::window_boot(cache.as_ref());
-    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), cfg)?;
+    // The app's own page only: the browser tabs are separate webviews and never get the clipboard (#740).
+    let mut builder =
+        clipboard_scope::own_page(tauri::WebviewWindowBuilder::from_config(app.handle(), cfg)?);
     match agent_mode::current_store() {
         agent_mode::Store::Default => {}
         agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),

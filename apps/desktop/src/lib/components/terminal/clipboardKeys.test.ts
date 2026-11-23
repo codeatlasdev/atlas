@@ -1,7 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../../test/setup.ts";
 import { afterEach, expect, test } from "bun:test";
-import { copyText, keyAction } from "./clipboardKeys.ts";
+import { copyText, keyAction, pasteClipboard } from "./clipboardKeys.ts";
 
 // Incident (issue #28): on Linux the terminal is xterm.js and nothing in it wrote the clipboard, so neither
 // Ctrl+Shift+C nor Ctrl+C copied, and there was no Ctrl+Shift+V. Ctrl+C must keep meaning SIGINT.
@@ -104,4 +104,45 @@ test("copyText ignores an empty selection and never touches the clipboard", asyn
 	});
 	expect(await copyText("")).toBe(false);
 	expect(touched).toBe(false);
+});
+
+// --- reading the clipboard (Ctrl+Shift+V) ------------------------------------------------------------------------
+
+// Incident (issue #740): WebKitGTK denied navigator.clipboard.readText() and the rejection was swallowed after the
+// key had been preventDefault()ed, so Ctrl+Shift+V did nothing at all and said nothing.
+const clipboard = (readText) =>
+	Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText } });
+
+test("pasteClipboard hands the clipboard text to the terminal (which brackets it)", async () => {
+	clipboard(async () => "echo PASTED\nline2");
+	const pasted = [];
+	let failed = 0;
+	await pasteClipboard({ paste: (t) => void pasted.push(t) }, () => failed++);
+	expect(pasted).toEqual(["echo PASTED\nline2"]);
+	expect(failed).toBe(0);
+});
+
+test("pasteClipboard says so when the read is denied, and pastes nothing", async () => {
+	clipboard(() => Promise.reject(new DOMException("denied", "NotAllowedError")));
+	const pasted = [];
+	let failed = 0;
+	await pasteClipboard({ paste: (t) => void pasted.push(t) }, () => failed++);
+	expect(failed).toBe(1);
+	expect(pasted).toEqual([]);
+});
+
+test("pasteClipboard says so when the webview has no async clipboard at all", async () => {
+	Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+	let failed = 0;
+	await pasteClipboard({ paste: () => {} }, () => failed++);
+	expect(failed).toBe(1);
+});
+
+test("pasteClipboard with an empty clipboard pastes nothing and is not a failure", async () => {
+	clipboard(async () => "");
+	const pasted = [];
+	let failed = 0;
+	await pasteClipboard({ paste: (t) => void pasted.push(t) }, () => failed++);
+	expect(pasted).toEqual([]);
+	expect(failed).toBe(0);
 });

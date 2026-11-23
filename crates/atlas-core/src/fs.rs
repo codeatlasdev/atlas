@@ -144,7 +144,11 @@ pub fn read_replaced(path: &Path) -> io::Result<Vec<u8>> {
             Err(e)
                 if attempt < 8
                     && e.kind() == io::ErrorKind::NotFound
-                    && replace_in_flight(path) => {}
+                    && replace_in_flight(path) =>
+            {
+                #[cfg(test)]
+                NOT_FOUND_RETRIES.with(|c| c.set(c.get() + 1));
+            }
             // The replace may have ended between the failed open and the look for its temp file: one more open.
             Err(e) if e.kind() == io::ErrorKind::NotFound => return fs::read(path),
             r => return r,
@@ -152,6 +156,12 @@ pub fn read_replaced(path: &Path) -> io::Result<Vec<u8>> {
         std::thread::sleep(std::time::Duration::from_millis(1 << attempt));
         attempt += 1;
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many `NotFound` opens this thread's [`read_replaced`] waited out (tests only): proof that a test met the gap.
+    static NOT_FOUND_RETRIES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// [`read_replaced`] as UTF-8 text.
@@ -340,7 +350,7 @@ mod tests {
                     assert!(got.parse::<u32>().is_ok(), "{got:?}");
                     opens += 1;
                 }
-                opens
+                (opens, NOT_FOUND_RETRIES.with(std::cell::Cell::get))
             })
         };
         let delete_then_rename = |from: &Path, to: &Path| {
@@ -363,9 +373,38 @@ mod tests {
             .unwrap();
         }
         done.store(true, Ordering::Relaxed);
-        assert!(reader.join().unwrap() > 0);
+        let (opens, rode_out) = reader.join().unwrap();
+        assert!(opens > 0);
+        // The test cannot pass by never meeting the gap: the reader met the missing name and waited it out. The window
+        // is 3 ms in each of 39 replaces, the reader opens continuously, and its first retries wait 1 ms and 2 ms: a
+        // hit takes two or three retries to recover, well inside its 250 ms budget.
+        assert!(
+            rode_out > 0,
+            "the reader never met the missing name in {opens} opens"
+        );
         assert_eq!(fs::read_to_string(&path).unwrap(), "39");
         assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+    }
+
+    /// What a caller sees when the replace is refused for good (Windows: the target or the new file held without delete
+    /// sharing for longer than the retries): an `Err` of the OS error, the old file whole under its name, no temp file
+    /// left. Every caller of `write_atomic` already takes an `io::Result` (propagated as the user's error, or dropped
+    /// by a best-effort writer that writes again on its next tick), so a lasting refusal is that and nothing worse.
+    #[test]
+    fn a_lasting_refusal_is_an_error_for_the_caller_and_costs_nothing_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        write_atomic(&path, b"old", Mode::Default).unwrap();
+        let err = write_atomic_via(&path, b"new", Mode::Default, |from, to| {
+            crate::sys::replace_file_via(from, to, |_, _| Err(io::Error::from_raw_os_error(5)))
+        })
+        .unwrap_err();
+        assert_eq!(err.raw_os_error(), Some(5));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+        assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+        // The next write, the refusal gone, lands.
+        write_atomic(&path, b"new", Mode::Default).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
     }
 
     /// A file nobody is replacing is "not found" (the status of a project that never ran), also beside the temp file

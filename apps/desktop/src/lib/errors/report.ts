@@ -8,6 +8,7 @@
  */
 
 import { m } from "#lib/i18n/m.ts";
+import { fingerprint } from "./fingerprint.ts";
 import { machineLines } from "./machine.ts";
 
 /** `{ locale: "en" }` for text that leaves the machine (an issue, an AI prompt), nothing for the screen. */
@@ -36,6 +37,8 @@ export interface ErrorReport {
 	context?: ErrorContext;
 	/** Title and hint of a report whose wording lives with its producer (the crash card), so the startup chunk does not carry it. */
 	headline?: { title: string; hint: string };
+	/** Names the bug across reports (`fingerprint.ts`); set where the producer knows better than the text does: a crash file carries its own. */
+	fingerprint?: string;
 }
 
 /** One thing the app did shortly before the error (a command, a host call, a navigation). */
@@ -530,6 +533,8 @@ function render(r: ErrorReport, b: Budget): string {
 	return [
 		"# Atlas desktop error",
 		"",
+		`Fingerprint: \`${fingerprintOf(r)}\``,
+		"",
 		"## Error",
 		...fence(redactText(clip(r.message, b.msg))),
 		"",
@@ -654,7 +659,10 @@ export function aiDiagnosePrompt(r: ErrorReport): string {
 	].join("\n");
 }
 
-/** Same error fired in a burst (a render loop, a timer) should surface once. */
-export function fingerprint(r: Pick<ErrorReport, "message" | "stack">): string {
-	return `${r.message}\n${r.stack.split("\n")[0] ?? ""}`;
+/**
+ * What names this bug across reports: the one the report carries, else the one of its message and stack. Same error
+ * fired in a burst (a render loop, a timer) surfaces once, and the issue body says it so a search finds the issue (#320).
+ */
+export function fingerprintOf(r: Pick<ErrorReport, "message" | "stack" | "fingerprint">): string {
+	return r.fingerprint ?? fingerprint(r.message, r.stack);
 }

@@ -10,7 +10,7 @@ import { gatherContext } from "./context.ts";
 import { hostErrorReport, parseDiagnostics } from "./diagnostics.ts";
 import { isHostFailure } from "#lib/hostText.ts";
 import {
-	fingerprint,
+	fingerprintOf,
 	isBenign,
 	messageOf,
 	RESTART_HOST,
@@ -76,7 +76,7 @@ class Errors {
 		const r = await this.enrich({ ...report(e, { where, origin }), version: await this.version() });
 		crumbs.add(`error: ${r.message.split("\n")[0]}`);
 		console.error(`[atlas] ${where}: ${r.message}`, e instanceof Error ? e : "");
-		const fp = fingerprint(r);
+		const fp = fingerprintOf(r);
 		const now = Date.now();
 		const prev = this.#seen.get(fp);
 		if (prev && now - prev.at < DEDUPE_MS) {

@@ -4,10 +4,11 @@ import { m } from "#lib/i18n/m.ts";
 import {
 	detailsText,
 	fileNames,
-	fingerprint,
+	fingerprintOf,
 	headline,
 	isBenign,
 	issueUrl,
+	markdownReport,
 	messageOf,
 	report,
 	scrub,
@@ -94,11 +95,36 @@ describe("report + issueUrl", () => {
 	});
 });
 
-describe("fingerprint", () => {
-	test("same message and top frame collide", () => {
-		const a = { message: "m", stack: "a\nb" };
-		expect(fingerprint(a)).toBe(fingerprint({ message: "m", stack: "a\nz" }));
-		expect(fingerprint(a)).not.toBe(fingerprint({ message: "n", stack: "a" }));
+describe("fingerprintOf", () => {
+	test("the same error at another line, port or version is one fingerprint (it folds a toast burst, and names the bug in an issue)", () => {
+		const a = {
+			message: "Port 24101 is in use (atlas 1.5.0-alpha.27)",
+			stack: "    at start (start.ts:12:3)",
+		};
+		const b = { message: "Port 3000 is in use (atlas 1.6.0)", stack: "    at start (start.ts:99:1)" };
+		expect(fingerprintOf(a)).toBe(fingerprintOf(b));
+		expect(fingerprintOf(a)).not.toBe(fingerprintOf({ ...a, message: "Something else" }));
+		expect(fingerprintOf(a)).not.toBe(fingerprintOf({ ...a, stack: "    at stop (stop.ts:1:1)" }));
+	});
+	test("a report that carries one (a crash file's) keeps it", () => {
+		expect(fingerprintOf({ message: "m", stack: "", fingerprint: "0123456789abcdef" })).toBe(
+			"0123456789abcdef",
+		);
+	});
+});
+
+describe("the fingerprint in the report", () => {
+	const r = { message: "Port 24101 is in use", stack: "    at start (start.ts:12:3)", where: "Editor" };
+	const fp = fingerprintOf(r);
+	test("every rendering says it, the smallest one included, so a search by it finds the issue", () => {
+		expect(markdownReport(r)).toContain(`Fingerprint: \`${fp}\``);
+		expect(markdownReport(r, 1)).toContain(`Fingerprint: \`${fp}\``);
+		expect(new URL(issueUrl(r)).searchParams.get("logs")).toContain(`Fingerprint: \`${fp}\``);
+	});
+	test("the one a report carries is the one it says", () => {
+		expect(markdownReport({ ...r, fingerprint: "0123456789abcdef" })).toContain(
+			"Fingerprint: `0123456789abcdef`",
+		);
 	});
 });
 

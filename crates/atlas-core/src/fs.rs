@@ -13,11 +13,33 @@ fn tmp_sibling(path: &Path) -> PathBuf {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(format!(
-        ".tmp-{}-{}",
+        "{TMP_MARK}{}-{}",
         std::process::id(),
         SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     path.with_file_name(name)
+}
+
+const TMP_MARK: &str = ".tmp-";
+
+/// Is a [`write_atomic`] of `path` between creating its temp file and finishing the rename? The temp file is the
+/// sign: it exists for the whole replace, and a writer that crashed leaves one behind (a reader then waits its
+/// retries for nothing, a few tens of ms).
+fn replace_in_flight(path: &Path) -> bool {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return false;
+    };
+    let prefix = format!("{}{TMP_MARK}", name.to_string_lossy());
+    let dir = if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    };
+    fs::read_dir(dir).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().starts_with(&prefix))
+    })
 }
 
 /// Who may read the replaced file.
@@ -48,6 +70,17 @@ impl Mode {
 /// never wider at any moment, then set again because the umask may have narrowed it). On any error
 /// the target is untouched and the temp file is removed.
 pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
+    write_atomic_via(path, data, mode, crate::sys::replace_file)
+}
+
+/// [`write_atomic`] with the replace step given: the seam that lets a test run the step Windows falls back to when the
+/// POSIX rename is refused (`std::fs::rename`, which can leave the name missing for a moment) on every OS.
+fn write_atomic_via(
+    path: &Path,
+    data: &[u8],
+    mode: Mode,
+    replace: impl FnOnce(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir)?;
     }
@@ -70,9 +103,9 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
         f.write_all(data)?;
         f.sync_all()?;
         drop(f);
-        // Replaces an existing target on every platform, and on Windows without a moment in which a reader opening
-        // the target finds it missing (#545).
-        crate::sys::replace_file(&tmp, path)
+        // Replaces an existing target on every platform. On Windows the POSIX rename leaves no moment in which the name
+        // is missing, but its fallback can (#545, #743): readers cover that with [`read_replaced`].
+        replace(&tmp, path)
     })();
     if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
@@ -90,21 +123,29 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
 }
 
 /// Read a file that another process replaces with [`write_atomic`] (`.tui-status.json` every second, the metrics and
-/// history files). On Unix a plain read. On Windows, an open that races the replace can be refused with "Access is
-/// denied": the open had already found the old file when the rename marked it for deletion (`STATUS_DELETE_PENDING`),
-/// a window the writer cannot close (#545, seen on CI after the POSIX rename and its retries landed). That refusal is
-/// retried briefly (1, 2, 4, 8, 16 ms); the next open finds the new file. `NotFound` is not retried: a file that does
-/// not exist is the common answer (no run) and must stay fast.
+/// history files): the old content or the new one, never an error the replace itself causes. Two windows exist on
+/// Windows, both retried briefly (1, 2, 4... ms), after which the next open finds the new file:
+/// - "Access is denied": the open had already found the old file when the rename marked it for deletion
+///   (`STATUS_DELETE_PENDING`), which the writer cannot close (#545). Up to 5 retries.
+/// - `NotFound`: the writer's last resort, `std::fs::rename` (`MoveFileExW`, used when the POSIX rename is refused for
+///   good or outlasts its retries), does not promise that the name stays (#743). Retried while the writer's temp
+///   file exists, up to 8 retries (about 250 ms). A file that does not exist and has no replace in flight is the
+///   common answer (no run), and is returned at once.
 pub fn read_replaced(path: &Path) -> io::Result<Vec<u8>> {
     let mut attempt = 0;
     loop {
         match fs::read(path) {
-            Err(e) if attempt < 5 && replaced_meanwhile(&e) => {
-                std::thread::sleep(std::time::Duration::from_millis(1 << attempt));
-                attempt += 1;
-            }
+            Err(e) if attempt < 5 && replaced_meanwhile(&e) => {}
+            Err(e)
+                if attempt < 8
+                    && e.kind() == io::ErrorKind::NotFound
+                    && replace_in_flight(path) => {}
+            // The replace may have ended between the failed open and the look for its temp file: one more open.
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return fs::read(path),
             r => return r,
         }
+        std::thread::sleep(std::time::Duration::from_millis(1 << attempt));
+        attempt += 1;
     }
 }
 
@@ -270,6 +311,67 @@ mod tests {
         assert!(reader.join().unwrap() > 0);
         assert_eq!(fs::read_to_string(&path).unwrap(), "1999");
         assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+    }
+
+    /// #743 (`status_write_is_atomic_under_concurrent_reads`, Windows, `NotFound` at the reader): the writer's last resort,
+    /// `std::fs::rename`, can leave the name missing while the temp file waits to take it, and no retry of the POSIX
+    /// rename can close that. The replace step is given as one that removes the target, waits 5 ms and renames, so the
+    /// window is open on every OS and for every write: a reader still gets the old file or the new one.
+    #[test]
+    fn a_reader_survives_a_replace_that_leaves_the_name_missing_for_a_while() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        write_atomic(&path, b"0", Mode::Default).unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let reader = {
+            let (path, done) = (path.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut opens = 0u32;
+                while !done.load(Ordering::Relaxed) {
+                    let got = read_to_string_replaced(&path).unwrap_or_else(|e| {
+                        panic!("the name was missing for a reader after {opens} opens: {e}")
+                    });
+                    assert!(got.parse::<u32>().is_ok(), "{got:?}");
+                    opens += 1;
+                }
+                opens
+            })
+        };
+        let delete_then_rename = |from: &Path, to: &Path| {
+            fs::remove_file(to)?;
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            fs::rename(from, to)
+        };
+        for n in 1..40 {
+            write_atomic_via(
+                &path,
+                n.to_string().as_bytes(),
+                Mode::Default,
+                delete_then_rename,
+            )
+            .unwrap();
+        }
+        done.store(true, Ordering::Relaxed);
+        assert!(reader.join().unwrap() > 0);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "39");
+        assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+    }
+
+    /// A file nobody is replacing is "not found" (the status of a project that never ran), also beside the temp file
+    /// of another file; the retries are for a replace in flight only.
+    #[test]
+    fn a_missing_file_with_no_replace_in_flight_is_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        fs::write(dir.path().join("other.json.tmp-1-0"), "x").unwrap();
+        assert_eq!(
+            read_replaced(&path).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+        assert!(!replace_in_flight(&path));
+        fs::write(dir.path().join("status.json.tmp-1-0"), "x").unwrap();
+        assert!(replace_in_flight(&path));
+        assert!(!replace_in_flight(&dir.path().join("status")));
     }
 
     /// The old file lives on for whoever already holds it open (on every OS), and the name goes to the new one.

@@ -31,7 +31,8 @@ pub fn term_capability() -> serde_json::Value {
     })
 }
 
-const UNSUPPORTED: &str = "the GPU terminal is not available on this platform; this build uses xterm.js";
+const UNSUPPORTED: &str =
+    "the GPU terminal is not available on this platform; this build uses xterm.js";
 
 unsupported!(
     term_open,

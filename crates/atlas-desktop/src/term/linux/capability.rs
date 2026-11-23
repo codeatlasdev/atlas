@@ -53,7 +53,9 @@ pub fn wanted(env: Option<&str>, setting: Option<&serde_json::Value>) -> bool {
         Some("0" | "false" | "off") => return false,
         _ => {}
     }
-    setting.and_then(serde_json::Value::as_bool).unwrap_or(false)
+    setting
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
 }
 
 /// The session says Wayland (cheap, no GPU or display needed): what the main window's transparency decides on, before
@@ -182,7 +184,10 @@ mod tests {
     fn the_terminal_is_off_by_default_and_the_environment_wins_over_the_file() {
         assert!(!wanted(None, None), "off by default in this phase");
         assert!(wanted(None, Some(&serde_json::json!(true))));
-        assert!(!wanted(None, Some(&serde_json::json!("yes"))), "only a bool");
+        assert!(
+            !wanted(None, Some(&serde_json::json!("yes"))),
+            "only a bool"
+        );
         assert!(wanted(Some("1"), Some(&serde_json::json!(false))));
         assert!(!wanted(Some("0"), Some(&serde_json::json!(true))));
         assert!(wanted(Some(" on "), None));
@@ -218,7 +223,10 @@ mod tests {
         let on = |setting, clear| reply(Ok("gpu".into()), setting, clear).active;
         assert!(on(true, true));
         assert!(!on(false, true), "not asked for");
-        assert!(!on(true, false), "setting turned on this run: restart to make the window see-through");
+        assert!(
+            !on(true, false),
+            "setting turned on this run: restart to make the window see-through"
+        );
         assert!(!reply(Err("x".into()), true, true).active);
     }
 

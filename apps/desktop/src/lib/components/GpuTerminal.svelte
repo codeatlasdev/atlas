@@ -15,7 +15,14 @@
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { termFocus } from "#lib/stores/termFocus.svelte.ts";
 	import { runCommand } from "#lib/keymap.svelte.ts";
-	import { fontStep, keyToSend, nativeKey, producesInput, termAction, type TermAction } from "#lib/termKeys.ts";
+	import {
+		fontStep,
+		keyToSend,
+		nativeKey,
+		producesInput,
+		termAction,
+		type TermAction,
+	} from "#lib/termKeys.ts";
 	import { IS_MAC } from "#lib/keys.ts";
 	import { watchSlot } from "#lib/native/slot.ts";
 	import { shellQuote } from "./terminal/geometry.ts";

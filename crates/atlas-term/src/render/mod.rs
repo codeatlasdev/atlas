@@ -69,7 +69,10 @@ pub struct Renderer {
 /// asks before it offers the native terminal, so a machine that cannot keeps xterm.js.
 pub fn probe() -> Result<String, String> {
     let info = gpu()?.adapter.get_info();
-    Ok(format!("{} ({}, {:?})", info.name, info.driver, info.backend))
+    Ok(format!(
+        "{} ({}, {:?})",
+        info.name, info.driver, info.backend
+    ))
 }
 
 impl Renderer {

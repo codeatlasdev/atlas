@@ -555,7 +555,9 @@ pub(super) fn spawn_reader(
 #[cfg(target_os = "linux")]
 pub(super) fn rescale_all() {
     let Some(app) = APP.get() else { return };
-    let Ok(scale) = native::scale(app) else { return };
+    let Ok(scale) = native::scale(app) else {
+        return;
+    };
     for (_, sh) in super::open_terms() {
         let rect = sh.placement.lock().rect();
         sh.update(|s| {

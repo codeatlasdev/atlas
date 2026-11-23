@@ -1,3 +1,4 @@
+// @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
 import { fromCapability, withSetting, type Capability } from "./gpuCapability.ts";
 
@@ -14,7 +15,13 @@ const reply = (over: Partial<Capability> = {}): Capability => ({
 describe("fromCapability", () => {
 	test("a capable machine with the setting off offers the toggle and renders with xterm.js", () => {
 		const s = fromCapability(reply());
-		expect(s).toEqual({ supported: false, offered: true, terminal: false, restartNeeded: false, reason: null });
+		expect(s).toEqual({
+			supported: false,
+			offered: true,
+			terminal: false,
+			restartNeeded: false,
+			reason: null,
+		});
 	});
 
 	test("the native terminal renders only when it was on at launch", () => {
@@ -34,7 +41,13 @@ describe("fromCapability", () => {
 
 	test("an unavailable machine (X11, XWayland, no Vulkan, NVIDIA proprietary) offers nothing, even with the setting on", () => {
 		const s = fromCapability(
-			reply({ available: false, reason: "not a Wayland session", adapter: null, setting: true, active: false }),
+			reply({
+				available: false,
+				reason: "not a Wayland session",
+				adapter: null,
+				setting: true,
+				active: false,
+			}),
 		);
 		expect(s).toEqual({
 			supported: false,

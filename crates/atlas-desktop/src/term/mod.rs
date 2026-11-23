@@ -49,11 +49,11 @@ use shared::Shared;
 pub use keys::*;
 pub use lifecycle::*;
 pub use mouse::*;
-pub use select::*;
-pub use settings::*;
 pub use native::install_system_observers;
 #[cfg(target_os = "linux")]
 pub use native::{set_window_clear, window_wanted};
+pub use select::*;
+pub use settings::*;
 pub use wheel::*;
 
 /// `terminal.*` settings for a GPU terminal (defaults when absent).

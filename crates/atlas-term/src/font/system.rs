@@ -245,9 +245,9 @@ fn font_files(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
     let mut files: Vec<&PathBuf> = paths
         .iter()
         .filter(|p| {
-            p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-                matches!(e.to_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc")
-            })
+            p.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| matches!(e.to_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc"))
         })
         .collect();
     files.sort();

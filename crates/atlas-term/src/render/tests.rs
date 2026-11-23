@@ -309,7 +309,10 @@ fn mesa_hardware_drivers_are_supported() {
     for (ty, driver) in [
         (wgpu::DeviceType::IntegratedGpu, "radv"),
         (wgpu::DeviceType::DiscreteGpu, "radv"),
-        (wgpu::DeviceType::IntegratedGpu, "Intel open-source Mesa driver"),
+        (
+            wgpu::DeviceType::IntegratedGpu,
+            "Intel open-source Mesa driver",
+        ),
         (wgpu::DeviceType::DiscreteGpu, "NVK"),
     ] {
         assert_eq!(unsupported_adapter(&vulkan(ty, driver)), None, "{driver}");
@@ -342,7 +345,13 @@ use wgpu::CompositeAlphaMode as Alpha;
 // Design 4.2: a surface under XWayland lists only PreMultiplied and Inherit; asking it for Opaque is a validation error.
 #[test]
 fn the_alpha_mode_is_opaque_when_listed_else_the_first_the_surface_offers() {
-    assert_eq!(pick_alpha(&[Alpha::PreMultiplied, Alpha::Opaque]), Alpha::Opaque);
-    assert_eq!(pick_alpha(&[Alpha::PreMultiplied, Alpha::Inherit]), Alpha::PreMultiplied);
+    assert_eq!(
+        pick_alpha(&[Alpha::PreMultiplied, Alpha::Opaque]),
+        Alpha::Opaque
+    );
+    assert_eq!(
+        pick_alpha(&[Alpha::PreMultiplied, Alpha::Inherit]),
+        Alpha::PreMultiplied
+    );
     assert_eq!(pick_alpha(&[]), Alpha::Auto);
 }

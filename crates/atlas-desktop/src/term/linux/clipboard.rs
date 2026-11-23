@@ -5,7 +5,6 @@
 //! already on it. The paste decision is `atlas_term::input::Clipboard::classify`, shared with macOS: copied files first,
 //! then text, then an image with no text.
 
-
 /// File paths of a `text/uri-list` (a file manager's copy): `file://` entries only, percent-decoded, comments skipped.
 pub fn parse_uri_list(list: &str) -> Vec<String> {
     list.lines()
@@ -25,7 +24,10 @@ fn percent_decode(s: &str) -> String {
     while i < b.len() {
         let hex = |c: u8| (c as char).to_digit(16);
         if b[i] == b'%'
-            && let (Some(h), Some(l)) = (b.get(i + 1).and_then(|c| hex(*c)), b.get(i + 2).and_then(|c| hex(*c)))
+            && let (Some(h), Some(l)) = (
+                b.get(i + 1).and_then(|c| hex(*c)),
+                b.get(i + 2).and_then(|c| hex(*c)),
+            )
         {
             out.push((h * 16 + l) as u8);
             i += 3;
@@ -72,7 +74,10 @@ mod tests {
     #[test]
     fn a_file_managers_uri_list_becomes_decoded_local_paths() {
         let list = "# comment\r\nfile:///home/me/a%20b.txt\r\nfile:///home/me/caf%C3%A9.md\r\n";
-        assert_eq!(parse_uri_list(list), ["/home/me/a b.txt", "/home/me/café.md"]);
+        assert_eq!(
+            parse_uri_list(list),
+            ["/home/me/a b.txt", "/home/me/café.md"]
+        );
     }
 
     #[test]
@@ -83,6 +88,9 @@ mod tests {
 
     #[test]
     fn a_stray_percent_is_kept_not_dropped() {
-        assert_eq!(parse_uri_list("file:///100%/x\nfile:///a%2"), ["/100%/x", "/a%2"]);
+        assert_eq!(
+            parse_uri_list("file:///100%/x\nfile:///a%2"),
+            ["/100%/x", "/a%2"]
+        );
     }
 }

@@ -144,10 +144,14 @@ fn gdk_display() -> Result<*mut c_void, String> {
     // SAFETY: a GdkWaylandDisplay, checked by type just above.
     let p = unsafe {
         gdk_wayland_sys::gdk_wayland_display_get_wl_display(
-            ToGlibPtr::<*mut gtk::gdk::ffi::GdkDisplay>::to_glib_none(&d).0.cast(),
+            ToGlibPtr::<*mut gtk::gdk::ffi::GdkDisplay>::to_glib_none(&d)
+                .0
+                .cast(),
         )
     };
-    NonNull::new(p).map(NonNull::as_ptr).ok_or("GDK has no wl_display".into())
+    NonNull::new(p)
+        .map(NonNull::as_ptr)
+        .ok_or("GDK has no wl_display".into())
 }
 
 /// The toplevel's `wl_surface*` now. It changes when GDK unmaps and maps the window again.
@@ -159,7 +163,9 @@ fn toplevel_surface(win: &gtk::ApplicationWindow) -> Option<*mut c_void> {
     // SAFETY: a GdkWaylandWindow, checked by type just above.
     let p = unsafe {
         gdk_wayland_sys::gdk_wayland_window_get_wl_surface(
-            ToGlibPtr::<*mut gtk::gdk::ffi::GdkWindow>::to_glib_none(&gw).0.cast(),
+            ToGlibPtr::<*mut gtk::gdk::ffi::GdkWindow>::to_glib_none(&gw)
+                .0
+                .cast(),
         )
     };
     NonNull::new(p).map(NonNull::as_ptr)
@@ -175,7 +181,11 @@ impl Wl {
         let qh = queue.handle();
         let missing: Vec<String> = REQUIRED
             .iter()
-            .filter(|n| !list.contents().with_list(|g| g.iter().any(|x| x.interface == **n)))
+            .filter(|n| {
+                !list
+                    .contents()
+                    .with_list(|g| g.iter().any(|x| x.interface == **n))
+            })
             .map(|n| (*n).to_string())
             .collect();
         if !missing.is_empty() {
@@ -318,13 +328,26 @@ pub struct Sub {
 
 impl Sub {
     /// The handles wgpu needs for the Vulkan surface: GDK's display and this child surface.
-    pub fn raw_handles(&self) -> Result<(raw_window_handle::RawDisplayHandle, raw_window_handle::RawWindowHandle), String> {
+    pub fn raw_handles(
+        &self,
+    ) -> Result<
+        (
+            raw_window_handle::RawDisplayHandle,
+            raw_window_handle::RawWindowHandle,
+        ),
+        String,
+    > {
         let w = wl()?;
-        let surface = NonNull::new(self.surface.id().as_ptr()).ok_or("the child surface has no proxy")?;
+        let surface =
+            NonNull::new(self.surface.id().as_ptr()).ok_or("the child surface has no proxy")?;
         let display = NonNull::new(w.display as *mut c_void).ok_or("no display")?;
         Ok((
-            raw_window_handle::RawDisplayHandle::Wayland(raw_window_handle::WaylandDisplayHandle::new(display)),
-            raw_window_handle::RawWindowHandle::Wayland(raw_window_handle::WaylandWindowHandle::new(surface.cast())),
+            raw_window_handle::RawDisplayHandle::Wayland(
+                raw_window_handle::WaylandDisplayHandle::new(display),
+            ),
+            raw_window_handle::RawWindowHandle::Wayland(
+                raw_window_handle::WaylandWindowHandle::new(surface.cast()),
+            ),
         ))
     }
 
@@ -345,9 +368,14 @@ pub fn create(w: f64, h: f64) -> Result<usize, String> {
     let win = main_window()?;
     GTK_SCALE.store(win.scale_factor().max(1) as u32, Ordering::Relaxed);
     sync_parent(wl, &win)?;
-    let parent = lock(&PARENT).as_ref().map(|p| (p.surface.clone(), p.ptr)).ok_or("no parent")?;
+    let parent = lock(&PARENT)
+        .as_ref()
+        .map(|p| (p.surface.clone(), p.ptr))
+        .ok_or("no parent")?;
     let surface = wl.compositor.create_surface(&wl.qh, ());
-    let subsurface = wl.subcompositor.get_subsurface(&surface, &parent.0, &wl.qh, ());
+    let subsurface = wl
+        .subcompositor
+        .get_subsurface(&surface, &parent.0, &wl.qh, ());
     // Its own clock: the terminal commits when it has drawn, never waiting for the page's frame.
     subsurface.set_desync();
     subsurface.place_below(&parent.0);
@@ -397,7 +425,9 @@ pub fn set_frame(view: usize, x: f64, y: f64, w: f64, h: f64) {
             h: h.round().max(1.0) as i32,
         }
     } else {
-        let off = main_window().map(|win| webview_offset(&win)).unwrap_or((0, 0));
+        let off = main_window()
+            .map(|win| webview_offset(&win))
+            .unwrap_or((0, 0));
         geometry::quantize(x, y, w, h, off)
     };
     *lock(&s.rect) = r;
@@ -488,7 +518,15 @@ fn start_tick() {
 }
 
 /// The Vulkan-surface handles of `view`.
-pub fn raw_handles(view: usize) -> Result<(raw_window_handle::RawDisplayHandle, raw_window_handle::RawWindowHandle), String> {
+pub fn raw_handles(
+    view: usize,
+) -> Result<
+    (
+        raw_window_handle::RawDisplayHandle,
+        raw_window_handle::RawWindowHandle,
+    ),
+    String,
+> {
     // SAFETY: the registry hands out live views only.
     unsafe { sub(view) }.raw_handles()
 }

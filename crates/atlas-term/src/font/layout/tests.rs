@@ -359,7 +359,11 @@ fn flag_is_one_glyph_not_two_regional_indicators() {
     if cfg!(target_os = "macos") {
         assert!(one.color.is_empty() && one.mono.is_empty());
     } else {
-        assert_eq!(one.color.len(), 1, "a lone indicator is its own glyph, never merged");
+        assert_eq!(
+            one.color.len(),
+            1,
+            "a lone indicator is its own glyph, never merged"
+        );
     }
 }
 
@@ -379,7 +383,10 @@ fn regional_indicators_pair_only_once() {
     let (mut three, f3) = emoji_layout("🇧🇷🇺", 20).unwrap();
     three.layout(&f3);
     // Apple's font draws nothing for the stray; Noto's draws its own letter glyph, which is still not merged.
-    assert_eq!(three.color.len(), if cfg!(target_os = "macos") { 1 } else { 2 });
+    assert_eq!(
+        three.color.len(),
+        if cfg!(target_os = "macos") { 1 } else { 2 }
+    );
 }
 
 #[test]

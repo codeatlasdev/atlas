@@ -64,13 +64,19 @@ pub(super) fn gpu() -> Result<&'static Gpu, String> {
 #[cfg(any(target_os = "linux", test))]
 pub(super) fn unsupported_adapter(info: &wgpu::AdapterInfo) -> Option<String> {
     if info.backend != wgpu::Backend::Vulkan {
-        return Some(format!("the {:?} backend is not used on Linux (Vulkan only)", info.backend));
+        return Some(format!(
+            "the {:?} backend is not used on Linux (Vulkan only)",
+            info.backend
+        ));
     }
     if info.device_type == wgpu::DeviceType::Cpu {
         return Some(format!("{} is a software rasterizer", info.name));
     }
     if info.driver.to_ascii_lowercase().contains("nvidia") {
-        return Some(format!("{}: the proprietary NVIDIA driver is not supported", info.name));
+        return Some(format!(
+            "{}: the proprietary NVIDIA driver is not supported",
+            info.name
+        ));
     }
     None
 }
@@ -82,7 +88,10 @@ pub(super) fn pick_alpha(modes: &[wgpu::CompositeAlphaMode]) -> wgpu::CompositeA
     if modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
         wgpu::CompositeAlphaMode::Opaque
     } else {
-        modes.first().copied().unwrap_or(wgpu::CompositeAlphaMode::Auto)
+        modes
+            .first()
+            .copied()
+            .unwrap_or(wgpu::CompositeAlphaMode::Auto)
     }
 }
 

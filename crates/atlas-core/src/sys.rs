@@ -110,13 +110,13 @@ pub(crate) fn replace_file_via(
         };
         let readonly = std::fs::metadata(to).is_ok_and(|m| m.permissions().readonly());
         match after_posix_rename_error(e.raw_os_error(), attempt) {
-            _ if readonly => return imp::fallback_replace(from, to),
+            _ if readonly => return std::fs::rename(from, to),
             RenameStep::Retry(wait) => {
                 std::thread::sleep(wait);
                 attempt += 1;
             }
             RenameStep::GiveUp => return Err(e),
-            RenameStep::Fallback => return imp::fallback_replace(from, to),
+            RenameStep::Fallback => return std::fs::rename(from, to),
         }
     }
 }
@@ -529,10 +529,6 @@ mod imp {
     pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
         std::fs::rename(from, to)
     }
-
-    pub fn fallback_replace(from: &Path, to: &Path) -> io::Result<()> {
-        std::fs::rename(from, to)
-    }
 }
 
 #[cfg(windows)]
@@ -624,43 +620,11 @@ mod imp {
     /// name `to` goes from the old file to the new one, even while readers hold the old one open. `std::fs::rename`
     /// is `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`, which Windows documents without that guarantee: a reader opening
     /// the name meanwhile can find it missing (`NotFound`) or, the old file being delete-pending, be refused (`Access
-    /// is denied`) (#545). The retry loop and what follows a refusal are in [`super::replace_file_via`].
+    /// is denied`) (#545). The retry loop and what follows a refusal are in [`super::replace_file_via`]. (`ReplaceFileW`
+    /// is no better: measured on a Windows runner, a reader opening the name all along got `NotFound` in a third of
+    /// its opens and "sharing violation" in another 6%, #744.)
     pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
         super::replace_file_via(from, to, posix_rename)
-    }
-
-    /// What is left when the POSIX rename cannot be done (an old Windows, FAT or a network share) or the target is
-    /// readonly: `ReplaceFileW`, which swaps the contents under the name that stays (the name is not given up for the
-    /// new file as `MoveFileExW` does), and `std::fs::rename` when that is refused too or there is nothing to replace.
-    /// Neither is a promise to a reader opening the name at that instant, so readers keep [`crate::fs::read_replaced`].
-    pub fn fallback_replace(from: &Path, to: &Path) -> io::Result<()> {
-        if to.exists() && replace_file_w(from, to).is_ok() {
-            return Ok(());
-        }
-        std::fs::rename(from, to)
-    }
-
-    pub fn replace_file_w(from: &Path, to: &Path) -> io::Result<()> {
-        use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
-        let wide = |p: &Path| -> Vec<u16> { p.as_os_str().encode_wide().chain(Some(0)).collect() };
-        let (replaced, replacement) = (wide(to), wide(from));
-        // SAFETY: both are NUL-terminated and live for the call; the backup, exclude and reserved arguments are
-        // null, as documented.
-        let ok = unsafe {
-            ReplaceFileW(
-                replaced.as_ptr(),
-                replacement.as_ptr(),
-                std::ptr::null(),
-                0,
-                std::ptr::null(),
-                std::ptr::null(),
-            )
-        };
-        if ok == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        Ok(())
     }
 
     pub(super) fn posix_rename(from: &Path, to: &Path) -> io::Result<()> {
@@ -1195,11 +1159,12 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&from).unwrap(), "new");
     }
 
-    /// The fallback itself (the POSIX rename "not supported", forced on every OS): the replace happens, and on Windows,
-    /// where the fallback is `ReplaceFileW` (or `MoveFileExW`), a reader opening the name all along never finds it missing. (A refusal
-    /// "access denied" of the old file delete-pending is the other window; `read_replaced` covers it.)
+    /// The normal path on Windows, the POSIX-semantics rename: a raw open of the name, as often as it can, never finds
+    /// it missing or refused while it is replaced 299 times (measured on a Windows runner, #744: 3684 opens, all ok;
+    /// `ReplaceFileW` got `NotFound` in 5000 of 13839 and a sharing violation in 954, so it is not used).
+    #[cfg(windows)]
     #[test]
-    fn the_fallback_replace_never_leaves_the_name_missing_for_a_reader_that_opens_it() {
+    fn the_posix_rename_never_leaves_the_name_missing_for_a_raw_reader() {
         let dir = tempfile::tempdir().unwrap();
         let to = dir.path().join("status.json");
         std::fs::write(&to, "0").unwrap();
@@ -1207,14 +1172,48 @@ mod tests {
         for n in 1..300 {
             let from = dir.path().join(format!("status.json.tmp-{n}"));
             std::fs::write(&from, n.to_string()).unwrap();
-            // ERROR_NOT_SUPPORTED: the case for which the fallback exists.
-            replace_file_via(&from, &to, |_, _| Err(io::Error::from_raw_os_error(50))).unwrap();
+            imp::posix_rename(&from, &to).unwrap();
         }
         let missing = watch.stop();
         assert_eq!(
             missing, 0,
             "the name was missing for a reader {missing} times"
         );
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "299");
+    }
+
+    /// The fallback itself (the POSIX rename "not supported", forced on every OS), where the legacy `std::fs::rename`
+    /// replaces: it makes no promise to a raw open (on Windows the old file can be delete-pending and refuse it), so
+    /// what is asserted is the contract of a reader that reads with `read_replaced`: every read is the old file or
+    /// the new one, never an error, and the last write wins.
+    #[test]
+    fn a_read_replaced_reader_never_fails_while_the_fallback_replaces() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let to = dir.path().join("status.json");
+        std::fs::write(&to, "0").unwrap();
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let reader = {
+            let (to, done) = (to.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut reads = 0u32;
+                while !done.load(Ordering::Relaxed) {
+                    let got = crate::fs::read_to_string_replaced(&to)
+                        .unwrap_or_else(|e| panic!("a read failed after {reads} reads: {e}"));
+                    assert!(got.parse::<u32>().is_ok(), "{got:?}");
+                    reads += 1;
+                }
+                reads
+            })
+        };
+        for n in 1..300 {
+            let from = dir.path().join(format!("status.json.tmp-{n}"));
+            std::fs::write(&from, n.to_string()).unwrap();
+            // ERROR_NOT_SUPPORTED: the case for which the fallback exists.
+            replace_file_via(&from, &to, |_, _| Err(io::Error::from_raw_os_error(50))).unwrap();
+        }
+        done.store(true, Ordering::Relaxed);
+        assert!(reader.join().unwrap() > 0);
         assert_eq!(std::fs::read_to_string(&to).unwrap(), "299");
     }
 
@@ -1249,57 +1248,6 @@ mod tests {
             assert!(opens > 0, "the watcher never opened the file");
             missing
         }
-    }
-
-    /// TEMPORARY DIAGNOSTIC (#744): what a reader's open gets while each replace path runs, by Windows error code.
-    #[cfg(windows)]
-    #[test]
-    fn diagnostic_what_a_reader_gets_per_replace_path() {
-        use std::collections::BTreeMap;
-        use std::sync::atomic::{AtomicBool, Ordering};
-        type Replace = fn(&Path, &Path) -> io::Result<()>;
-        let paths: [(&str, Replace); 3] = [
-            ("posix_rename", imp::posix_rename),
-            ("ReplaceFileW", imp::replace_file_w),
-            ("std::fs::rename", |a, b| std::fs::rename(a, b)),
-        ];
-        let mut report = String::new();
-        for (name, replace) in paths {
-            let dir = tempfile::tempdir().unwrap();
-            let to = dir.path().join("status.json");
-            std::fs::write(&to, "0").unwrap();
-            let stop = std::sync::Arc::new(AtomicBool::new(false));
-            let watcher = {
-                let (to, stop) = (to.clone(), stop.clone());
-                std::thread::spawn(move || {
-                    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
-                    while !stop.load(Ordering::Relaxed) {
-                        let key = match std::fs::read(&to) {
-                            Ok(_) => "ok".to_string(),
-                            Err(e) => format!("{:?}/{:?}", e.kind(), e.raw_os_error()),
-                        };
-                        *seen.entry(key).or_default() += 1;
-                    }
-                    seen
-                })
-            };
-            let mut failed = BTreeMap::<String, u32>::new();
-            for n in 1..300 {
-                let from = dir.path().join(format!("status.json.tmp-{n}"));
-                std::fs::write(&from, n.to_string()).unwrap();
-                if let Err(e) = replace(&from, &to) {
-                    *failed
-                        .entry(format!("{:?}/{:?}", e.kind(), e.raw_os_error()))
-                        .or_default() += 1;
-                }
-            }
-            stop.store(true, Ordering::Relaxed);
-            report += &format!(
-                "\n{name}: reader {:?}, replace failures {failed:?}",
-                watcher.join().unwrap()
-            );
-        }
-        panic!("DIAGNOSTIC{report}");
     }
 
     #[cfg(target_os = "linux")]

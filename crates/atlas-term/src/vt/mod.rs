@@ -18,9 +18,9 @@ mod pixel;
 mod scan;
 mod shell;
 mod sync;
-mod warm;
 #[cfg(test)]
 mod tests;
+mod warm;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

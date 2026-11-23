@@ -148,7 +148,13 @@ mod tests {
     fn one_row_per_line_feed_one_row_ahead_and_the_cache_lines_of_a_line() {
         // Prose of 98 bytes: 98 cells = 2352 bytes = 37 cache lines (+1 for a row not starting on one).
         let p = plan(10_000, 10_000, COLS, &lines_of(98, 40)).unwrap();
-        assert_eq!(p, Plan { rows: 40 + AHEAD, lines: 38 });
+        assert_eq!(
+            p,
+            Plan {
+                rows: 40 + AHEAD,
+                lines: 38
+            }
+        );
         // 300-byte lines wrap at 120 cells: a row is at most 120 cells = 2880 bytes = 45 cache lines (+1).
         let p = plan(10_000, 10_000, COLS, &lines_of(300, 10)).unwrap();
         assert_eq!(p.lines, 46);
@@ -166,7 +172,12 @@ mod tests {
     #[test]
     fn never_more_rows_than_the_history_has_or_the_burst_limit() {
         assert_eq!(plan(30, 30, COLS, &lines_of(98, 512)).unwrap().rows, 30);
-        assert_eq!(plan(10_000, 10_000, COLS, &lines_of(98, 5_000)).unwrap().rows, MAX_ROWS);
+        assert_eq!(
+            plan(10_000, 10_000, COLS, &lines_of(98, 5_000))
+                .unwrap()
+                .rows,
+            MAX_ROWS
+        );
     }
 
     #[test]
@@ -180,7 +191,11 @@ mod tests {
         let short = lines_of(8, 40);
         let s: Vec<_> = slices(&short).collect();
         assert_eq!(s.concat(), short);
-        assert!(s[..s.len() - 1].iter().all(|p| p.len() >= MIN_SLICE && p.ends_with(b"\n")));
+        assert!(
+            s[..s.len() - 1]
+                .iter()
+                .all(|p| p.len() >= MIN_SLICE && p.ends_with(b"\n"))
+        );
         // No line feed: one slice. Nothing: none.
         assert_eq!(slices(&[b'x'; 1000]).count(), 1);
         assert_eq!(slices(b"").count(), 0);
@@ -196,13 +211,20 @@ mod tests {
     fn a_scroll_recycles_the_oldest_history_rows_in_order() {
         let vt = Vt::new(10, 4, |_| {});
         vt.set_options(20, "block", false);
-        vt.feed(&(0..30).map(|i| format!("line{i}\r\n")).collect::<String>().into_bytes());
+        vt.feed(
+            &(0..30)
+                .map(|i| format!("line{i}\r\n"))
+                .collect::<String>()
+                .into_bytes(),
+        );
         let history = vt.term.lock().grid().history_size();
         assert_eq!(history, 20, "the scrollback is full");
         // The next chunk settles the ring (no spare rows), as it does in a flood.
         vt.feed(b"\r\n");
         let t = vt.term.lock();
-        let cells = |t: &alacritty_terminal::term::Term<super::super::Proxy>, line: Line| t.grid()[line][..].as_ptr();
+        let cells = |t: &alacritty_terminal::term::Term<super::super::Proxy>, line: Line| {
+            t.grid()[line][..].as_ptr()
+        };
         let oldest: Vec<_> = (0..3).map(|k| cells(&t, nth_oldest(history, k))).collect();
         drop(t);
         vt.feed(b"\r\n\r\n\r\n");
@@ -258,7 +280,11 @@ mod tests {
         for b in &flood {
             slow.feed(std::slice::from_ref(b));
         }
-        assert_eq!(fast.term.lock().grid().history_size(), 300, "the history was full for most of the flood");
+        assert_eq!(
+            fast.term.lock().grid().history_size(),
+            300,
+            "the history was full for most of the flood"
+        );
         assert_eq!(dump(&fast), dump(&slow));
     }
 }

@@ -25,5 +25,6 @@
 	"workbench_term_pane_host_unreachable": "Terminal host not reachable",
 	"workbench_term_pane_raw_protocol_back": "Raw omp protocol · back to chat",
 	"workbench_term_pane_restart_host": "Restart terminal host",
+	"workbench_term_paste_denied": "Could not read the clipboard. Try {key}.",
 	"workbench_term_search_label": "Find in terminal"
 }

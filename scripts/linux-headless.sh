@@ -69,6 +69,17 @@ headless_up() {
   if [ -s "$work/display" ]; then DISPLAY="$(cat "$work/display")"; export DISPLAY; fi
 }
 
+# Before any input is sent to the display (wtype, swaymsg focus): the runtime dir, the Wayland socket and sway's socket are
+# all inside this session's own $work, never the caller's (/run/user/...). Exit 3 with the variable named; nothing was sent.
+headless_assert_private() {
+  local run="${XDG_RUNTIME_DIR:-}" wl="${WAYLAND_DISPLAY:-}" sw="${SWAYSOCK:-}"
+  case "$run" in "$work"/run) ;; *) echo "REFUSED: XDG_RUNTIME_DIR=$run is not this session's $work/run" >&2; return 3 ;; esac
+  case "$run" in /run/user/*) echo "REFUSED: XDG_RUNTIME_DIR=$run is a user session" >&2; return 3 ;; esac
+  case "$wl" in ""|*/*|*..*) echo "REFUSED: WAYLAND_DISPLAY=$wl is not a socket name inside $run" >&2; return 3 ;; esac
+  [ -S "$run/$wl" ] || { echo "REFUSED: WAYLAND_DISPLAY=$wl is not a socket inside $run" >&2; return 3; }
+  case "$sw" in "$run"/*) ;; *) echo "REFUSED: SWAYSOCK=$sw is outside $run" >&2; return 3 ;; esac
+}
+
 headless_mapped() { swaymsg -t get_tree 2>/dev/null | grep -q "\"pid\": $1"; }
 
 # Stops sway and whatever the app left behind in this session: hostd detaches itself and would outlive the app. Found by

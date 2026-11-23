@@ -8,18 +8,18 @@
 	import { WebLinksAddon } from "@xterm/addon-web-links";
 	import { WebglAddon } from "@xterm/addon-webgl";
 	import { Unicode11Addon } from "@xterm/addon-unicode11";
-	import { listen } from "@tauri-apps/api/event";
+	import { toast } from "@codeatlasdev/ui";
 	import { host } from "#lib/host.ts";
-	import { b64bytes } from "#lib/b64.ts";
+	import { openPtyStream } from "#lib/ptyChannel.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { imeStagingKey, keepTextareaEmpty } from "#lib/xtermInput.ts";
-	import { copyText, keyAction } from "./terminal/clipboardKeys.ts";
+	import { copyText, keyAction, pasteClipboard } from "./terminal/clipboardKeys.ts";
 	import { browserFontEnv, usableFamilies } from "./terminal/xtermFont.ts";
 	import FindInput from "./FindInput.svelte";
-	import { IS_MAC, primaryKey } from "#lib/keys.ts";
+	import { IS_MAC, kbd, primaryKey } from "#lib/keys.ts";
 	import { xtermKey } from "#lib/termKeys.ts";
-	import { ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
+	import { ptyStream } from "#lib/ptyStream.ts";
 	import { hostEvents } from "#lib/hostEventsApp.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -74,6 +74,21 @@
 	});
 
 	/**
+	 * Dispose the WebGL addon and free its context now. xterm removes the renderer's canvas from the page and never loses
+	 * the context: textures, the glyph atlas and GPU buffers live until a garbage collection finds the canvas, and WebKit
+	 * caps live contexts, so closed and parked terminals piled up (study cause 6: 205 -> 1,134 MB, 725 MB after closing).
+	 * The canvases are taken before `dispose` detaches them; a 2D canvas answers `null` to `webgl2`, so only the renderer's matches.
+	 */
+	function releaseWebgl(addon: WebglAddon) {
+		const canvases = [...el.querySelectorAll("canvas")];
+		addon.dispose();
+		for (const c of canvases) {
+			const gl = c.getContext("webgl2");
+			if (gl && !gl.isContextLost()) gl.getExtension("WEBGL_lose_context")?.loseContext();
+		}
+	}
+
+	/**
 	 * WebGL renderer. Loaded before `open` so the very first paint is WebGL (loading it after `open` paints with the
 	 * DOM renderer first, then swaps). A lost context (WebKit drops the oldest when too many are live) disposes the
 	 * addon, which falls back to the DOM renderer instead of leaving a black terminal.
@@ -83,7 +98,7 @@
 		try {
 			const addon = new WebglAddon();
 			addon.onContextLoss(() => {
-				addon.dispose();
+				releaseWebgl(addon);
 				if (webgl === addon) webgl = undefined;
 			});
 			t.loadAddon(addon);
@@ -97,8 +112,8 @@
 	$effect(() => {
 		if (!term) return;
 		if (visible) loadWebgl(term);
-		else {
-			webgl?.dispose();
+		else if (webgl) {
+			releaseWebgl(webgl);
 			webgl = undefined;
 		}
 	});
@@ -169,10 +184,7 @@
 				e.preventDefault();
 				if (clip === "copy") void copyText(t.getSelection());
 				else if (clip === "paste" && !readonly)
-					void navigator.clipboard.readText().then(
-						(x) => t.paste(x),
-						() => {},
-					);
+					void pasteClipboard(t, () => toast.error(m.workbench_term_paste_denied({ key: kbd("cmd-v") })));
 				return false;
 			}
 			if (e.type !== "keydown") return true;
@@ -209,13 +221,11 @@
 		});
 		offs.push(() => sel.dispose());
 		const stream = ptyStream({
-			listen: (f) => listen<PtyEvent>(`pty://${pty}`, (e) => f(e.payload)),
-			attach: () =>
-				host.ptyAttach(pty, true).then(() => {
-					fit?.fit();
-					return host.ptyResize(pty, t.cols, t.rows);
-				}),
-			decode: b64bytes,
+			open: (f) => openPtyStream(pty, f),
+			attached: () => {
+				fit?.fit();
+				return host.ptyResize(pty, t.cols, t.rows);
+			},
 			write: (b, replay, done) => {
 				if (!replay) return t.write(b, done);
 				// Fresh buffer behind a hidden host: the reset's blank frame is never on screen.
@@ -256,6 +266,8 @@
 			clearTimeout(timer);
 			offs.forEach((u) => u());
 			void host.ptyDetach(pty).catch(() => {});
+			if (webgl) releaseWebgl(webgl);
+			webgl = undefined;
 			t.dispose();
 		};
 	});

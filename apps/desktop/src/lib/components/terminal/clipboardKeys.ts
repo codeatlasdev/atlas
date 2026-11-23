@@ -37,6 +37,21 @@ export async function copyText(text: string): Promise<boolean> {
 	}
 }
 
+/**
+ * The system clipboard → the terminal (bracketed by xterm's `paste`). The read can be denied (WebKitGTK without
+ * clipboard access, #740) or the API missing: `fail` runs then, so the key never does nothing silently.
+ */
+export async function pasteClipboard(term: { paste(text: string): void }, fail: () => void): Promise<void> {
+	let text: string;
+	try {
+		text = await navigator.clipboard.readText();
+	} catch {
+		fail();
+		return;
+	}
+	if (text) term.paste(text);
+}
+
 function execCopy(text: string): boolean {
 	const active = document.activeElement as HTMLElement | null;
 	const ta = document.createElement("textarea");

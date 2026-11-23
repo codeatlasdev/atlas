@@ -13,11 +13,33 @@ fn tmp_sibling(path: &Path) -> PathBuf {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(format!(
-        ".tmp-{}-{}",
+        "{TMP_MARK}{}-{}",
         std::process::id(),
         SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     path.with_file_name(name)
+}
+
+const TMP_MARK: &str = ".tmp-";
+
+/// Is a [`write_atomic`] of `path` between creating its temp file and finishing the rename? The temp file is the
+/// sign: it exists for the whole replace, and a writer that crashed leaves one behind (a reader then waits its
+/// retries for nothing, a few tens of ms).
+fn replace_in_flight(path: &Path) -> bool {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return false;
+    };
+    let prefix = format!("{}{TMP_MARK}", name.to_string_lossy());
+    let dir = if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    };
+    fs::read_dir(dir).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().starts_with(&prefix))
+    })
 }
 
 /// Who may read the replaced file.
@@ -48,6 +70,36 @@ impl Mode {
 /// never wider at any moment, then set again because the umask may have narrowed it). On any error
 /// the target is untouched and the temp file is removed.
 pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
+    write_atomic_budget(path, data, mode, crate::sys::RetryBudget::Full)
+}
+
+/// [`write_atomic`] for a snapshot that is rewritten every tick anyway (`.tui-status.json`, `.tui-metrics.json`): on
+/// Windows a refused replace is retried for about 63 ms instead of 1.2 s, then the write is dropped (`Err`, old file
+/// untouched) and the next tick lands, so the caller's tick is never stalled for long. Not for a write whose loss
+/// matters: those use [`write_atomic`].
+pub fn write_atomic_snapshot(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
+    write_atomic_budget(path, data, mode, crate::sys::RetryBudget::Brief)
+}
+
+fn write_atomic_budget(
+    path: &Path,
+    data: &[u8],
+    mode: Mode,
+    budget: crate::sys::RetryBudget,
+) -> io::Result<()> {
+    write_atomic_via(path, data, mode, |from, to| {
+        crate::sys::replace_file_with(from, to, budget)
+    })
+}
+
+/// [`write_atomic`] with the replace step given: the seam that lets a test run the step Windows falls back to when the
+/// POSIX rename is refused (`std::fs::rename`, which can leave the name missing for a moment) on every OS.
+fn write_atomic_via(
+    path: &Path,
+    data: &[u8],
+    mode: Mode,
+    replace: impl FnOnce(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir)?;
     }
@@ -70,9 +122,10 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
         f.write_all(data)?;
         f.sync_all()?;
         drop(f);
-        // Replaces an existing target on every platform, and on Windows without a moment in which a reader opening
-        // the target finds it missing (#545).
-        crate::sys::replace_file(&tmp, path)
+        // Replaces an existing target on every platform. On Windows the POSIX rename (retried when refused, never
+        // replaced by the legacy rename for a refusal that lasts) leaves no moment in which the name is missing (#545,
+        // #743); readers still cover a moment with [`read_replaced`].
+        replace(&tmp, path)
     })();
     if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
@@ -90,22 +143,44 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
 }
 
 /// Read a file that another process replaces with [`write_atomic`] (`.tui-status.json` every second, the metrics and
-/// history files). On Unix a plain read. On Windows, an open that races the replace can be refused with "Access is
-/// denied": the open had already found the old file when the rename marked it for deletion (`STATUS_DELETE_PENDING`),
-/// a window the writer cannot close (#545, seen on CI after the POSIX rename and its retries landed). That refusal is
-/// retried briefly (1, 2, 4, 8, 16 ms); the next open finds the new file. `NotFound` is not retried: a file that does
-/// not exist is the common answer (no run) and must stay fast.
+/// history files): the old content or the new one, never an error the replace itself causes. Two windows exist on
+/// Windows, both retried briefly (1, 2, 4... ms), after which the next open finds the new file:
+/// - "Access is denied": the open had already found the old file when the rename marked it for deletion
+///   (`STATUS_DELETE_PENDING`), which the writer cannot close (#545). Up to 5 retries.
+/// - `NotFound`: a replace that leaves the name missing for a moment (the legacy `std::fs::rename` the writer uses
+///   where the POSIX rename is not supported, or a replace by something else), #743. Retried while the writer's temp
+///   file exists, up to 8 retries (about 250 ms). A file that does not exist and has no replace in flight is the
+///   common answer (no run), and is returned at once.
+///
+/// This is a bounded safety net, not a guarantee: the writer keeps the name present itself, and the retries cover the
+/// rest for about 250 ms. A replace that outlasts them (an antivirus scan holding the temp file longer) still shows
+/// as the error.
 pub fn read_replaced(path: &Path) -> io::Result<Vec<u8>> {
     let mut attempt = 0;
     loop {
         match fs::read(path) {
-            Err(e) if attempt < 5 && replaced_meanwhile(&e) => {
-                std::thread::sleep(std::time::Duration::from_millis(1 << attempt));
-                attempt += 1;
+            Err(e) if attempt < 5 && replaced_meanwhile(&e) => {}
+            Err(e)
+                if attempt < 8
+                    && e.kind() == io::ErrorKind::NotFound
+                    && replace_in_flight(path) =>
+            {
+                #[cfg(test)]
+                NOT_FOUND_RETRIES.with(|c| c.set(c.get() + 1));
             }
+            // The replace may have ended between the failed open and the look for its temp file: one more open.
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return fs::read(path),
             r => return r,
         }
+        std::thread::sleep(std::time::Duration::from_millis(1 << attempt));
+        attempt += 1;
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many `NotFound` opens this thread's [`read_replaced`] waited out (tests only): proof that a test met the gap.
+    static NOT_FOUND_RETRIES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// [`read_replaced`] as UTF-8 text.
@@ -270,6 +345,139 @@ mod tests {
         assert!(reader.join().unwrap() > 0);
         assert_eq!(fs::read_to_string(&path).unwrap(), "1999");
         assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+    }
+
+    /// #743 (`status_write_is_atomic_under_concurrent_reads`, Windows, `NotFound` at the reader): the reader's safety
+    /// net. The writer keeps the name present (`sys::replace_file`: POSIX rename, `std::fs::rename` only where that
+    /// cannot be done at all), but a replace of another writer or a filesystem that does leave it missing for a moment
+    /// is not ours to promise about. The replace step is given as one that removes the target, waits 5 ms and renames,
+    /// so the window is open on every OS and for every write: a reader still gets the old file or the new one.
+    #[test]
+    fn a_reader_survives_a_replace_that_leaves_the_name_missing_for_a_while() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        write_atomic(&path, b"0", Mode::Default).unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let reader = {
+            let (path, done) = (path.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut opens = 0u32;
+                while !done.load(Ordering::Relaxed) {
+                    let got = read_to_string_replaced(&path).unwrap_or_else(|e| {
+                        panic!("the name was missing for a reader after {opens} opens: {e}")
+                    });
+                    assert!(got.parse::<u32>().is_ok(), "{got:?}");
+                    opens += 1;
+                }
+                (opens, NOT_FOUND_RETRIES.with(std::cell::Cell::get))
+            })
+        };
+        let delete_then_rename = |from: &Path, to: &Path| {
+            fs::remove_file(to)?;
+            // Held open by spinning, not sleeping: a sleep on a loaded CI runner (macOS) can outlast the reader's
+            // whole budget, which says nothing about the reader.
+            let until = std::time::Instant::now() + std::time::Duration::from_millis(3);
+            while std::time::Instant::now() < until {
+                std::hint::spin_loop();
+            }
+            fs::rename(from, to)
+        };
+        for n in 1..40 {
+            write_atomic_via(
+                &path,
+                n.to_string().as_bytes(),
+                Mode::Default,
+                delete_then_rename,
+            )
+            .unwrap();
+        }
+        done.store(true, Ordering::Relaxed);
+        let (opens, rode_out) = reader.join().unwrap();
+        assert!(opens > 0);
+        // The test cannot pass by never meeting the gap: the reader met the missing name and waited it out. The window
+        // is 3 ms in each of 39 replaces, the reader opens continuously, and its first retries wait 1 ms and 2 ms: a
+        // hit takes two or three retries to recover, well inside its 250 ms budget.
+        assert!(
+            rode_out > 0,
+            "the reader never met the missing name in {opens} opens"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "39");
+        assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+    }
+
+    /// What a caller sees when the replace is refused for good (Windows: the target or the new file held without delete
+    /// sharing for longer than the retries): an `Err` of the OS error, the old file whole under its name, no temp file
+    /// left. Every caller of `write_atomic` already takes an `io::Result` (propagated as the user's error, or dropped
+    /// by a best-effort writer that writes again on its next tick), so a lasting refusal is that and nothing worse.
+    #[test]
+    fn a_lasting_refusal_is_an_error_for_the_caller_and_costs_nothing_else() {
+        use crate::sys::{RetryBudget, planned_waits, refusal};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        write_atomic(&path, b"old", Mode::Default).unwrap();
+        refusal::refuse_with(5); // ERROR_ACCESS_DENIED, every time, on every OS
+        let err = write_atomic(&path, b"new", Mode::Default).unwrap_err();
+        let tries = refusal::tries();
+        refusal::lift();
+        assert_eq!(err.raw_os_error(), Some(5));
+        // A write whose loss matters keeps trying for the whole full budget (about 1.2 s) before it fails.
+        assert_eq!(
+            tries as usize,
+            planned_waits(5, RetryBudget::Full).len() + 1
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+        assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+        // The next write, the refusal gone, lands.
+        write_atomic(&path, b"new", Mode::Default).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+    }
+
+    /// The per-tick snapshots (`.tui-status.json`, `.tui-metrics.json`) are rewritten by the next tick anyway, so under
+    /// a lasting refusal their write gives up after the brief budget, counted in attempts (a few, about 63 ms of
+    /// waits) and not in wall time, instead of stalling the runtime manager's tick for 1.2 s. The old file stays whole
+    /// and the next snapshot lands.
+    #[test]
+    fn a_snapshot_write_under_a_lasting_refusal_gives_up_after_the_brief_budget_and_the_next_one_lands()
+     {
+        use crate::sys::{RetryBudget, planned_waits, refusal};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".tui-status.json");
+        write_atomic(&path, b"old", Mode::Default).unwrap();
+        refusal::refuse_with(5);
+        let err = write_atomic_snapshot(&path, b"new", Mode::Default).unwrap_err();
+        let tries = refusal::tries();
+        refusal::lift();
+        assert_eq!(err.raw_os_error(), Some(5));
+        assert_eq!(
+            tries as usize,
+            planned_waits(5, RetryBudget::Brief).len() + 1
+        );
+        let waited: std::time::Duration = planned_waits(5, RetryBudget::Brief).iter().sum();
+        assert!(
+            waited < std::time::Duration::from_millis(300),
+            "{tries} attempts, {waited:?} of waits"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+        assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+        write_atomic_snapshot(&path, b"new", Mode::Default).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+    }
+
+    /// A file nobody is replacing is "not found" (the status of a project that never ran), also beside the temp file
+    /// of another file; the retries are for a replace in flight only.
+    #[test]
+    fn a_missing_file_with_no_replace_in_flight_is_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        fs::write(dir.path().join("other.json.tmp-1-0"), "x").unwrap();
+        assert_eq!(
+            read_replaced(&path).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+        assert!(!replace_in_flight(&path));
+        fs::write(dir.path().join("status.json.tmp-1-0"), "x").unwrap();
+        assert!(replace_in_flight(&path));
+        assert!(!replace_in_flight(&dir.path().join("status")));
     }
 
     /// The old file lives on for whoever already holds it open (on every OS), and the name goes to the new one.

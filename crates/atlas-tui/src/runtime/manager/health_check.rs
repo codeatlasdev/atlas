@@ -637,9 +637,11 @@ fn write_status_atomic(dir: &std::path::Path, text: &str) {
     write_atomic(dir, ".tui-status.json", text);
 }
 
-/// The same tmp-then-rename write for any file of the log dir (`.tui-metrics.json` too).
+/// The same tmp-then-rename write for any file of the log dir (`.tui-metrics.json` too). These are snapshots the next
+/// tick rewrites anyway, so a replace refused for good (Windows) is given up after a brief retry budget instead of
+/// stalling the manager's tick.
 pub(super) fn write_atomic(dir: &std::path::Path, file: &str, text: &str) {
-    let _ = atlas_core::fs::write_atomic(
+    let _ = atlas_core::fs::write_atomic_snapshot(
         &dir.join(file),
         text.as_bytes(),
         atlas_core::fs::Mode::Default,

@@ -52,9 +52,21 @@ pub fn try_lock(file: &File) -> io::Result<bool> {
 /// Replace `to` with `from` in one step, atomically for anyone opening the name `to` meanwhile: they get the old
 /// file or the new one, never "not found". `rename(2)` on Unix; on Windows `std::fs::rename` does not promise that
 /// (it can leave the name missing for an instant while a reader holds the old file), so the rename is done with POSIX
-/// semantics there. Not for directories.
+/// semantics there. Not for directories. A refusal that outlasts [`RetryBudget::Full`] fails the replace.
 pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
-    imp::replace_file(from, to)
+    replace_file_with(from, to, RetryBudget::Full)
+}
+
+/// [`replace_file`] with the retry budget the caller chooses (Windows; other OSes rename once).
+pub fn replace_file_with(from: &Path, to: &Path, budget: RetryBudget) -> io::Result<()> {
+    #[cfg(test)]
+    if let Some(code) = refusal::code() {
+        return replace_file_via(from, to, budget, |_, _| {
+            refusal::count();
+            Err(io::Error::from_raw_os_error(code))
+        });
+    }
+    imp::replace_file(from, to, budget)
 }
 
 /// What [`replace_file`] does after the POSIX rename failed (Windows).
@@ -64,24 +76,126 @@ pub(crate) enum RenameStep {
     /// A refusal that ends on its own (the antivirus or the indexer holds the new file without delete sharing for a
     /// moment): wait this long, then rename again.
     Retry(std::time::Duration),
-    /// Not supported, refused for good, or retried long enough: `std::fs::rename`. It can leave the old file in
-    /// delete-pending for a reader, so it is the last resort, never the answer to a passing refusal.
+    /// Anything else the POSIX rename failed with: the replace fails and the old file stays under its name.
+    /// `std::fs::rename` is not an answer to a refusal that is not about the file system (the same open handle refuses
+    /// it too) or to an error it would repeat; where it does succeed it is the legacy replace that can leave the name
+    /// missing or the old file delete-pending for a reader (#743).
+    GiveUp,
+    /// Not supported (an old Windows, not NTFS, write-protected media): `std::fs::rename`, all that is left there.
     Fallback,
 }
 
+/// How long [`replace_file_with`] keeps retrying a refused POSIX rename (Windows) before it gives up and fails.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RetryBudget {
+    /// Writes whose loss matters (registries, config, setup, crew, caches): 28 retries, about 1.2 s. A scan of a new
+    /// file by an antivirus under a loaded machine (CI) outlasted 160 ms.
+    Full,
+    /// Snapshots rewritten every tick anyway (`.tui-status.json`, `.tui-metrics.json`): 6 retries, about 63 ms. The
+    /// write is dropped on failure and the next tick lands; the caller is never stalled for long.
+    Brief,
+}
+
+impl RetryBudget {
+    #[cfg_attr(not(any(windows, test)), allow(dead_code))]
+    fn retries(self) -> u32 {
+        match self {
+            Self::Full => 28,
+            Self::Brief => 6,
+        }
+    }
+}
+
 /// The step after the POSIX rename's attempt number `attempt` (0-based) failed with Windows error `code`. Waits double
-/// from 1 ms and stop at 50 ms each, 8 retries (about 160 ms in all): long enough to outlast a scan of a new file,
-/// short enough that a write never stalls for long.
+/// from 1 ms and stop at 50 ms each, as many times as the `budget` allows.
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
-pub(crate) fn after_posix_rename_error(code: Option<i32>, attempt: u32) -> RenameStep {
+pub(crate) fn after_posix_rename_error(
+    code: Option<i32>,
+    attempt: u32,
+    budget: RetryBudget,
+) -> RenameStep {
     const ERROR_ACCESS_DENIED: i32 = 5;
     const ERROR_SHARING_VIOLATION: i32 = 32;
-    const RETRIES: u32 = 8;
     match code {
-        Some(ERROR_ACCESS_DENIED | ERROR_SHARING_VIOLATION) if attempt < RETRIES => {
-            RenameStep::Retry(std::time::Duration::from_millis((1u64 << attempt).min(50)))
+        Some(ERROR_ACCESS_DENIED | ERROR_SHARING_VIOLATION) if attempt < budget.retries() => {
+            RenameStep::Retry(std::time::Duration::from_millis(
+                (1u64 << attempt.min(6)).min(50),
+            ))
         }
-        _ => RenameStep::Fallback,
+        // Invalid function, write protect, not supported, invalid parameter, not implemented: no POSIX rename here.
+        Some(1 | 19 | 50 | 87 | 120) | None => RenameStep::Fallback,
+        Some(_) => RenameStep::GiveUp,
+    }
+}
+
+/// The waits [`replace_file_with`] sits through before it gives up on a refusal `code` that never ends (tests).
+#[cfg(test)]
+pub(crate) fn planned_waits(code: i32, budget: RetryBudget) -> Vec<std::time::Duration> {
+    (0..)
+        .map_while(
+            |attempt| match after_posix_rename_error(Some(code), attempt, budget) {
+                RenameStep::Retry(w) => Some(w),
+                _ => None,
+            },
+        )
+        .collect()
+}
+
+/// Test hook: make the POSIX rename of this thread's [`replace_file_with`] refuse with a Windows error code, on every
+/// OS, and count the attempts, so the retry budgets are asserted by attempts, not by a wall clock.
+#[cfg(test)]
+pub(crate) mod refusal {
+    use std::cell::Cell;
+    thread_local! {
+        static CODE: Cell<Option<i32>> = const { Cell::new(None) };
+        static TRIES: Cell<u32> = const { Cell::new(0) };
+    }
+    /// Refuse every POSIX rename of this thread with `code` until [`lift`]; the attempt count restarts.
+    pub(crate) fn refuse_with(code: i32) {
+        CODE.with(|c| c.set(Some(code)));
+        TRIES.with(|t| t.set(0));
+    }
+    pub(crate) fn lift() {
+        CODE.with(|c| c.set(None));
+    }
+    /// Attempts refused since [`refuse_with`].
+    pub(crate) fn tries() -> u32 {
+        TRIES.with(Cell::get)
+    }
+    pub(super) fn code() -> Option<i32> {
+        CODE.with(Cell::get)
+    }
+    pub(super) fn count() {
+        TRIES.with(|t| t.set(t.get() + 1));
+    }
+}
+
+/// The Windows replace loop with the POSIX rename given, so tests refuse it on every OS. A refusal that passes is
+/// retried, one that outlasts the retries fails the replace with the old file untouched (the name never leaves it),
+/// and a rename that cannot be done at all, or a readonly target (which refuses like a scan does, and waiting does
+/// not help), goes to `std::fs::rename`, which has its own readonly handling.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+pub(crate) fn replace_file_via(
+    from: &Path,
+    to: &Path,
+    budget: RetryBudget,
+    mut posix_rename: impl FnMut(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
+    let mut attempt = 0;
+    loop {
+        let Err(e) = posix_rename(from, to) else {
+            return Ok(());
+        };
+        let readonly = std::fs::metadata(to).is_ok_and(|m| m.permissions().readonly());
+        match after_posix_rename_error(e.raw_os_error(), attempt, budget) {
+            _ if readonly => return std::fs::rename(from, to),
+            RenameStep::Retry(wait) => {
+                std::thread::sleep(wait);
+                attempt += 1;
+            }
+            RenameStep::GiveUp => return Err(e),
+            RenameStep::Fallback => return std::fs::rename(from, to),
+        }
     }
 }
 
@@ -490,7 +604,7 @@ mod imp {
         c
     }
 
-    pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
+    pub fn replace_file(from: &Path, to: &Path, _budget: super::RetryBudget) -> io::Result<()> {
         std::fs::rename(from, to)
     }
 }
@@ -584,28 +698,14 @@ mod imp {
     /// name `to` goes from the old file to the new one, even while readers hold the old one open. `std::fs::rename`
     /// is `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`, which Windows documents without that guarantee: a reader opening
     /// the name meanwhile can find it missing (`NotFound`) or, the old file being delete-pending, be refused (`Access
-    /// is denied`) (#545). A passing refusal is retried ([`super::after_posix_rename_error`]); not supported (an old
-    /// Windows, a filesystem other than NTFS), a readonly target or a refusal that outlasts the retries falls back to
-    /// `std::fs::rename`, which has its own readonly handling.
-    pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
-        let mut attempt = 0;
-        loop {
-            let Err(e) = posix_rename(from, to) else {
-                return Ok(());
-            };
-            // A readonly target refuses with the same "access denied" as a passing scan, and waiting does not help.
-            let readonly = std::fs::metadata(to).is_ok_and(|m| m.permissions().readonly());
-            match super::after_posix_rename_error(e.raw_os_error(), attempt) {
-                super::RenameStep::Retry(wait) if !readonly => {
-                    std::thread::sleep(wait);
-                    attempt += 1;
-                }
-                _ => return std::fs::rename(from, to),
-            }
-        }
+    /// is denied`) (#545). The retry loop and what follows a refusal are in [`super::replace_file_via`]. (`ReplaceFileW`
+    /// is no better: measured on a Windows runner, a reader opening the name all along got `NotFound` in a third of
+    /// its opens and "sharing violation" in another 6%, #744.)
+    pub fn replace_file(from: &Path, to: &Path, budget: super::RetryBudget) -> io::Result<()> {
+        super::replace_file_via(from, to, budget, posix_rename)
     }
 
-    fn posix_rename(from: &Path, to: &Path) -> io::Result<()> {
+    pub(super) fn posix_rename(from: &Path, to: &Path) -> io::Result<()> {
         use std::os::windows::ffi::OsStrExt;
         use std::os::windows::fs::OpenOptionsExt;
         use windows_sys::Win32::Storage::FileSystem::{
@@ -1060,7 +1160,9 @@ mod tests {
         for code in [ACCESS_DENIED, SHARING_VIOLATION] {
             let mut waits = Vec::new();
             let mut attempt = 0;
-            while let RenameStep::Retry(w) = after_posix_rename_error(Some(code), attempt) {
+            while let RenameStep::Retry(w) =
+                after_posix_rename_error(Some(code), attempt, RetryBudget::Full)
+            {
                 waits.push(w);
                 attempt += 1;
                 assert!(attempt < 100, "never stops retrying");
@@ -1075,19 +1177,189 @@ mod tests {
             );
             let total: std::time::Duration = waits.iter().sum();
             assert!(
-                total <= std::time::Duration::from_millis(250),
+                total <= std::time::Duration::from_millis(1500),
                 "{code}: a write may stall {total:?}"
             );
         }
-        // Not supported (old Windows, not NTFS: invalid function, not supported, invalid parameter), write-protected
-        // media, or no OS code at all: the fallback, without waiting. (A readonly target also says "access denied";
-        // `imp::replace_file` checks the attribute and skips the retries.)
-        for code in [Some(1), Some(50), Some(87), Some(19), None] {
+        // Past the last retry the replace gives up: the old file keeps its name.
+        assert_eq!(
+            after_posix_rename_error(Some(ACCESS_DENIED), 28, RetryBudget::Full),
+            RenameStep::GiveUp
+        );
+        // Not supported (old Windows, not NTFS: invalid function, not supported, invalid parameter, not implemented),
+        // write-protected media, or no OS code at all: the fallback, without waiting. (A readonly target also says
+        // "access denied"; `replace_file_via` checks the attribute and skips the retries.)
+        for code in [Some(1), Some(50), Some(87), Some(120), Some(19), None] {
             assert_eq!(
-                after_posix_rename_error(code, 0),
+                after_posix_rename_error(code, 0, RetryBudget::Full),
                 RenameStep::Fallback,
                 "{code:?}"
             );
+        }
+        // Anything else (a lost race, a path that is gone, a full disk) is the caller's to see: the legacy rename would
+        // only fail the same way, or replace the name non-atomically.
+        for code in [Some(2), Some(3), Some(112), Some(1224)] {
+            assert_eq!(
+                after_posix_rename_error(code, 0, RetryBudget::Full),
+                RenameStep::GiveUp,
+                "{code:?}"
+            );
+        }
+    }
+
+    /// The two budgets, counted in attempts and planned waits (no clock): a writer whose loss matters keeps trying for
+    /// about 1.2 s; a per-tick snapshot, rewritten by the next tick anyway, gives up after about 63 ms.
+    #[test]
+    fn the_brief_budget_gives_up_in_a_fraction_of_the_full_one() {
+        use std::time::Duration;
+        for code in [5, 32] {
+            let full: Duration = planned_waits(code, RetryBudget::Full).iter().sum();
+            let brief: Duration = planned_waits(code, RetryBudget::Brief).iter().sum();
+            assert!(
+                full >= Duration::from_millis(1000) && full <= Duration::from_millis(1500),
+                "{code}: full {full:?}"
+            );
+            assert!(
+                brief <= Duration::from_millis(160),
+                "{code}: brief {brief:?}"
+            );
+            assert!(
+                planned_waits(code, RetryBudget::Brief).len() >= 4,
+                "{code}: the brief budget still outlasts a passing refusal"
+            );
+        }
+        assert_eq!(
+            after_posix_rename_error(Some(5), 6, RetryBudget::Brief),
+            RenameStep::GiveUp
+        );
+    }
+
+    /// #743 (`status_write_is_atomic_under_concurrent_reads`, Windows, `NotFound` at the reader): the fallback after a
+    /// refusal that outlasted the retries was `std::fs::rename`, the legacy replace that can leave the name missing
+    /// (or the old file delete-pending) for a reader. Now a refusal that does not end fails the replace instead, and
+    /// the old file keeps its name for the whole time, the new file stays beside it and is the caller's to clean up.
+    #[test]
+    fn a_refusal_that_outlasts_the_retries_fails_the_replace_and_the_name_never_leaves_the_old_file()
+     {
+        let dir = tempfile::tempdir().unwrap();
+        let (to, from) = (
+            dir.path().join("status.json"),
+            dir.path().join("status.json.tmp"),
+        );
+        std::fs::write(&to, "old").unwrap();
+        std::fs::write(&from, "new").unwrap();
+        let missing = watch_name(&to);
+        let mut tries = 0;
+        let err = replace_file_via(&from, &to, RetryBudget::Full, |_, _| {
+            tries += 1;
+            Err(io::Error::from_raw_os_error(5)) // ERROR_ACCESS_DENIED, every time
+        })
+        .unwrap_err();
+        let missing = missing.stop();
+        assert_eq!(err.raw_os_error(), Some(5));
+        assert_eq!(
+            tries as usize,
+            planned_waits(5, RetryBudget::Full).len() + 1
+        );
+        assert_eq!(
+            missing, 0,
+            "the name was missing for a reader {missing} times"
+        );
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "old");
+        assert_eq!(std::fs::read_to_string(&from).unwrap(), "new");
+    }
+
+    /// The normal path on Windows, the POSIX-semantics rename: a raw open of the name, as often as it can, never finds
+    /// it missing or refused while it is replaced 299 times (measured on a Windows runner, #744: 3684 opens, all ok;
+    /// `ReplaceFileW` got `NotFound` in 5000 of 13839 and a sharing violation in 954, so it is not used).
+    #[cfg(windows)]
+    #[test]
+    fn the_posix_rename_never_leaves_the_name_missing_for_a_raw_reader() {
+        let dir = tempfile::tempdir().unwrap();
+        let to = dir.path().join("status.json");
+        std::fs::write(&to, "0").unwrap();
+        let watch = watch_name(&to);
+        for n in 1..300 {
+            let from = dir.path().join(format!("status.json.tmp-{n}"));
+            std::fs::write(&from, n.to_string()).unwrap();
+            imp::posix_rename(&from, &to).unwrap();
+        }
+        let missing = watch.stop();
+        assert_eq!(
+            missing, 0,
+            "the name was missing for a reader {missing} times"
+        );
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "299");
+    }
+
+    /// The fallback itself (the POSIX rename "not supported", forced on every OS), where the legacy `std::fs::rename`
+    /// replaces: it makes no promise to a raw open (on Windows the old file can be delete-pending and refuse it), so
+    /// what is asserted is the contract of a reader that reads with `read_replaced`: every read is the old file or
+    /// the new one, never an error, and the last write wins.
+    #[test]
+    fn a_read_replaced_reader_never_fails_while_the_fallback_replaces() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let to = dir.path().join("status.json");
+        std::fs::write(&to, "0").unwrap();
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let reader = {
+            let (to, done) = (to.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut reads = 0u32;
+                while !done.load(Ordering::Relaxed) {
+                    let got = crate::fs::read_to_string_replaced(&to)
+                        .unwrap_or_else(|e| panic!("a read failed after {reads} reads: {e}"));
+                    assert!(got.parse::<u32>().is_ok(), "{got:?}");
+                    reads += 1;
+                }
+                reads
+            })
+        };
+        for n in 1..300 {
+            let from = dir.path().join(format!("status.json.tmp-{n}"));
+            std::fs::write(&from, n.to_string()).unwrap();
+            // ERROR_NOT_SUPPORTED: the case for which the fallback exists.
+            replace_file_via(&from, &to, RetryBudget::Full, |_, _| {
+                Err(io::Error::from_raw_os_error(50))
+            })
+            .unwrap();
+        }
+        done.store(true, Ordering::Relaxed);
+        assert!(reader.join().unwrap() > 0);
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "299");
+    }
+
+    /// A thread that opens `path` in a loop, as a reader does, and counts the opens that found no file.
+    struct NameWatch {
+        stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        thread: std::thread::JoinHandle<(u32, u32)>,
+    }
+
+    fn watch_name(path: &Path) -> NameWatch {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let (path, flag) = (path.to_path_buf(), stop.clone());
+        let thread = std::thread::spawn(move || {
+            let (mut opens, mut missing) = (0, 0);
+            while !flag.load(Ordering::Relaxed) {
+                match File::open(&path) {
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => missing += 1,
+                    _ => opens += 1,
+                }
+            }
+            (opens, missing)
+        });
+        NameWatch { stop, thread }
+    }
+
+    impl NameWatch {
+        /// How many opens found the name missing; at least one open must have happened.
+        fn stop(self) -> u32 {
+            self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            let (opens, missing) = self.thread.join().unwrap();
+            assert!(opens > 0, "the watcher never opened the file");
+            missing
         }
     }
 

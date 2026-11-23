@@ -11,9 +11,15 @@ import { prefsMock } from "../../../test/prefsMock.ts";
 
 const log: string[] = [];
 let webgl: FakeWebgl;
-type PtyEvent = { payload: { data: string; replay: boolean } };
-let sendEvent: (e: PtyEvent) => void;
-const emit = (payload: PtyEvent["payload"]) => sendEvent({ payload });
+/** The terminal's channel, as the Rust side would deliver a frame: kind byte (1 = history, 0 = output), then bytes. */
+let channel: { cb: (b: ArrayBuffer) => void };
+const emit = (p: { data: string; replay: boolean }) => {
+	const bytes = new TextEncoder().encode(atob(p.data));
+	const frame = new Uint8Array(bytes.length + 1);
+	frame[0] = p.replay ? 1 : 0;
+	frame.set(bytes, 1);
+	channel.cb(frame.buffer);
+};
 let attachDone: () => void;
 let renderCb: () => void;
 /** The families the webview can draw (what `document.fonts.check` answers) and the user's pref list. */
@@ -113,9 +119,8 @@ mock.module("@xterm/addon-webgl", () => ({ WebglAddon: FakeWebgl }));
 /** Every event name the component (and the shared host dispatcher) asked Tauri to listen to, in order. */
 const listened: string[] = [];
 mock.module("@tauri-apps/api/event", () => ({
-	listen: async (name: string, cb: typeof sendEvent) => {
+	listen: async (name: string) => {
 		listened.push(name);
-		if (name.startsWith("pty://")) sendEvent = cb;
 		return () => {};
 	},
 }));
@@ -123,10 +128,6 @@ mock.module("@tauri-apps/api/event", () => ({
 // `#lib/host.ts`, so whichever file loads first decides what the other sees. The host mock therefore covers the pty
 // calls of both files; base64 lives in the pure `#lib/b64.ts`, and this component does not import `api.ts` at all.
 const hostFake = {
-	ptyAttach: () =>
-		new Promise<void>((r) => {
-			attachDone = r;
-		}),
 	ptyResize: async () => {},
 	ptyDetach: async () => {},
 	ptyWrite: async () => {},
@@ -135,7 +136,20 @@ const hostFake = {
 	ptyCreate: async () => ({ pty: "p1" }),
 };
 mock.module("#lib/host.ts", () => ({ host: hostFake }));
-mock.module("@tauri-apps/api/core", () => ({ invoke: async () => null }));
+mock.module("@tauri-apps/api/core", () => ({
+	Channel: class {
+		constructor(public cb: (b: ArrayBuffer) => void) {
+			channel = this;
+		}
+	},
+	// `pty_stream` answers with the stream id when the test says the attach is done.
+	invoke: (cmd: string) =>
+		cmd === "pty_stream"
+			? new Promise<number>((r) => {
+					attachDone = () => r(1);
+				})
+			: Promise.resolve(null),
+}));
 await (await import("../../../test/uiKit.ts")).installUiKit();
 // The theme store pulls the whole kit (colorScheme, bits-ui), which bun cannot load; no other test touches it.
 mock.module("#lib/stores/theme.svelte.ts", () => ({ themes: { xterm: {} } }));

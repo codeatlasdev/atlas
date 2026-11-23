@@ -837,10 +837,15 @@ pub async fn attach_raw(dir: &Path, pty: &str, replay: bool) -> Result<RawPty> {
     let token = paths::read_token(dir)
         // i18n-ignore: context of an error chain (names the file being read), read in logs
         .context("hostd token")?;
-    let stream = ipc::connect(&paths::socket(dir)).await?;
+    attach_raw_at(&paths::socket(dir), &token, pty, replay).await
+}
+
+/// [`attach_raw`] for a hostd reached through `socket` with `token` (an SSH host's tunnel).
+pub async fn attach_raw_at(socket: &Path, token: &str, pty: &str, replay: bool) -> Result<RawPty> {
+    let stream = ipc::connect(socket).await?;
     let (r, mut w) = ipc::split(stream);
     let mut reader = BufReader::new(r);
-    let hello = crate::protocol::hello_line(&token, "raw");
+    let hello = crate::protocol::hello_line(token, "raw");
     let req = json!({"id": 1, "cmd": "pty_attach_raw", "args": {"pty": pty, "replay": replay}});
     w.write_all(format!("{hello}\n{req}\n").as_bytes()).await?;
     let _hello = reply_line(&mut reader).await?;

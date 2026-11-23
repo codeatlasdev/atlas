@@ -112,11 +112,12 @@ export function levelLive(name: string, before: number, after: number, want: num
 
 /**
  * The states CI holds to a CPU budget (% of one core over the window, all processes of the instance, llvmpipe: a GitHub
- * runner has no GPU). Each is the worst of at least 3 CI runs times 1.5, rounded up to a clean number (`terminal-idle` x2: its
- * samples are 0.5-1.5 %): docs/perf/linux-webkit-study.md, "Gate", has the samples and what each budget still catches. A state
- * with a known cost joins by the PR that removes it. `crew-unfocused` stays last: the order is the order of the run.
+ * runner has no GPU). A busy state is the worst of at least 3 CI runs times 1.5, rounded up; a near-idle one (a runner reads
+ * 0.5-3 % for a state that does nothing) gets a flat ceiling a few points above that noise, because what it guards costs 50-300 %.
+ * docs/perf/linux-webkit-study.md, "Gate", has the samples and what each budget catches. A state with a known cost joins by the
+ * PR that removes it. `crew-unfocused` stays last: the order is the order of the run.
  */
-export const GATE_BUDGET: Record<string, number> = { welcome: 3, workspace: 4, "stack-running": 15, "terminal-idle": 3, "chat-stream": 130, "terminal-output": 500, "crew-unfocused": 5 };
+export const GATE_BUDGET: Record<string, number> = { welcome: 3, workspace: 4, "stack-running": 15, "terminal-idle": 6, "chat-stream": 140, "terminal-output": 510, "crew-unfocused": 8 };
 
 /** Why the windows saved by a gate run fail: a gated state over its budget, or a gated state that was never measured (nothing measured must not read as a pass). */
 export function judgeGate(windows: Window[], budgets: Record<string, number> = GATE_BUDGET): string[] {

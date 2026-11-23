@@ -20,6 +20,14 @@ export function droppedPty(ev: unknown): string | undefined {
 const QUICK_MS = 2000;
 const BACKOFF_MS = 250;
 const MAX_BACKOFF_MS = 30_000;
+/**
+ * Parsed bytes are reported in batches: one acknowledgement is an IPC call, and a chat that streams ~30 updates a
+ * second of ~500 bytes would make 30 calls a second to credit 15 KB. A batch goes out when it reaches `ACK_BYTES` (a
+ * flood parses megabytes at a time, so it is never delayed) or `ACK_MS` after its first byte, so Rust's window
+ * (2 MiB) is never short of more than `ACK_BYTES` of parsed output for longer than that.
+ */
+export const ACK_BYTES = 64 * 1024;
+export const ACK_MS = 500;
 
 export function ptyStream(o: {
 	/** Attach with replay: frames start with the history. */
@@ -43,6 +51,9 @@ export function ptyStream(o: {
 	 * lost there would leave that much of the window used for ever.
 	 */
 	let owed = 0;
+	/** Parsed bytes of the current stream not reported yet, and whether a timer will report them. */
+	let unacked = 0;
+	let ackTimer = false;
 	/**
 	 * Bytes handed to xterm and not parsed yet, over every stream this view had: `reset()` does not drop the writes xterm
 	 * queued, so a new stream (a fresh window on Rust's side) opened on top of a backlog adds to it, and a slow page
@@ -67,6 +78,7 @@ export function ptyStream(o: {
 		link?.close();
 		link = undefined;
 		owed = 0;
+		unacked = 0;
 		if (backlog > 0) wanted = true;
 		else open();
 	};
@@ -115,14 +127,25 @@ export function ptyStream(o: {
 			() => {},
 		);
 	};
+	const flush = () => {
+		if (link && unacked > 0) link.ack(unacked);
+		unacked = 0;
+	};
 	const feed = (bytes: Uint8Array, replay: boolean, mine: number) => {
 		backlog += bytes.length;
 		o.write(bytes, replay, () => {
 			backlog -= bytes.length;
 			if (wanted && backlog <= 0 && alive) return open();
 			if (mine !== epoch) return;
-			if (link) link.ack(bytes.length);
-			else owed += bytes.length;
+			if (!link) owed += bytes.length;
+			else if ((unacked += bytes.length) >= ACK_BYTES) flush();
+			else if (!ackTimer) {
+				ackTimer = true;
+				void wait(ACK_MS).then(() => {
+					ackTimer = false;
+					if (alive) flush();
+				});
+			}
 		});
 	};
 	attach();

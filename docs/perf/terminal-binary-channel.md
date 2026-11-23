@@ -27,7 +27,24 @@ Cause 3 of [linux-webkit-study.md](linux-webkit-study.md) (a flooded xterm.js te
 | before 3 | 0.71 | 0.45 | 30.3 |
 | after 3 | 0.38 | 0.35 | 34.9 |
 
-The +4.6 points that remain are the app's (+2.8: one acknowledgement call per ~30 ms update, a second host connection) and the page's (+1.6); they are steady, not a loop.
+The +4.6 points that remained were the acknowledgements. Per frame the two paths do the same work: at most one frame per 16 ms (`FRAME_EVERY`; the fixture's ~30 updates a second make ~30 a second here, ~485 bytes each (main's `pty_batch` has the same 16 ms batch; I did not count its events), below Tauri's 1 KiB raw threshold, so a frame is one `eval` in the page, as main's event is), `decodeFrame` is a `subarray` (no copy), and ChatTab's `TextDecoder` is the same as main's after `atob`. The one extra call per frame is `pty_stream_ack`, an IPC round trip into Rust: 671 of them in 22 s (~30 a second) to credit 325 KB. Test by removal, release GPU, 3 alternated runs each, start load < 2 (gate), `terminal-binary-channel-chat-acks-gpu.jsonl`:
+
+| variant | total CPU (runs) | app | web | app main thread | app `ReceiveQueue` | web `ReceiveQueue` |
+|---|---|---|---|---|---|---|
+| main (`e915c5cb`) | 30.3 % (30.4, 30.4, 30.2) | 10.6 | 16.8 | 8.4 | 1.3 | 1.3 |
+| one ack per frame (`4e4a5de4`) | 34.6 % (34.8, 34.5, 34.6) | 13.5 | 18.3 | 10.8 | 1.9 | 1.9 |
+| **no acks** (diagnostic only: `ack` made a no-op) | **30.1 %** (30.1, 30.2, 30.0) | 10.4 | 16.8 | 8.3 | 1.3 | 1.3 |
+| acks batched, 64 KiB or 100 ms | 31.5 % (31.3, 31.7, 31.5) | 11.2 | 17.4 | 8.9 | 1.5 | 1.5 |
+
+With no acks the path costs exactly what main's does, so the whole delta is ack traffic (app main thread +2.4, and the `ReceiveQueue` threads on both sides that carry IPC). Acknowledgements are now batched (`ptyStream.ts`: a batch goes out at 64 KiB, which a flood reaches at once, or 500 ms after its first byte; only bytes xterm has parsed are ever in a batch). Parsed bytes held back are < 64 KiB whatever the clock does (a test with a clock that never fires), against Rust's 2 MiB window, and a throttled hidden webview cannot sit on credit. 3 alternated runs, `terminal-binary-channel-chat-acks-500-gpu.jsonl`:
+
+| variant | total CPU (runs) | app | web | hostd | web PSS |
+|---|---|---|---|---|---|
+| main | 30.1 % (30.1, 30.2, 30.1) | 10.6 | 16.7 | 2.6 | 248 MB |
+| batched, 100 ms | 31.5 % (31.6, 31.5, 31.5) | 11.2 | 17.4 | 2.6 | 257 MB |
+| **batched, 500 ms** (kept) | **30.8 %** (30.7, 30.8, 30.8) | 10.7 | 17.2 | 2.6 | 255 MB |
+
++0.7 points over main (app +0.1, web +0.5) from +4.6. A flood is not slowed: `terminal-output`, release GPU, 3 alternated runs of the unbatched build against the batched one (start load 0.5-2.0, end 1.4-2.3; `terminal-binary-channel-acks-flood-gpu.jsonl`): 169.9 % (169.5, 171.4, 168.7) against 169.8 % (169.5, 169.3, 170.7), web PSS 307 against 305 MB.
 
 `terminal-output`, release, 3 alternated runs per row, fresh instance each (`terminal-binary-channel-fixed-gpu.jsonl`, `-fixed-llvmpipe.jsonl`), same method as the release section below:
 

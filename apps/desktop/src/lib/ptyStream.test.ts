@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
-import { droppedPty, ptyStream } from "./ptyStream.ts";
+import { ACK_BYTES, ACK_MS, droppedPty, ptyStream } from "./ptyStream.ts";
 
 const enc = (s) => new TextEncoder().encode(s);
 const dec = (b) => new TextDecoder().decode(b);
@@ -53,12 +53,34 @@ const tick = async () => {
 	for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
+/** The page's clock: timers wait until the test fires them. */
+function clock() {
+	const c = {
+		timers: [],
+		waited: [],
+		wait: (ms) => (c.waited.push(ms), new Promise((r) => c.timers.push(r))),
+		/** The time for a batch of acknowledgements has come. */
+		fire: async () => {
+			c.timers.splice(0).forEach((r) => r());
+			await tick();
+		},
+	};
+	return c;
+}
+
 const start = async (history) => {
 	const h = fakeHost(history);
 	const x = xterm();
-	const p = ptyStream({ open: h.open, attached: async () => {}, write: x.write, reset: x.reset });
+	const c = clock();
+	const p = ptyStream({
+		open: h.open,
+		attached: async () => {},
+		write: x.write,
+		reset: x.reset,
+		wait: c.wait,
+	});
 	await tick();
-	return { h, x, p };
+	return { h, x, p, c };
 };
 
 describe("ptyStream", () => {
@@ -74,12 +96,62 @@ describe("ptyStream", () => {
 	// exactly what xterm parsed, and only once it did: acking at receipt would defeat the bound, acking more would
 	// widen it.
 	test("acks the bytes xterm parsed, once it parsed them, and nothing before", async () => {
-		const { h, x } = await start("screen");
+		const { h, x, c } = await start("screen");
 		h.data("12345");
 		h.data("678");
+		await c.fire();
 		expect(h.acked).toEqual([]);
 		x.parse();
-		expect(h.acked).toEqual(["screen".length, 5, 3]);
+		await c.fire();
+		expect(h.acked).toEqual(["screen".length + 5 + 3]);
+	});
+
+	// An acknowledgement is an IPC call: a chat that streams ~30 updates a second of ~500 bytes made 30 calls a second
+	// (the +2.8 points of app CPU over main in `chat-stream`). Parsed bytes go out in one batch per 500 ms, or at once
+	// past 64 KiB, and never more than xterm parsed.
+	test("small parsed frames are acked in one batch per interval, the whole of it", async () => {
+		const { h, x, c } = await start("");
+		for (let i = 0; i < 100; i++) {
+			h.data("x".repeat(500));
+			x.parse();
+		}
+		expect(h.acked).toEqual([]);
+		expect(c.waited).toEqual([ACK_MS]); // one timer for the whole batch, not one per frame
+		await c.fire();
+		expect(h.acked).toEqual([50_000]);
+		// the next batch starts a new interval
+		h.data("y".repeat(10));
+		x.parse();
+		await c.fire();
+		expect(h.acked).toEqual([50_000, 10]);
+	});
+
+	// The window (Rust: 2 MiB unacknowledged, then it stops reading) only bounds memory if parsed bytes come back: a
+	// flood parses megabytes between two timers, and a page whose timers are throttled (a hidden webview) must not
+	// sit on credit either.
+	test("a batch never holds more than 64 KiB of parsed bytes back, however slow the clock", async () => {
+		const { h, x } = await start("");
+		let parsed = 0;
+		for (let i = 0; i < 400; i++) {
+			h.data("z".repeat(1000));
+			x.parse();
+			parsed += 1000;
+			const acked = h.acked.reduce((a, b) => a + b, 0);
+			expect(acked).toBeLessThanOrEqual(parsed); // never credits what xterm has not parsed
+			expect(parsed - acked).toBeLessThan(ACK_BYTES); // the clock never fired, and the credit still comes back
+		}
+		h.data("w".repeat(512 * 1024));
+		x.parse();
+		expect(h.acked.reduce((a, b) => a + b, 0)).toBe(parsed + 512 * 1024); // a big frame is acked at once
+	});
+
+	test("unparsed bytes are never in a batch, whatever the clock does", async () => {
+		const { h, x, c } = await start("");
+		h.data("a".repeat(100_000)); // handed to xterm, not parsed
+		await c.fire();
+		expect(h.acked).toEqual([]);
+		x.parse();
+		expect(h.acked).toEqual([100_000]);
 	});
 
 	// The first frames can reach the page before the attach's answer (the stream id): their acks must not be lost,
@@ -106,7 +178,7 @@ describe("ptyStream", () => {
 	});
 
 	test("a parse that finishes after a reattach is not credited to the new stream", async () => {
-		const { h, x, p } = await start("v1");
+		const { h, x, p, c } = await start("v1");
 		h.data("stale");
 		p.reattach();
 		await tick();
@@ -116,6 +188,7 @@ describe("ptyStream", () => {
 		await tick();
 		expect(h.opens).toBe(2);
 		x.parse();
+		await c.fire();
 		expect(h.acked).toEqual(["v1".length]); // the new replay only
 	});
 
@@ -183,7 +256,8 @@ describe("ptyStream", () => {
 				attached: async () => {},
 				write: x.write,
 				reset: x.reset,
-				wait: (ms) => (waits.push(ms), new Promise(() => {})),
+				// the timer of an ack batch is not a retry wait
+				wait: (ms) => (ms !== ACK_MS && waits.push(ms), new Promise(() => {})),
 			});
 			await tick();
 			// 60 s of a chat stream, 30 lines a second: one stream, one replay, nothing else.

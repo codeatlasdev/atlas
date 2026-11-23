@@ -1,7 +1,7 @@
 ---
 title: "Referência da CLI"
 source: cli.md
-source_sha: "4321aae7eafcedea5db564dbc7f193c4d2da498d"
+source_sha: "420ab6abcb05b8a11323beb9b9ffbfa578994899"
 translation: machine
 ---
 

@@ -5,6 +5,7 @@
 
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { clock } from "#lib/clock.svelte.ts";
 	import CrewmateFaceGear from "#lib/crew/CrewmateFaceGear.svelte";
 	import CrewmateHat from "#lib/crew/CrewmateHat.svelte";
 	import type { CrewmateState } from "#lib/crew/crewmateFace.ts";
@@ -123,7 +124,12 @@
 			gy = Math.max(-1, Math.min(1, dy / reach));
 			lastPointer = performance.now();
 		};
-		const onVisibility = () => (paused = document.hidden);
+		// Hidden, or blurred past the grace (WebKitGTK never reports a window behind another as hidden): the loop ends
+		// instead of waking 60 times a second to do nothing, and starts again from the moment the window is back.
+		const syncPaused = () => {
+			paused = document.hidden || clock.resting;
+			if (!paused) start();
+		};
 
 		// Motion: one rAF per face; springs give overshoot on state changes and lag on hands/hat.
 		let raf = 0;
@@ -135,11 +141,11 @@
 		let ch = toChannels(pose(crewmateState, l.tool, t0));
 		const vel = ch.map(() => 0);
 		const frame = (now: number) => {
-			raf = requestAnimationFrame(frame);
 			if (paused) {
-				last = now;
+				raf = 0;
 				return;
 			}
+			raf = requestAnimationFrame(frame);
 			const dt = Math.min(0.05, (now - last) / 1000);
 			last = now;
 			if (crewmateState !== lastState) {
@@ -173,20 +179,28 @@
 			});
 			p = fromChannels(ch);
 		};
+		const start = () => {
+			if (reduce || raf) return;
+			last = performance.now();
+			raf = requestAnimationFrame(frame);
+		};
+		paused = document.hidden || clock.resting;
 		if (reduce) p = fromChannels(ch);
-		else raf = requestAnimationFrame(frame);
+		else if (!paused) start();
 
 		if (!reduce) {
 			later(600 + Math.random() * 2000, blink);
 			later(800 + Math.random() * 1500, glance);
 		}
 		if (track) window.addEventListener("pointermove", onPointer);
-		document.addEventListener("visibilitychange", onVisibility);
+		document.addEventListener("visibilitychange", syncPaused);
+		const offRest = clock.onRest(syncPaused);
 		return () => {
+			offRest();
 			for (const t of timers) clearTimeout(t);
 			cancelAnimationFrame(raf);
 			window.removeEventListener("pointermove", onPointer);
-			document.removeEventListener("visibilitychange", onVisibility);
+			document.removeEventListener("visibilitychange", syncPaused);
 		};
 	});
 
@@ -319,7 +333,11 @@
 			<path d="M190 262 Q214 286 238 262" stroke={ink} stroke-width="10" stroke-linecap="round" fill="none" />
 		{/if}
 
-		<g transform="translate(0 {enter.hat?.dy ?? 0}) rotate({p.hat} 214 60)" opacity={enter.hat?.alpha ?? 1}>
+		<g
+			class:hat-live={crewmateState === "working"}
+			transform="translate(0 {enter.hat?.dy ?? 0}) rotate({p.hat} 214 60)"
+			opacity={enter.hat?.alpha ?? 1}
+		>
 			<CrewmateHat hat={l.hat} color={l.color} />
 		</g>
 	</g>
@@ -387,28 +405,15 @@
 		transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
+	/* A sleeping crewmate is a settled state: its z's rest, fading as they rise, and do not loop. */
 	.z {
-		opacity: 0;
-		animation: zfloat 3s ease-out infinite;
+		opacity: 0.7;
 	}
 	.z2 {
-		animation-delay: 0.9s;
+		opacity: 0.45;
 	}
 	.z3 {
-		animation-delay: 1.8s;
-	}
-	@keyframes zfloat {
-		0% {
-			transform: translateY(0);
-			opacity: 0;
-		}
-		20% {
-			opacity: 0.7;
-		}
-		100% {
-			transform: translateY(-60px);
-			opacity: 0;
-		}
+		opacity: 0.25;
 	}
 
 	.paused,

@@ -3,6 +3,7 @@
  * Each crew server logs in to GitHub itself via `gh auth login`.
  * The Mac never holds a GitHub token.
  */
+import { clock } from "#lib/clock.svelte.ts";
 import { hostCall } from "#lib/host.ts";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
@@ -26,7 +27,7 @@ class GitHubCrewStore {
 	// ── active login flows ────────────────────────────────────────────────────
 	private _flows = $state(new Map<string, ServerLoginFlow>());
 	private _polling = $state(new Set<string>());
-	private _pollTimers = new Map<string, number>();
+	private _pollTimers = new Map<string, () => void>();
 
 	// ── UI signals ────────────────────────────────────────────────────────────
 	openIntegrations = $state(false);
@@ -79,8 +80,10 @@ class GitHubCrewStore {
 		const nextPoll = new Set(this._polling);
 		nextPoll.add(hostKey);
 		this._polling = nextPoll;
-		const timer = window.setInterval(() => void this._poll(hostKey), 4000);
-		this._pollTimers.set(hostKey, timer);
+		this._pollTimers.set(
+			hostKey,
+			clock.every(4000, () => void this._poll(hostKey)),
+		);
 	}
 
 	private async _poll(hostKey: string): Promise<void> {
@@ -116,9 +119,9 @@ class GitHubCrewStore {
 	}
 
 	private _stopPolling(hostKey: string): void {
-		const timer = this._pollTimers.get(hostKey);
-		if (timer !== undefined) {
-			clearInterval(timer);
+		const stop = this._pollTimers.get(hostKey);
+		if (stop) {
+			stop();
 			this._pollTimers.delete(hostKey);
 		}
 		const next = new Set(this._polling);

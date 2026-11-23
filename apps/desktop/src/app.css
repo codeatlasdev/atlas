@@ -425,6 +425,15 @@ html.ground-holes .space-wash {
 	}
 }
 
+/* A resting window (hidden, or blurred past `blurGraceMs`: lib/clock.svelte.ts sets `data-resting`) runs no CSS motion: WebKitGTK
+   never reports a window on another workspace or behind another as hidden, and one running animation keeps the whole
+   web process -> UI process -> compositor pipeline at 60 fps (docs/perf/linux-webkit-study.md). */
+html[data-resting] *,
+html[data-resting] *::before,
+html[data-resting] *::after {
+	animation-play-state: paused !important;
+}
+
 /* Native app feel: `nativeFeel()` (kit, started in lib/shell/session.svelte.ts) hides every focus ring until the keyboard
    is used (`data-kbd`); this is how the keyboard ring looks. */
 html[data-kbd] :focus-visible {

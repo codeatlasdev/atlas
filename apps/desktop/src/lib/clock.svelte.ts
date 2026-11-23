@@ -22,6 +22,8 @@ export interface ClockEnv {
 	onVisibility(fn: () => void): () => void;
 	onFocus(fn: () => void): () => void;
 	onBlur(fn: () => void): () => void;
+	/** The page is resting (hidden, or blurred past the grace): the app stops its own motion until it is false again. */
+	rest(resting: boolean): void;
 	blurGraceMs: number;
 }
 
@@ -42,6 +44,15 @@ export function createClock(env: ClockEnv) {
 	let stamp = $state(env.now());
 
 	const awake = () => env.visible() && !asleep;
+	let resting = false;
+	const restListeners = new Set<(resting: boolean) => void>();
+	/** Tell the page whether it rests, on change only (WebKitGTK on Wayland never reports hidden, so blur is the signal). */
+	const rest = () => {
+		if (resting === !awake()) return;
+		resting = !awake();
+		env.rest(resting);
+		for (const f of restListeners) f(resting);
+	};
 	const step = () => Math.min(...[...subs].map((s) => s.ms));
 
 	function run(s: Sub) {
@@ -72,10 +83,15 @@ export function createClock(env: ClockEnv) {
 		timerMs = want;
 	}
 
+	function settle() {
+		rest();
+		sync();
+	}
+
 	function wake() {
 		asleep = false;
 		stamp = env.now();
-		sync();
+		settle();
 		for (const s of subs) {
 			s.due = 0;
 			run(s);
@@ -84,7 +100,7 @@ export function createClock(env: ClockEnv) {
 
 	env.onVisibility(() => {
 		if (env.visible()) wake();
-		else sync();
+		else settle();
 	});
 	env.onBlur(() => {
 		if (grace !== undefined) env.clearTimeout(grace);
@@ -92,7 +108,7 @@ export function createClock(env: ClockEnv) {
 			grace = undefined;
 			if (env.focused()) return;
 			asleep = true;
-			sync();
+			settle();
 		}, env.blurGraceMs);
 	});
 	env.onFocus(() => {
@@ -105,6 +121,15 @@ export function createClock(env: ClockEnv) {
 		/** Reactive "now", refreshed on every tick while someone is subscribed and visible. */
 		get now() {
 			return stamp;
+		},
+		/** Hidden, or blurred past the grace: loops of the app's own (rAF, timers) stop until `onRest(false)`. */
+		get resting() {
+			return resting;
+		},
+		/** Call `fn(resting)` whenever that changes. Returns the unsubscribe function. */
+		onRest(fn: (resting: boolean) => void): () => void {
+			restListeners.add(fn);
+			return () => restListeners.delete(fn);
 		},
 		/** Re-read "now" immediately (a window re-shown without a visibility change). */
 		refresh() {
@@ -185,5 +210,6 @@ export const clock = createClock({
 	),
 	onFocus: (fn) => (window.addEventListener("focus", fn), () => window.removeEventListener("focus", fn)),
 	onBlur: (fn) => (window.addEventListener("blur", fn), () => window.removeEventListener("blur", fn)),
+	rest: (resting) => document.documentElement.toggleAttribute("data-resting", resting),
 	blurGraceMs: 60_000,
 });

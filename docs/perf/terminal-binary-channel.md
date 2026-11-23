@@ -36,15 +36,20 @@ The +4.6 points that remained were the acknowledgements. Per frame the two paths
 | **no acks** (diagnostic only: `ack` made a no-op) | **30.1 %** (30.1, 30.2, 30.0) | 10.4 | 16.8 | 8.3 | 1.3 | 1.3 |
 | acks batched, 64 KiB or 100 ms | 31.5 % (31.3, 31.7, 31.5) | 11.2 | 17.4 | 8.9 | 1.5 | 1.5 |
 
-With no acks the path costs exactly what main's does, so the whole delta is ack traffic (app main thread +2.4, and the `ReceiveQueue` threads on both sides that carry IPC). Acknowledgements are now batched (`ptyStream.ts`: a batch goes out at 64 KiB, which a flood reaches at once, or 500 ms after its first byte; only bytes xterm has parsed are ever in a batch). Parsed bytes held back are < 64 KiB whatever the clock does (a test with a clock that never fires), against Rust's 2 MiB window, and a throttled hidden webview cannot sit on credit. 3 alternated runs, `terminal-binary-channel-chat-acks-500-gpu.jsonl`:
+With no acks the path costs exactly what main's does, so the whole delta is ack traffic (app main thread +2.4, and the `ReceiveQueue` threads on both sides that carry IPC). Acknowledgements are now batched (`ptyStream.ts`: a batch goes out at 64 KiB, which a flood reaches at once, or 500 ms after its first byte; only bytes xterm has parsed are ever in a batch). Parsed bytes held back are < 64 KiB whatever the clock does (a test with a clock that never fires), against Rust's 2 MiB window, and a throttled hidden webview cannot sit on credit. 3 alternated runs, `terminal-binary-channel-chat-acks-500-gpu.jsonl` (main 30.1 %, batched 100 ms 31.5 %, batched 500 ms 30.8 %); 500 ms is the one kept. **Final set** of main against this PR (`0b9c5cbf`, code identical to the head), release, GPU, a fresh instance per run, each run started only after the 1-minute load was under 2, start and end load of every run in `terminal-binary-channel-chat-final-gpu.jsonl` (`startLoad`, `endLoad`; all samples under 2):
 
-| variant | total CPU (runs) | app | web | hostd | web PSS |
-|---|---|---|---|---|---|
-| main | 30.1 % (30.1, 30.2, 30.1) | 10.6 | 16.7 | 2.6 | 248 MB |
-| batched, 100 ms | 31.5 % (31.6, 31.5, 31.5) | 11.2 | 17.4 | 2.6 | 257 MB |
-| **batched, 500 ms** (kept) | **30.8 %** (30.7, 30.8, 30.8) | 10.7 | 17.2 | 2.6 | 255 MB |
+| run | start load | end load | total CPU | app | web | hostd |
+|---|---|---|---|---|---|---|
+| main 1 | 0.22 | 0.39 | 31.2 | 10.8 | 17.5 | 2.6 |
+| #734 1 | 0.44 | 0.66 | 30.8 | 10.8 | 17.1 | 2.6 |
+| main 2 | 0.63 | 0.71 | 30.0 | 10.6 | 16.6 | 2.5 |
+| #734 2 | 0.74 | 0.45 | 30.7 | 10.7 | 17.1 | 2.6 |
+| main 3 | 0.75 | 0.62 | 30.1 | 10.6 | 16.6 | 2.6 |
+| #734 3 | 0.57 | 0.62 | 30.9 | 10.9 | 17.2 | 2.5 |
+| **main, mean** | | | **30.4 %** | 10.7 | 16.9 | 2.6 |
+| **#734, mean** | | | **30.8 %** | 10.8 | 17.1 | 2.6 |
 
-+0.7 points over main (app +0.1, web +0.5) from +4.6. A flood is not slowed: `terminal-output`, release GPU, 3 alternated runs of the unbatched build against the batched one (start load 0.5-2.0, end 1.4-2.3; `terminal-binary-channel-acks-flood-gpu.jsonl`): 169.9 % (169.5, 171.4, 168.7) against 169.8 % (169.5, 169.3, 170.7), web PSS 307 against 305 MB.
++0.4 points over main (app +0.1, web +0.2), from +4.6; the run-to-run spread of main alone is 1.2 points (30.0-31.2), so the remainder is inside the noise of this scenario. A flood is not slowed: `terminal-output`, release GPU, 3 alternated runs of the unbatched build against the batched one (start load 0.5-2.0, end 1.4-2.3; `terminal-binary-channel-acks-flood-gpu.jsonl`): 169.9 % (169.5, 171.4, 168.7) against 169.8 % (169.5, 169.3, 170.7), web PSS 307 against 305 MB.
 
 `terminal-output`, release, 3 alternated runs per row, fresh instance each (`terminal-binary-channel-fixed-gpu.jsonl`, `-fixed-llvmpipe.jsonl`), same method as the release section below:
 

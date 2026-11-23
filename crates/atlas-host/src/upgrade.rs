@@ -216,7 +216,7 @@ fn send_and_ack(
     fds: &[std::os::fd::RawFd],
     lock_fd: std::os::fd::RawFd,
 ) -> Result<()> {
-    for (payload, chunk_fds) in encode_chunks(bundle, fds, Some(lock_fd)) {
+    for (payload, chunk_fds) in encode_chunks(bundle, fds, lock_fd) {
         send_with_fds(s.as_raw_fd(), &payload, &chunk_fds)?;
     }
     s.set_read_timeout(Some(ACK_TIMEOUT))?;
@@ -265,7 +265,7 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
     let s = UnixStream::connect(sock).with_context(|| format!("connect {}", sock.display()))?;
     s.set_read_timeout(Some(ACK_TIMEOUT))?;
     let mut sessions = Vec::new();
-    let mut lock = None;
+    let lock;
     let agents;
     let mut pending: Vec<u8> = Vec::new();
     let mut buf = vec![0u8; 256 * 1024];
@@ -284,16 +284,17 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
             let b: Bundle =
                 // i18n-ignore: the successor's side of the hand-over, written to hostd.log
                 serde_json::from_slice(&line[..line.len() - 1]).context("bad handoff bundle")?;
-            if b.sessions.is_empty() {
+            // The terminator is the line that carries the lock. An empty line without it is a data chunk
+            // with no session: alpha.26 sends one first when no terminal runs (#670).
+            if b.sessions.is_empty() && b.lock {
                 agents = b.agents;
-                if b.lock {
-                    lock = chunk_fds
-                        .first_mut()
-                        .and_then(Option::take)
-                        .map(std::fs::File::from);
-                }
+                lock = chunk_fds
+                    .first_mut()
+                    .and_then(Option::take)
+                    .map(std::fs::File::from);
                 break 'recv;
             }
+            let st_empty = b.sessions.is_empty();
             for st in b.sessions {
                 let fd = match st.fd {
                     Some(i) => Some(
@@ -307,8 +308,11 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
                 };
                 sessions.push((st, fd));
             }
-            // Indices restart per chunk.
-            chunk_fds.clear();
+            // Indices restart per chunk. An empty line carries none, and the fd that follows it may already
+            // have arrived in the same read (alpha.26 sends both at once): it is the terminator's.
+            if !st_empty {
+                chunk_fds.clear();
+            }
         }
     }
     Ok(Takeover {
@@ -754,5 +758,138 @@ mod tests {
             "{all}"
         );
         assert_eq!(feature_name("en", "teleport"), "teleport");
+    }
+}
+
+/// The successor reading what an old daemon sent: the real bytes of alpha.26 (captured from a running
+/// 1.5.0-alpha.26 `atlas hostd` by `upgrade`, see `testdata/hostd/handoff/`) and the current encoder's own output.
+#[cfg(all(test, unix))]
+mod handoff_wire {
+    use super::*;
+    use crate::handoff::SessionState;
+
+    /// One `recvmsg` of the successor stub: the bytes the old daemon sent and how many fds came with them.
+    #[derive(serde::Deserialize)]
+    struct Sent {
+        fds: usize,
+        data: String,
+    }
+
+    fn fixture(name: &str) -> Vec<Sent> {
+        let p = crate::protocol_golden::fixture(&format!("handoff/{name}"));
+        serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap()
+    }
+
+    /// Plays `sent` to `receive_blocking` over a real socket, each message with fresh fds (one end of a socket pair
+    /// each: anything the receiver can own), and returns what the successor made of it.
+    fn play(sent: Vec<(Vec<u8>, usize)>) -> Result<Takeover> {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("h.sock");
+        let l = UnixListener::bind(&sock).unwrap();
+        let old = std::thread::spawn(move || {
+            let (s, _) = l.accept().unwrap();
+            let mut keep = Vec::new();
+            for (payload, n) in sent {
+                let mut raw = Vec::new();
+                for _ in 0..n {
+                    let (r, w) = UnixStream::pair().unwrap();
+                    raw.push(r.as_raw_fd());
+                    keep.push((r, w));
+                }
+                send_with_fds(s.as_raw_fd(), &payload, &raw).unwrap();
+            }
+            // Like the old daemon: wait for the successor's `R` (or its EOF), then let go.
+            let mut r = [0u8; 1];
+            let _ = (&s).read(&mut r);
+            drop(keep);
+        });
+        let got = receive_blocking(&sock).map(|mut t| {
+            let _ = t.stream.write_all(b"R");
+            t
+        });
+        old.join().unwrap();
+        got
+    }
+
+    fn from_fixture(name: &str) -> Result<Takeover> {
+        play(
+            fixture(name)
+                .into_iter()
+                .map(|m| (m.data.into_bytes(), m.fds))
+                .collect(),
+        )
+    }
+
+    /// Regression: #670. `atlas update` with no terminal open failed every time with "waiting for the new hostd: failed
+    /// to fill whole buffer": alpha.26 sends an empty chunk (no sessions, `lock: false`) before the terminator, and the
+    /// successor took that first empty line for the terminator, left the pid-file fd unread, found the pid lock still
+    /// held by the old daemon, exited, and the old daemon read EOF where it waited for `R`.
+    #[test]
+    fn a_handoff_of_an_alpha_26_daemon_with_no_terminal_reaches_the_terminator() {
+        let t =
+            from_fixture("alpha26-no-terminals.json").expect("successor must accept the handoff");
+        assert!(t.sessions.is_empty());
+        assert!(
+            t.lock.is_some(),
+            "the pid-file fd arrives with the terminator"
+        );
+        assert_eq!(
+            t.agents["by_cwd"]["omp|/w"], "p1",
+            "the agent state is in the terminator, not in the empty chunk before it"
+        );
+    }
+
+    #[test]
+    fn a_handoff_of_an_alpha_26_daemon_with_terminals_keeps_every_session_and_fd() {
+        let t =
+            from_fixture("alpha26-two-terminals.json").expect("successor must accept the handoff");
+        let ids: Vec<_> = t.sessions.iter().map(|(s, _)| s.argv.join(" ")).collect();
+        assert_eq!(ids, ["sh -c sleep 300", "sh -c echo gone"]);
+        assert!(
+            t.sessions[0].1.is_some(),
+            "the live pty's master fd travels"
+        );
+        assert!(
+            t.sessions[1].1.is_none(),
+            "a finished pty travels as state only"
+        );
+        assert!(t.lock.is_some());
+    }
+
+    fn state(id: &str, fd: Option<usize>) -> SessionState {
+        let mut s: SessionState = serde_json::from_value(json!({
+            "id": id, "cwd": "/tmp", "argv": ["sh"], "scope": {}, "created_at": 1, "title": "",
+            "cols": 80, "rows": 24, "pid": 1, "file_len": 0, "exited": false, "exit_code": null, "iso": null,
+        }))
+        .unwrap();
+        s.fd = fd;
+        s
+    }
+
+    /// What the current encoder sends is what the current successor reads, from no terminal up to more than one
+    /// message of fds (the chunk boundary), with the agents and the lock arriving whatever the count.
+    #[test]
+    fn the_encoder_and_the_successor_agree_for_any_number_of_terminals() {
+        for n in [0usize, 1, 31, 32, 33, 70] {
+            let bundle = Bundle {
+                from_version: "x".into(),
+                sessions: (0..n).map(|i| state(&format!("s{i}"), Some(i))).collect(),
+                lock: true,
+                agents: json!({"panes": {}, "by_cwd": {"omp|/w": "p1"}}),
+            };
+            let fds: Vec<_> = (0..n as i32).collect();
+            let sent = encode_chunks(&bundle, &fds, 99)
+                .into_iter()
+                .map(|(p, f)| (p, f.len()))
+                .collect();
+            let t = play(sent).unwrap_or_else(|e| panic!("{n} terminals: {e:#}"));
+            assert_eq!(t.sessions.len(), n, "{n} terminals");
+            assert!(
+                t.sessions.iter().all(|(_, fd)| fd.is_some()),
+                "{n} terminals"
+            );
+            assert!(t.lock.is_some(), "{n} terminals");
+            assert_eq!(t.agents["by_cwd"]["omp|/w"], "p1", "{n} terminals");
+        }
     }
 }

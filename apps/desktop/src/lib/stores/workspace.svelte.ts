@@ -55,6 +55,8 @@ class Workspace {
 	/** Top-level workspace mode: "ide" is everything today; "crew" is the full-window messenger. */
 	appMode = $state<"ide" | "crew">("ide");
 	#persist = new WorkspacePersist(this);
+	/** Ptys killed by closing their tab that have not reported their exit yet: their last events are ignored. */
+	#closing = new Set<string>();
 
 	get selected(): Worktree | undefined {
 		return this.doc.worktrees.find((w) => w.id === this.doc.selected);
@@ -84,9 +86,38 @@ class Workspace {
 		this.#persist.dispose();
 	}
 
+	/**
+	 * What the host reports about a pty (`host://event`). The events of a pty whose tab was closed are dropped: the host
+	 * sends its `pty_exit` (and may send a last title) after the kill, which would put back the entry `#forgetPty` removed.
+	 */
+	ptyEvent(e: { ev: string; pty?: string; title?: string; code?: number | null }) {
+		const pty = e.pty;
+		if (!pty) return;
+		if (this.#closing.has(pty)) {
+			if (e.ev === "pty_exit") this.#closing.delete(pty);
+			return;
+		}
+		if (e.ev === "pty_title") this.titles[pty] = tabTitle(e.title ?? "");
+		if (e.ev === "pty_exit") this.exited[pty] = e.code ?? null;
+	}
+
+	/** A terminal's tab is gone and its pty is being killed: drop what the store knows about it (unless another tab shows it). */
+	#forgetPty(pty: string, exceptTab?: string) {
+		if (this.doc.tabs.some((t) => t.pty === pty && t.id !== exceptTab)) return;
+		// An exited pty has no event left to ignore; the note would only wait for one that never comes.
+		if (!(pty in this.exited)) this.#closing.add(pty);
+		delete this.ptys[pty];
+		delete this.titles[pty];
+		delete this.exited[pty];
+	}
+
 	async syncPtys() {
 		try {
-			const list = await host.ptyList();
+			const all = await host.ptyList();
+			// A killed pty the host still lists must not come back, and one it no longer lists has no event left to wait for.
+			const listed = new Set(all.map((p) => p.pty));
+			for (const pty of this.#closing) if (!listed.has(pty)) this.#closing.delete(pty);
+			const list = all.filter((p) => !this.#closing.has(p.pty));
 			this.ptys = Object.fromEntries(list.map((p) => [p.pty, p]));
 			for (const p of list) {
 				this.titles[p.pty] = tabTitle(p.title);
@@ -121,8 +152,10 @@ class Workspace {
 	}
 
 	removeWorktree(id: string) {
-		for (const t of this.tabsOf(id)) if (t.pty) void host.ptyKill(t.pty).catch(() => {});
+		const ptys = this.tabsOf(id).flatMap((t) => (t.pty ? [t.pty] : []));
+		for (const pty of ptys) void host.ptyKill(pty).catch(() => {});
 		this.doc.tabs = this.doc.tabs.filter((t) => t.worktreeId !== id);
+		for (const pty of ptys) this.#forgetPty(pty);
 		this.doc.groups = this.doc.groups.filter((g) => g.worktreeId !== id);
 		delete this.doc.layouts[id];
 		delete this.doc.focusedGroup[id];
@@ -338,7 +371,10 @@ class Workspace {
 		const t = this.tab(tabId);
 		if (!t) return false;
 		if (pinned(t) && !force) return false;
-		if (killPty && t.pty) void host.ptyKill(t.pty).catch(() => {});
+		if (killPty && t.pty) {
+			this.#forgetPty(t.pty, tabId);
+			void host.ptyKill(t.pty).catch(() => {});
+		}
 		if (t.kind === "browser") void invoke("browser_close", { tab: t.id }).catch(() => {});
 		const g = this.group(t.groupId);
 		const i = g ? g.order.indexOf(tabId) : -1;
@@ -491,12 +527,14 @@ class Workspace {
 			return;
 		}
 		try {
-			if (t.pty) await host.ptyKill(t.pty).catch(() => {});
+			const old = t.pty;
+			if (old) await host.ptyKill(old).catch(() => {});
 			const { pty } = await host.ptyCreate(
 				ptyRequest({ ...t, cwd: t.cwd ?? this.worktree(t.worktreeId)?.path ?? "/" }),
 			);
 			await this.syncPtys();
 			t.pty = pty;
+			if (old) this.#forgetPty(old);
 		} catch (e) {
 			this.fail(e);
 		}

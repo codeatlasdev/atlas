@@ -15,11 +15,12 @@ await (await import("../../../test/uiKit.ts")).installUiKit();
 mock.module("#lib/api.ts", () => ({ errText: String, api: {}, git: {} }));
 let ptyList: () => Promise<unknown[]> = async () => [];
 const created = [];
+let nextPty = "p1";
 mock.module("#lib/host.ts", () => ({
 	host: {
 		ptyKill: async () => {},
 		ptyList: () => ptyList(),
-		ptyCreate: async (a) => (created.push(a), { pty: "p1" }),
+		ptyCreate: async (a) => (created.push(a), { pty: nextPty }),
 	},
 }));
 // The real `errors` store (not a mock of it: a process-wide module mock would leak into
@@ -276,4 +277,101 @@ test("host://reconnected dismisses the outage toast at once", async () => {
 	listeners["host://reconnected"]({ payload: { host: "local" } });
 	expect(errors.toasts).toHaveLength(0);
 	ws.dispose();
+});
+
+// Incident (#289, docs/perf/linux-webkit-round2.md): `ptys`, `titles` and `exited` kept an entry for every terminal ever
+// opened, 252 after a 40-minute session of opening and closing them. Closing a terminal tab kills its pty, and the host
+// answers with `pty_exit` (and may send a last title) AFTER the tab is gone, so forgetting the entries at close is not
+// enough: the late event used to put one back.
+const live = (pty: string) => [pty in ws.ptys, pty in ws.titles, pty in ws.exited];
+/** The host answers again and the workspace holds just the worktree (earlier tests left the host down and the doc replaced). */
+async function up() {
+	ptyList = async () => [];
+	await ws.syncPtys();
+	ws.titles = {};
+	ws.exited = {};
+	ws.upsertWorktree({ id: W, repoId: "r", path: "/tmp/w", name: "w", isMain: true });
+	fresh();
+}
+
+test("closing a terminal tab forgets its pty, and the host's exit event that arrives after the close does not bring it back", async () => {
+	await up();
+	const t = await ws.newTerminal(W, { argv: ["zsh"] });
+	ptyList = async () => [{ pty: "p1", title: "zsh", exited: null }];
+	await ws.syncPtys();
+	ws.ptyEvent({ ev: "pty_title", pty: "p1", title: "build" });
+	expect(live("p1")).toEqual([true, true, false]);
+
+	ws.closeTab(t.id);
+	expect(live("p1")).toEqual([false, false, false]);
+
+	ws.ptyEvent({ ev: "pty_title", pty: "p1", title: "bye" });
+	ws.ptyEvent({ ev: "pty_exit", pty: "p1", code: 0 });
+	expect(live("p1")).toEqual([false, false, false]);
+
+	// What is left of that pty is gone with its exit event: nothing waits in the store for it.
+	ptyList = async () => [];
+	await ws.syncPtys();
+	expect(live("p1")).toEqual([false, false, false]);
+});
+
+test("closing many terminals leaves no entry behind, so the maps do not grow with every terminal ever opened", async () => {
+	await up();
+	for (let i = 0; i < 20; i++) {
+		const t = await ws.newTerminal(W, { argv: ["zsh"] });
+		ws.ptyEvent({ ev: "pty_title", pty: "p1", title: `t${i}` });
+		ws.closeTab(t.id);
+		ws.ptyEvent({ ev: "pty_exit", pty: "p1", code: 0 });
+	}
+	expect([Object.keys(ws.ptys), Object.keys(ws.titles), Object.keys(ws.exited)]).toEqual([[], [], []]);
+});
+
+test("a pty another tab still shows keeps its entries when one tab closes, and the exit the host reports reaches the other tab", async () => {
+	await up();
+	const a = await ws.newTerminal(W, { argv: ["zsh"] });
+	const b = ws.openTab(W, { kind: "terminal", label: "zsh" });
+	b.pty = a.pty;
+	ws.ptyEvent({ ev: "pty_title", pty: "p1", title: "shared" });
+	ws.closeTab(a.id);
+	expect(live("p1")).toEqual([true, true, false]);
+	ws.ptyEvent({ ev: "pty_exit", pty: "p1", code: 3 });
+	expect(ws.ended(b)).toBe("exited");
+});
+
+// A pty that already exited has no event left to ignore, so closing its tab leaves no note behind that would wait for one:
+// an event for the same id once the host no longer lists it is a new pty's and is kept.
+test("closing an exited terminal leaves no note that swallows the next events of that id", async () => {
+	await up();
+	const t = await ws.newTerminal(W, { argv: ["zsh"] });
+	ws.ptyEvent({ ev: "pty_exit", pty: "p1", code: 1 });
+	ws.closeTab(t.id);
+	expect(live("p1")).toEqual([false, false, false]);
+	ptyList = async () => [];
+	await ws.syncPtys();
+	ws.ptyEvent({ ev: "pty_exit", pty: "p1", code: 2 });
+	expect(ws.exited.p1).toBe(2);
+});
+
+// The Setup command's terminal is started by the backend, not by a tab of ours: its exit must still be recorded (the
+// "ready in N s" toast waits for it), so events of ptys this store never closed are never dropped.
+test("events of a pty the store did not close are recorded even before it is listed", () => {
+	fresh();
+	ws.ptyEvent({ ev: "pty_exit", pty: "setup-pty", code: 0 });
+	ws.ptyEvent({ ev: "pty_title", pty: "setup-pty", title: "make" });
+	expect(ws.exited["setup-pty"]).toBe(0);
+	expect(ws.titles["setup-pty"]).toBe("make");
+});
+
+test("restarting a terminal forgets the old pty, and the old pty's late events do not bring it back", async () => {
+	await up();
+	const t = await ws.newTerminal(W, { argv: ["zsh"] });
+	ws.ptyEvent({ ev: "pty_title", pty: "p1", title: "old shell" });
+	nextPty = "p2";
+	ptyList = async () => [{ pty: "p2", title: "zsh", exited: null }];
+	await ws.restart(t.id);
+	nextPty = "p1";
+	expect(t.pty).toBe("p2");
+	expect(live("p1")).toEqual([false, false, false]);
+	ws.ptyEvent({ ev: "pty_exit", pty: "p1", code: 0 });
+	expect(live("p1")).toEqual([false, false, false]);
 });

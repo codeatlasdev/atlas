@@ -35,3 +35,8 @@ serde_json = { workspace = true }
 
 [lints]
 workspace = true
+
+# Parser throughput per corpus (docs/perf/terminal-linux.md); CPU only, run by scripts/term-parser-gate.ts.
+[[bench]]
+name = "vt_parse"
+harness = false

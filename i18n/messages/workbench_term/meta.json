@@ -3,6 +3,7 @@
 	"workbench_term_clipboard_title": "Title of the dialog when a terminal program asks to set the clipboard",
 	"workbench_term_font_fallback": "Toast when the GPU terminal fell back from the font the user chose",
 	"workbench_term_gpu_after_restart": "Toast when the GPU terminal needs a newer terminal host",
+	"workbench_term_native_fell_back": "Toast on Linux when the native terminal failed to open or stopped answering and every terminal falls back to xterm.js; {reason} is the technical cause",
 	"workbench_term_pane_ended": "Notice over a terminal whose process ended; code is its exit code",
 	"workbench_term_pane_gone": "Notice over a terminal that no longer exists on the host",
 	"workbench_term_pane_host_unreachable": "Notice when the terminal host does not answer",

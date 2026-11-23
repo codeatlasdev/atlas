@@ -62,6 +62,7 @@
 	"settings_terminal_tab_restart_host_body": "Running terminals and agents end. Tabs stay; use Restart on each to reopen them.",
 	"settings_terminal_tab_restart_host_title": "Restart the terminal host?",
 	"settings_terminal_tab_restart_terminal_host": "Restart terminal host",
+	"settings_terminal_tab_restart_to_apply_fast_terminal": "Restart Atlas to apply this. The window is set up for the fast terminal when it opens.",
 	"settings_terminal_tab_scrollback": "Scrollback",
 	"settings_terminal_tab_scrollback_memory": "Scrollback memory",
 	"settings_terminal_tab_selecting_text_copies_it_to": "Selecting text copies it to the clipboard as soon as you release the mouse.",

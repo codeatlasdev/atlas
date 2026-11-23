@@ -73,7 +73,7 @@
 {/if}
 {#if ended !== "gone"}
 	{#key pty}
-		{#if gpu.supported && gpu.terminal && !gpu.hostTooOld && !ws.worktree(t.worktreeId)?.hostId}
+		{#if gpu.supported && gpu.terminal && !gpu.failed && !gpu.hostTooOld && !ws.worktree(t.worktreeId)?.hostId}
 			<GpuTerminal
 				tab={t.id}
 				{pty}

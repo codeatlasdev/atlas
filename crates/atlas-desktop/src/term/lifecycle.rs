@@ -12,7 +12,7 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncReadExt;
 
-use super::mac;
+use super::native;
 use super::render_loop::{Hooks, render_loop};
 use super::shared::{BELL, Placement, Shared, State};
 use super::watchdog::Why;
@@ -116,12 +116,12 @@ pub async fn term_open(
     if TERMS.lock().contains_key(&tab) {
         return term_bounds(app, tab, x, y, w, h, true).await;
     }
+    let _ = APP.set(app.clone());
     let raw = atlas_host::client::attach_raw(&atlas_host::paths::base(), &pty, true)
         .await
         .map_err(|e| format!("GPU terminal (local terminals only): {e:#}"))?;
-    let win = app.get_window("main").ok_or("no main window")?;
-    let scale = win.scale_factor().map_err(|e| e.to_string())?;
-    let ns_win = win.ns_window().map_err(|e| e.to_string())? as usize;
+    let scale = native::scale(&app)?;
+    let ns_win = native::window(&app)?;
     let extra = ExtraColors {
         cursor,
         cursor_text,
@@ -189,7 +189,7 @@ pub async fn term_open(
                 VtEvent::Title(_) => {}
             }),
             state: Mutex::new(State {
-                size: Some(((w * scale) as u32, (h * scale) as u32)),
+                size: Some(native::pixel_size(x, y, w, h, scale)),
                 pal: pal.clone(),
                 pal_new: false,
                 font_pt: None,
@@ -206,6 +206,8 @@ pub async fn term_open(
                 focused: false,
                 bell_until: None,
                 scroll_frac: 0.0,
+                scale,
+                rebuild_failures: 0,
             }),
             osc52: Mutex::new(prefs.osc52.clone()),
             wake: Condvar::new(),
@@ -229,7 +231,7 @@ pub async fn term_open(
         new_surface(
             ns_win,
             (w, h),
-            ((w * scale) as u32, (h * scale) as u32),
+            native::pixel_size(x, y, w, h, scale),
             font_pt,
             scale as f32,
             spec_open,
@@ -240,9 +242,8 @@ pub async fn term_open(
     crate::natives::register("terminal", &tab, view, false);
     emit_font_event(&app, &tab, &spec, &resolution);
     shared.placement.lock().request((x, y, w, h), true);
-    let render = spawn_render(&app, &tab, &pty, &shared, renderer, ns_win, scale)?;
+    let render = spawn_render(&app, &tab, &pty, &shared, renderer, ns_win)?;
     let reader = spawn_reader(shared.clone(), raw);
-    let _ = APP.set(app.clone());
     TERMS.lock().insert(
         tab,
         Term {
@@ -266,14 +267,13 @@ fn new_surface(
     scale: f32,
     spec: atlas_term::FontSpec,
 ) -> Result<(usize, Renderer, atlas_term::FontResolution), String> {
-    let view = mac::create(ns_win, OFFSCREEN, OFFSCREEN, logical.0, logical.1)?;
-    let ptr = std::ptr::NonNull::new(view as *mut std::ffi::c_void).ok_or("null view")?;
+    let view = native::create(ns_win, OFFSCREEN, OFFSCREEN, logical.0, logical.1)?;
     // SAFETY: the view stays retained until its renderer is dropped (`term_close` joins the
     // render thread first; a rebuild drops the old renderer before destroying the old view).
-    match unsafe { Renderer::new(ptr, pixels.0, pixels.1, font_pt, scale, spec) } {
+    match unsafe { native::renderer(view, pixels, font_pt, scale, spec) } {
         Ok((r, res)) => Ok((view, r, res)),
         Err(e) => {
-            mac::destroy(view);
+            native::destroy(view);
             Err(e)
         }
     }
@@ -287,7 +287,6 @@ fn spawn_render(
     shared: &Arc<Shared>,
     renderer: Renderer,
     ns_win: usize,
-    scale: f64,
 ) -> Result<thread::JoinHandle<()>, String> {
     let (sh, a, p, tab) = (
         shared.clone(),
@@ -321,7 +320,7 @@ fn spawn_render(
                         let frame = first_sh.placement.lock().drawn();
                         if let Some((x, y, w, h)) = frame {
                             let _ = on_main(&first_app, move || {
-                                mac::set_frame(view, x, y, w, h);
+                                native::set_frame(view, x, y, w, h);
                                 Ok(())
                             });
                         }
@@ -332,7 +331,6 @@ fn spawn_render(
                             &rebuild_sh,
                             &rebuild_tab,
                             ns_win,
-                            scale,
                             old,
                             pixels,
                         )
@@ -346,6 +344,9 @@ fn spawn_render(
         .map_err(|e| e.to_string())
 }
 
+/// This many failed rebuilds in a row on Linux and the terminal is declared unusable (`term://unusable`).
+const REBUILD_GIVE_UP: u32 = 3;
+
 /// Replace `old`'s view and surface with new ones at `pixels` (the screen and scrollback live in
 /// the `Vt` and are untouched). Runs on the render thread; the AppKit work hops to the main thread.
 /// The new view is parked until its first frame, like a new terminal's (`Placement`). `Err(old)`:
@@ -355,13 +356,12 @@ fn rebuild_surface(
     sh: &Arc<Shared>,
     tab: &str,
     ns_win: usize,
-    scale: f64,
     old: Renderer,
     pixels: (u32, u32),
 ) -> Result<Renderer, Box<Renderer>> {
-    let (font_pt, spec) = {
+    let (font_pt, spec, scale) = {
         let s = sh.state.lock();
-        (s.font_cur, s.font_spec.clone())
+        (s.font_cur, s.font_spec.clone(), s.scale)
     };
     let ligatures = old.ligatures();
     let logical = (pixels.0 as f64 / scale, pixels.1 as f64 / scale);
@@ -372,9 +372,20 @@ fn rebuild_surface(
         Ok(v) => v,
         Err(e) => {
             crate::diag::incident("terminal-rebuild-failed", &e);
+            let failures = {
+                let mut s = sh.state.lock();
+                s.rebuild_failures += 1;
+                s.rebuild_failures
+            };
+            // Linux: a surface that cannot be made again leaves a blank pane; tell the page once, so every terminal
+            // goes back to xterm.js (macOS keeps retrying on the watchdog's schedule, as it always did).
+            if cfg!(target_os = "linux") && failures == REBUILD_GIVE_UP {
+                let _ = app.emit("term://unusable", json!({"tab": tab, "error": e}));
+            }
             return Err(Box::new(old));
         }
     };
+    sh.state.lock().rebuild_failures = 0;
     renderer.set_ligatures(ligatures);
     // Parked again: `on_first_frame` shows the new view over the pane once it has drawn.
     sh.placement.lock().parked();
@@ -384,7 +395,7 @@ fn rebuild_surface(
     // The old surface must be gone before its view is released.
     drop(old);
     let _ = on_main(app, move || {
-        mac::destroy(old_view);
+        native::destroy(old_view);
         Ok(())
     });
     Ok(renderer)
@@ -431,15 +442,20 @@ pub async fn term_bounds(
     // here and the move still shows at the right place (`Placement` is what its first frame uses).
     let view = shared.view();
     on_main(&app, move || {
-        mac::set_frame(view, vx, vy, w, h);
+        native::set_frame(view, vx, vy, w, h);
         Ok(())
     })?;
     if visible {
-        let scale = app
-            .get_window("main")
-            .and_then(|w| w.scale_factor().ok())
-            .unwrap_or(2.0);
-        shared.update(|s| s.size = Some(((w * scale) as u32, (h * scale) as u32)));
+        let scale = native::scale(&app).unwrap_or(2.0);
+        let size = native::pixel_size(x, y, w, h, scale);
+        shared.update(|s| {
+            // A new scale (Linux: the window moved to another output) remakes the surface and its font at it.
+            if native::scale_changed(s.scale, scale) {
+                s.scale = scale;
+                s.rebuild.get_or_insert(Why::Screens);
+            }
+            s.size = Some(size);
+        });
     }
     Ok(())
 }
@@ -455,7 +471,7 @@ pub async fn term_slide(app: AppHandle, tab: String, dx: f64, ms: f64) -> Result
         .map(|t| t.shared.view())
         .ok_or_else(|| format!("no terminal for tab {tab}"))?;
     on_main(&app, move || {
-        mac::slide_from(view, dx, ms.clamp(0.0, 1000.0));
+        native::slide_from(view, dx, ms.clamp(0.0, 1000.0));
         Ok(())
     })
 }
@@ -494,7 +510,7 @@ pub async fn term_close(app: AppHandle, tab: String) -> Result<(), String> {
     let view = t.shared.view();
     crate::natives::unregister("terminal", &tab);
     on_main(&app, move || {
-        mac::destroy(view);
+        native::destroy(view);
         Ok(())
     })?;
     Ok(())
@@ -530,6 +546,26 @@ pub(super) fn spawn_reader(
             sh.redraw();
         }
     })
+}
+
+/// Linux: the compositor's scale for the window changed (it moved to another output), or GDK gave the window a new
+/// toplevel surface (hidden and shown again) that the terminals' child surfaces no longer belong to. Every terminal
+/// takes the new scale, re-fits its swapchain to its last slot and rebuilds its surface and font at it. Main thread
+/// (`wl`'s tick); the rebuilds run on the render threads.
+#[cfg(target_os = "linux")]
+pub(super) fn rescale_all() {
+    let Some(app) = APP.get() else { return };
+    let Ok(scale) = native::scale(app) else { return };
+    for (_, sh) in super::open_terms() {
+        let rect = sh.placement.lock().rect();
+        sh.update(|s| {
+            s.scale = scale;
+            if let Some((x, y, w, h)) = rect {
+                s.size = Some(native::pixel_size(x, y, w, h, scale));
+            }
+            s.rebuild.get_or_insert(Why::Screens);
+        });
+    }
 }
 
 #[cfg(test)]

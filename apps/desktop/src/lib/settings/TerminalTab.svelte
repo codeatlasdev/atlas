@@ -51,7 +51,7 @@
 </script>
 
 <Group title={m.settings_terminal_tab_renderer()}>
-	{#if gpu.supported}
+	{#if gpu.offered}
 		<Row
 			id="gpu"
 			label={m.settings_terminal_tab_fast_terminal_gpu()}
@@ -69,6 +69,11 @@
 						<Button size="sm" variant="outlined" onclick={restart}
 							>{m.settings_terminal_tab_restart_terminal_host()}</Button
 						>
+					</div>
+				{/if}
+				{#if gpu.restartNeeded}
+					<div class="notice">
+						<span>{m.settings_terminal_tab_restart_to_apply_fast_terminal()}</span>
 					</div>
 				{/if}
 			{/snippet}

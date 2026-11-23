@@ -17,6 +17,7 @@ import "#lib/native/kinds.ts";
 import { reconcileSoon } from "#lib/native/surface.ts";
 import { startGround } from "#lib/native/ground.ts";
 import { startHitMap } from "#lib/native/hit.ts";
+import { detectGpu, gpu } from "#lib/stores/gpu.svelte.ts";
 import { startNativeClicks } from "#lib/nativeClicks.ts";
 import { startNativeFocus } from "#lib/native/focus.ts";
 import { allNativeSurfaces } from "#lib/native/surface.ts";
@@ -251,6 +252,15 @@ export function startSession(): () => void {
 	const stopHitMap = mac
 		? startHitMap((cmd, args) => invoke(cmd, args as Record<string, unknown>))
 		: () => {};
+	// Linux: the native terminal is a Wayland subsurface BELOW the page, and the page is transparent over its slot like on
+	// macOS. Only where Rust says it is in use (a Wayland session, the setting on at launch, so the window is see-through),
+	// known after one round trip. Rust routes no input: the child surface has an empty input region.
+	let stopLinuxGround = () => {};
+	if (!mac)
+		void detectGpu().then(() => {
+			if (!stopped && gpu.supported)
+				stopLinuxGround = startGround((rgba) => void invoke("natives_ground", { rgba }).catch(() => {}));
+		});
 	// The window came back (another app, a Space, minimize): no native view may be left up without an owner.
 	const reconcile = () => {
 		if (document.visibilityState === "visible") reconcileSoon({ ready: ws.loaded });
@@ -284,6 +294,7 @@ export function startSession(): () => void {
 		stopNativeFocus();
 		stopHitMap();
 		stopGround();
+		stopLinuxGround();
 		window.removeEventListener("focus", reconcile);
 		document.removeEventListener("visibilitychange", reconcile);
 		stopErrors();

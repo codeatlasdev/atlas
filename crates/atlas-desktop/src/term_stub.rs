@@ -1,6 +1,6 @@
-//! Non-macOS: no native GPU terminal (its view is an AppKit `NSView` drawn through Metal). The
-//! frontend sees `gpuTerminalSupported() == false` and renders every terminal with xterm.js, so
-//! these commands are only reached by a stale caller; they refuse instead of pretending.
+//! Neither macOS nor Linux (Windows): no native GPU terminal. The frontend sees `term_capability` say "not available"
+//! and renders every terminal with xterm.js, so these commands are only reached by a stale caller; they refuse instead
+//! of pretending.
 
 macro_rules! unsupported {
     ($($name:ident),* $(,)?) => {$(
@@ -11,15 +11,27 @@ macro_rules! unsupported {
     )*};
 }
 
-/// No native terminal views exist off macOS (listed for the registration test:
+/// No native terminal views exist here (listed for the registration test:
 ///     term_list,
-/// returns an empty list instead of refusing).
+///     term_capability,
+/// each answers instead of refusing: an empty list, and "not available").
 #[tauri::command]
 pub fn term_list() -> Vec<String> {
     Vec::new()
 }
 
-const UNSUPPORTED: &str = "the GPU terminal needs macOS; this build uses xterm.js";
+#[tauri::command]
+pub fn term_capability() -> serde_json::Value {
+    serde_json::json!({
+        "available": false,
+        "reason": "no native terminal on this platform",
+        "adapter": null,
+        "setting": false,
+        "active": false,
+    })
+}
+
+const UNSUPPORTED: &str = "the GPU terminal is not available on this platform; this build uses xterm.js";
 
 unsupported!(
     term_open,

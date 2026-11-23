@@ -14,15 +14,25 @@
 
 mod keys;
 mod lifecycle;
+#[cfg(target_os = "macos")]
 mod mac;
+#[cfg(target_os = "macos")]
+use mac as native;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux as native;
 mod mouse;
 mod render_loop;
 mod select;
 mod settings;
 mod shared;
+#[cfg(any(target_os = "macos", test))]
 mod system;
 mod watchdog;
 mod wheel;
+
+pub use native::{read_clipboard, write_clipboard};
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};
@@ -41,7 +51,9 @@ pub use lifecycle::*;
 pub use mouse::*;
 pub use select::*;
 pub use settings::*;
-pub use system::install as install_system_observers;
+pub use native::install_system_observers;
+#[cfg(target_os = "linux")]
+pub use native::{set_window_clear, window_wanted};
 pub use wheel::*;
 
 /// `terminal.*` settings for a GPU terminal (defaults when absent).
@@ -122,6 +134,7 @@ fn with_term(tab: &str) -> Result<Arc<Shared>, String> {
 }
 
 /// Every open terminal's shared state; the registry lock is not held after this returns.
+#[cfg(target_os = "macos")]
 fn all_shared() -> Vec<Arc<Shared>> {
     TERMS.lock().values().map(|t| t.shared.clone()).collect()
 }
@@ -150,50 +163,18 @@ fn open_terms() -> Vec<(String, Arc<Shared>)> {
         .collect()
 }
 
-/// The general pasteboard as a paste decision (⌘V). Read natively because the webview's paste
-/// event only exposes text: a screenshot or a Finder file copy arrives as nothing.
-fn read_clipboard() -> atlas_term::input::Clipboard {
-    use objc2_app_kit::{
-        NSPasteboard, NSPasteboardTypeFileURL, NSPasteboardTypePNG, NSPasteboardTypeString,
-        NSPasteboardTypeTIFF,
-    };
-    use objc2_foundation::NSURL;
-    // SAFETY: the general pasteboard is safe to read off the main thread; the type constants
-    // are static NSStrings.
-    unsafe {
-        let pb = NSPasteboard::generalPasteboard();
-        let mut files = Vec::new();
-        for item in pb.pasteboardItems().iter().flatten() {
-            let Some(s) = item.stringForType(NSPasteboardTypeFileURL) else {
-                continue;
-            };
-            if let Some(p) = NSURL::URLWithString(&s).and_then(|u| u.path()) {
-                files.push(p.to_string());
-            }
-        }
-        let text = pb
-            .stringForType(NSPasteboardTypeString)
-            .map(|s| s.to_string());
-        let has_image = pb.types().is_some_and(|t| {
-            t.iter().any(|t| {
-                t.isEqualToString(NSPasteboardTypePNG) || t.isEqualToString(NSPasteboardTypeTIFF)
-            })
-        });
-        atlas_term::input::Clipboard::classify(files, text, has_image)
-    }
+/// What this session can do and whether the native terminal is in use (`apps/desktop/src/lib/stores/gpu.svelte.ts`).
+/// macOS always has it. Linux decides from the session, the compositor, the GPU and the setting (`linux/capability.rs`).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub async fn term_capability() -> serde_json::Value {
+    json!({"available": true, "reason": null, "adapter": null, "setting": true, "active": true})
 }
 
-/// Text → the system pasteboard (⌘C, OSC 52).
-fn write_clipboard(text: &str) {
-    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
-    use objc2_foundation::NSString;
-    // SAFETY: NSPasteboard general pasteboard is safe off the main thread for plain writes;
-    // `NSPasteboardTypeString` is a static NSString constant.
-    unsafe {
-        let pb = NSPasteboard::generalPasteboard();
-        pb.clearContents();
-        pb.setString_forType(&NSString::from_str(text), NSPasteboardTypeString);
-    }
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub async fn term_capability(app: AppHandle) -> native::Capability {
+    native::capability(&app).await
 }
 
 /// Send queued pty input one request after the other, so it reaches the program in the

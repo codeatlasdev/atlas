@@ -14,6 +14,8 @@ import { themes } from "#lib/stores/theme.svelte.ts";
 import { createNativeSurface, type NativeRect, type NativeSurface } from "#lib/native/surface.ts";
 import { fontCandidates, insetRect } from "./fonts.ts";
 import { isViewDropped } from "./viewDropped.ts";
+import { openFailure } from "./openFailure.ts";
+import { IS_MAC } from "#lib/keys.ts";
 import { m } from "#lib/i18n/m.ts";
 
 /** Theme color as #rrggbb (the kit uses oklch; a canvas normalizes any CSS color). */
@@ -75,6 +77,15 @@ export function listenFontFallback() {
 		announcedFonts[key] = true;
 		toast.info(m.workbench_term_font_fallback({ font: requested[0], resolved }));
 	});
+	// Linux: Rust gave up remaking a terminal's surface (its GPU or compositor stopped answering).
+	void listen<{ tab: string; error: string }>("term://unusable", (e) => fellBack(e.payload.error));
+}
+
+/** The native terminal cannot be used on this machine this run: every terminal is xterm.js from now on (never a blank pane). */
+function fellBack(reason: string) {
+	if (gpu.failed) return;
+	gpu.failed = true;
+	toast.info(m.workbench_term_native_fell_back({ reason }));
 }
 
 /**
@@ -133,12 +144,19 @@ export class NativeView {
 			gone: isViewDropped,
 			onError: (e) => {
 				const msg = errText(e);
-				// A host that predates the raw stream and could not be replaced: xterm.js until it restarts. (The app
-				// normally upgrades it live on connect, see `host.rs`.)
-				if (msg.includes("pty_attach_raw")) {
-					if (!gpu.hostTooOld) toast.info(m.workbench_term_gpu_after_restart());
-					gpu.hostTooOld = true;
-				} else toast.error(msg);
+				switch (openFailure(msg, IS_MAC)) {
+					// A host that predates the raw stream and could not be replaced: xterm.js until it restarts. (The app
+					// normally upgrades it live on connect, see `host.rs`.)
+					case "hostTooOld":
+						if (!gpu.hostTooOld) toast.info(m.workbench_term_gpu_after_restart());
+						gpu.hostTooOld = true;
+						break;
+					case "fallback":
+						fellBack(msg);
+						break;
+					case "toast":
+						toast.error(msg);
+				}
 				return "stop";
 			},
 			reload: () => this.call("term_reload", { tab: this.ids().tab }),

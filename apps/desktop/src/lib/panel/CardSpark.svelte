@@ -4,6 +4,8 @@
 	import { fmtMem } from "#lib/format.ts";
 	import type { Service } from "#lib/stores/projects.svelte.ts";
 	import { metrics } from "./metrics.svelte.ts";
+	import { liveRev } from "./liveRev.svelte.ts";
+	import { sameSeries } from "./metrics.ts";
 	import { memoryNote } from "./memoryFacts.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -19,20 +21,25 @@
 		colors: { cpu: string; mem: string };
 	} = $props();
 
+	const revision = liveRev();
 	let note = $derived(memoryNote(service));
 
 	const SPARK_POINTS = 40;
 	const WINDOW_MIN = Math.round((SPARK_POINTS * 3) / 60);
 
-	// Re-read the rings once per published revision; the arrays are small (40 numbers).
-	let cpu = $derived.by(() => {
-		void metrics.rev;
-		return metrics.service(projectId, service.name).cpu.last(SPARK_POINTS, metrics.end(projectId));
-	});
-	let mem = $derived.by(() => {
-		void metrics.rev;
-		return metrics.service(projectId, service.name).mem.last(SPARK_POINTS, metrics.end(projectId));
-	});
+	// The name as its own derived: the runner re-sends every row (a new `service` object) between samples, and a
+	// derivation that read `service.name` itself re-ran for each one and drew the same sparkline again.
+	let name = $derived(service.name);
+	// Re-read the rings once per revision (published at most once a second, and only while the panel is on screen).
+	// A flat history (an idle service: 0 % and a steady memory) reads the same numbers every time: hand back the array the
+	// chart already drew, so the sparkline is not painted again for a picture that has not changed.
+	const drawn: Record<"cpu" | "mem", number[]> = { cpu: [], mem: [] };
+	const read = (k: "cpu" | "mem") => {
+		const next = metrics.service(projectId, name)[k].last(SPARK_POINTS, metrics.end(projectId));
+		return sameSeries(drawn[k], next) ? drawn[k] : (drawn[k] = next);
+	};
+	let cpu = $derived.by(() => (void revision.rev, read("cpu")));
+	let mem = $derived.by(() => (void revision.rev, read("mem")));
 </script>
 
 <div class="spark-wrap">

@@ -258,7 +258,10 @@
 									props={{ worktreeId: t.worktreeId, focused: focused && t.id === g.activeTab }}
 								/>
 							{:else if project && t.kind === "services"}
-								<Lazy load={() => import("#lib/panel/Panel.svelte")} props={{ project }} />
+								<Lazy
+									load={() => import("#lib/panel/Panel.svelte")}
+									props={{ project, visible: t.id === g.activeTab && space.live }}
+								/>
 							{:else if project && t.kind === "logs"}
 								<Lazy
 									load={() => import("#lib/components/Logs.svelte")}

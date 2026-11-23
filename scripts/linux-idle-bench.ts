@@ -112,12 +112,11 @@ export function levelLive(name: string, before: number, after: number, want: num
 
 /**
  * The states CI holds to a CPU budget (% of one core over the window, all processes of the instance, llvmpipe: a GitHub
- * runner has no GPU). Only states that are already idle on `main`: a state with a known cost is added here by the PR that
- * removes it (`stack-running` after the animation fix, `terminal-idle` after the hostd fix, `chat-stream`, `terminal-output`),
- * so the gate never starts red. Each is the worst of 3 runs of this machine plus headroom for a 2-vCPU runner:
- * docs/perf/linux-webkit-study.md, "Gate".
+ * runner has no GPU). Each is the worst of at least 3 CI runs times 1.5, rounded up to a clean number (`terminal-idle` x2: its
+ * samples are 0.5-1.5 %): docs/perf/linux-webkit-study.md, "Gate", has the samples and what each budget still catches. A state
+ * with a known cost joins by the PR that removes it. `crew-unfocused` stays last: the order is the order of the run.
  */
-export const GATE_BUDGET: Record<string, number> = { welcome: 3, workspace: 4 };
+export const GATE_BUDGET: Record<string, number> = { welcome: 3, workspace: 4, "stack-running": 15, "terminal-idle": 3, "chat-stream": 130, "terminal-output": 500, "crew-unfocused": 5 };
 
 /** Why the windows saved by a gate run fail: a gated state over its budget, or a gated state that was never measured (nothing measured must not read as a pass). */
 export function judgeGate(windows: Window[], budgets: Record<string, number> = GATE_BUDGET): string[] {
@@ -319,7 +318,7 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 			const passes = join(c.tmp, "flood.passes");
 			writeFileSync(passes, "0");
 			const t = rpc(["sh", "-c", `n=0; while :; do yes "2026-11-22 12:00:00 INFO request handled path=/api/v1/items status=200 ms=12" | head -c 20M; n=$((n+1)); echo $n > ${passes}; done`]);
-			Object.assign(c.probe, { name: "20 MB flood passes", kind: "counter", minPerS: 0.05, read: () => Number(readFileSync(passes, "utf8")) || 0 });
+			Object.assign(c.probe, { name: "20 MB flood passes", kind: "counter", minPerS: 0.3, read: () => Number(readFileSync(passes, "utf8")) || 0 });
 			return () => c.run(JS.close(t));
 		}
 		case "chat-idle": {
@@ -360,7 +359,8 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 		case "crew": {
 			const faces = c.run(JS.crew) as number;
 			if (!faces) throw new Error("the crew workspace drew no crewmate face");
-			return () => {};
+			// The same chord closes the rail again: left open, its faces animate through every scenario that follows.
+			return () => c.run(JS.chord("KeyB"));
 		}
 		case "crew-unfocused": {
 			const off = await enter("crew", c);

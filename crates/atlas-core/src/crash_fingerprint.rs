@@ -13,16 +13,16 @@
 //!     is the build (`build_id`, else `commit`) and the offset is the frame's address minus `load_bias`, which ASLR
 //!     does not change, so the same crash of the same build on two machines is one fingerprint. Two releases are two
 //!     fingerprints: an offset means nothing outside its build. The frame is the first one inside the executable's
-//!     own address range (`EXE_SPAN` above its load address, where shared libraries do not map) that is not part of
-//!     the handler itself: the frames above the signal trampoline.
+//!     own address range (`EXE_SPAN` around the handler's frame, where shared libraries do not map) that is not part
+//!     of the handler itself: the frames above the signal trampoline.
 //!
 //!   A report with no frame to key on (a platform without an unwinder, a fault wholly inside a shared library) has no
 //!   fingerprint, so it never matches another crash.
 
 use crate::fingerprint::{fingerprint, frame_key, with_key};
 
-/// How far above its load address the executable is taken to extend (1 GiB): its frames are within it, and the shared
-/// libraries of a 64-bit process (libc, WebKit, ntdll) map far beyond.
+/// How far from the handler's own frame the executable is taken to extend (1 GiB): its frames are within it, and the
+/// shared libraries of a 64-bit process (libc, WebKit, the dyld shared cache, ntdll) map farther away.
 const EXE_SPAN: usize = 1 << 30;
 
 /// The fingerprint of the crash report `text`, and `None` when it has nothing to key on. `resolved` is the output of
@@ -98,13 +98,20 @@ fn strip_symbol_hash(function: &str) -> &str {
     }
 }
 
-/// `module+0xoffset` of the first frame inside the executable that comes after the handler's own frames (the leading run
-/// of frames inside the executable: the handler, then the signal trampoline in libc, then the crash site).
+/// `module+0xoffset` of the crash site: the first frame inside the executable after the handler's own frames (the
+/// leading run of frames inside the executable: the handler, then the signal trampoline in a shared library, then the
+/// crash site), minus `bias`.
+///
+/// "Inside the executable" is "within [`EXE_SPAN`] of the first frame", which is the handler's own and so is certainly
+/// in it: the executable is one contiguous image, and the shared libraries (libc, the dyld shared cache, ntdll) map far
+/// from it on every platform, whatever address its own debug info starts at (a Mach-O image's offsets begin at
+/// `0x100000000`, an ELF's at 0).
 fn offset_key(frames: &[usize], bias: usize, module: impl FnOnce() -> String) -> Option<String> {
-    let offset = |f: usize| f.checked_sub(bias).filter(|o| *o < EXE_SPAN);
-    let handler = frames.iter().take_while(|f| offset(**f).is_some()).count();
-    let site = frames[handler..].iter().find_map(|f| offset(*f))?;
-    Some(format!("{}+{site:#x}", module()))
+    let anchor = *frames.first()?;
+    let inside = |f: usize| f.abs_diff(anchor) < EXE_SPAN;
+    let handler = frames.iter().take_while(|f| inside(**f)).count();
+    let site = frames[handler..].iter().copied().find(|f| inside(*f))?;
+    Some(format!("{}+{:#x}", module(), site.checked_sub(bias)?))
 }
 
 #[cfg(test)]
@@ -168,6 +175,26 @@ mod tests {
             None,
         );
         assert_ne!(a, other);
+    }
+
+    /// A Mach-O image's debug-info addresses start at 0x100000000, so `frame - load_bias` is above 4 GiB for every frame
+    /// of the executable; the dyld shared cache is mapped well above the image (#320, found on the macOS runner).
+    #[test]
+    fn a_mach_o_executable_is_told_from_the_shared_cache_by_where_its_frames_are() {
+        let report = |slide: usize, cache_slide: usize| {
+            native(
+                &format!("{slide:#x}"),
+                &[
+                    &format!("{:#x}", 0x100a11111 + slide),
+                    &format!("{:#x}", 0x100a22222 + slide),
+                    &format!("{:#x}", 0x1_8123_4567 + cache_slide),
+                    &format!("{:#x}", 0x100c33333 + slide),
+                ],
+            )
+        };
+        let a = of_report(&report(0x4000, 0x20_0000), None);
+        assert!(a.is_some());
+        assert_eq!(a, of_report(&report(0xc00_0000, 0x1c0_0000), None));
     }
 
     #[test]

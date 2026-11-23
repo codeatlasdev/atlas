@@ -22,6 +22,12 @@ export const AREAS: Record<string, string[]> = {
 		"scripts/linux-idle-gate.sh",
 		"scripts/linux-idle-bench.ts",
 		"docs/perf/linux-startup.json",
+		"scripts/term-parser-gate.ts",
+		"scripts/term-parser-judge.ts",
+		"scripts/term-corpus-gen.ts",
+		"scripts/term-agent-gen.ts",
+		"scripts/term-agent-judge.ts",
+		"docs/perf/terminal-linux-baseline.json",
 	],
 	// The built-in agent list (crates/atlas-core/data/agents.json) is imported by the desktop frontend and generated into
 	// Atlas Mobile's Dart; the scripts area runs the staleness test of that copy.
@@ -168,6 +174,13 @@ export const CHECKS: Check[] = [
 		ci: ["desktop-linux"],
 		ciRun: "scripts/linux-idle-gate.sh",
 		why: "puts the Linux build in its idle states on a headless sway (llvmpipe) and fails over the CPU budgets of GATE_BUDGET in scripts/linux-idle-bench.ts; run scripts/linux-idle-gate.sh on a Linux machine with sway and wtype",
+	},
+	{
+		id: "term-parser-gate",
+		area: "rust",
+		ci: ["rust-linux"],
+		ciRun: "bun scripts/term-parser-gate.ts",
+		why: "times Vt::feed on eight corpora and fails when a corpus's MB/s-over-calibration ratio falls under docs/perf/terminal-linux-baseline.json by more than its tolerance; run bun scripts/term-parser-gate.ts on x86-64 Linux (--absolute adds the MB/s floors, valid on the machine the baseline names)",
 	},
 	{
 		id: "root-tests",

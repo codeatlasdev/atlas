@@ -1,0 +1,60 @@
+{
+	"tolerance": 0.3,
+	"machine": {
+		"cpu": "AMD Ryzen 7 7735HS with Radeon Graphics",
+		"calibration_mbps": 7138.9,
+		"note": "Ryzen 7 7735HS, Radeon 680M, Mesa 26.2.5, Linux 7.2.15, rustc 1.99.0 release+line-tables, load 1.6-1.9, 3 runs 2026-11-23 (terminal-linux-parser.jsonl)",
+		"os": "linux",
+		"mib": 16
+	},
+	"corpora": {
+		"seq": {
+			"best_mbps": 102.8,
+			"median_mbps": 101.3,
+			"ratio": 0.0144,
+			"floor_mbps": 87
+		},
+		"ascii": {
+			"best_mbps": 90.9,
+			"median_mbps": 90.8,
+			"ratio": 0.0127,
+			"floor_mbps": 77
+		},
+		"sgr": {
+			"best_mbps": 84.7,
+			"median_mbps": 84.3,
+			"ratio": 0.0119,
+			"floor_mbps": 71
+		},
+		"repaint256": {
+			"best_mbps": 139.5,
+			"median_mbps": 138,
+			"ratio": 0.0195,
+			"floor_mbps": 118
+		},
+		"truecolor": {
+			"best_mbps": 139.9,
+			"median_mbps": 139.2,
+			"ratio": 0.0196,
+			"floor_mbps": 118
+		},
+		"ink-2026": {
+			"best_mbps": 153.6,
+			"median_mbps": 152.1,
+			"ratio": 0.0215,
+			"floor_mbps": 130
+		},
+		"ratatui-diff": {
+			"best_mbps": 177.4,
+			"median_mbps": 170.9,
+			"ratio": 0.0248,
+			"floor_mbps": 150
+		},
+		"omp-boxes": {
+			"best_mbps": 168.5,
+			"median_mbps": 165.9,
+			"ratio": 0.0236,
+			"floor_mbps": 143
+		}
+	}
+}

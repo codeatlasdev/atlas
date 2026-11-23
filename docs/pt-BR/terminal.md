@@ -1,7 +1,7 @@
 ---
 title: "Terminal GPU"
 source: terminal.md
-source_sha: "b51bec17d24e9431e100451e48ba19a4e75a0b2e"
+source_sha: "2c9120db5f5145e86ba891b54ca78f7068d2cb4b"
 translation: machine
 ---
 
@@ -195,7 +195,11 @@ Auditoria contra os recursos documentados do Ghostty (ghostty.org/docs/config/re
 
 ## Roadmap: Windows e Linux
 
-Hoje o terminal nativo roda só no macOS; Windows e Linux usam xterm.js (`term_stub.rs`). A meta é o mesmo terminal, no mesmo nível, no Windows 10 1809+ / Windows 11 e no Linux: GPU completa, GPU integrada primeiro, CPU e memória quase nulas com muitos agentes transmitindo texto. Projeto, pesquisa e medições: [discussão #237](https://github.com/codeatlasdev/atlas/discussions/237). Issue de acompanhamento: [#249](https://github.com/codeatlasdev/atlas/issues/249); toda issue é `area: terminal` no milestone **Roadmap: native GPU terminal (Windows & Linux)**.
+### Linux (Wayland, opcional)
+
+Em uma sessão Wayland, o terminal nativo é um `wl_subsurface` da própria janela do Atlas, desenhado pelo `atlas-term` em Vulkan (wgpu) e posto **abaixo** da página: a página abre um buraco transparente sobre o espaço de cada terminal, então menus, dicas e diálogos se desenham por cima dele sem nada para esconder. Vem **desligado por padrão**: ligue em Configurações → Terminal → **Terminal rápido (GPU)** (aparece só onde a máquina consegue rodá-lo; salvo como `gpuTerminal` em `~/.atlas/desktop/settings.json`, ou `ATLAS_GPU_TERMINAL=1|0`) e **reinicie o Atlas**, porque a janela é criada translúcida. O terminal não recebe entrada: teclas, IME e ponteiro chegam à página, que as repassa pelos mesmos comandos `term_*` do macOS (Ctrl+Shift+C copia, Ctrl+Shift+V cola, Ctrl+Shift+F busca; Ctrl+C sozinho é sempre SIGINT). O resto continua no xterm.js, decidido em tempo de execução e sem deixar um painel em branco: sessão X11, XWayland (`GDK_BACKEND=x11`), compositor sem `wl_subcompositor` ou `wp_viewporter`, sem Vulkan, driver proprietário da NVIDIA, rasterizador por software e qualquer falha ao abrir ou refazer a superfície (um aviso diz o motivo). As escalas 1, 1,5 e 2 seguem a escala fracionária do compositor para a janela. Código: `crates/atlas-desktop/src/term/linux/`; projeto e medições: [terminal-linux-design.md](terminal-linux-design.md).
+
+Hoje o terminal nativo roda no macOS e, no Linux, em Wayland quando ligado; Windows e X11 usam xterm.js (`term_stub.rs` no Windows). A meta é o mesmo terminal, no mesmo nível, no Windows 10 1809+ / Windows 11 e no Linux: GPU completa, GPU integrada primeiro, CPU e memória quase nulas com muitos agentes transmitindo texto. Projeto, pesquisa e medições: [discussão #237](https://github.com/codeatlasdev/atlas/discussions/237). Issue de acompanhamento: [#249](https://github.com/codeatlasdev/atlas/issues/249); toda issue é `area: terminal` no milestone **Roadmap: native GPU terminal (Windows & Linux)**.
 
 | Camada | Decisão | Por quê |
 |---|---|---|

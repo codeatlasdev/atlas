@@ -84,24 +84,50 @@ pub async fn pty_stream(
     if let Some(ev) = atlas_host::protocol::title_event(&pty, &attached) {
         let _ = app.emit("host://event", ev);
     }
-    let mut raw = open_raw(&app, &host, &pty).await?;
+    let raw = open_raw(&app, &host, &pty).await?;
     let replayed = raw.info["replay"].as_u64().unwrap_or(0) as usize;
     let id = on_frame.id();
     let credit = Arc::new(Credit::default());
-    let sink = ChannelSink(on_frame);
     let mut streams = STREAMS.lock();
-    let task = {
-        let credit = credit.clone();
-        tauri::async_runtime::spawn(async move {
-            feed(&mut raw.reader, replayed, &sink, &credit, async {
-                why_ended(&hub, &host, &pty).await
-            })
-            .await;
+    let task = spawn_feed(
+        raw,
+        replayed,
+        hub,
+        host,
+        pty,
+        ChannelSink(on_frame),
+        credit.clone(),
+        move || {
             STREAMS.lock().remove(&id);
-        })
-    };
+        },
+    );
     streams.insert(id, Stream { credit, task });
     Ok(id)
+}
+
+/// Feed `sink` from `raw` until it ends, then say why (`ended` runs last, whatever the reason).
+#[allow(clippy::too_many_arguments)]
+fn spawn_feed<S: FrameSink + Send + Sync + 'static>(
+    raw: atlas_host::client::RawPty,
+    replayed: usize,
+    hub: Arc<HostHub>,
+    host: String,
+    pty: String,
+    sink: S,
+    credit: Arc<Credit>,
+    ended: impl FnOnce() + Send + 'static,
+) -> tauri::async_runtime::JoinHandle<()> {
+    tauri::async_runtime::spawn(async move {
+        // The whole connection moves in and lives as long as the stream: `raw._w`, its write half, closing tells hostd
+        // the client is gone. (A task that only names `raw.reader` captures just that field, drops the rest when this
+        // function returns, and every stream ended in EOF right after its replay.)
+        let mut raw = raw;
+        feed(&mut raw.reader, replayed, &sink, &credit, async {
+            why_ended(&hub, &host, &pty).await
+        })
+        .await;
+        ended();
+    })
 }
 
 /// The page parsed `bytes` of what stream `id` sent: room for that much more.
@@ -117,5 +143,97 @@ pub fn pty_stream_ack(id: u32, bytes: usize) {
 pub fn pty_stream_stop(id: u32) {
     if let Some(s) = STREAMS.lock().remove(&id) {
         s.task.abort();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pty_feed::{DROPPED, ENDED};
+    use crate::test_hostd::real_hostd;
+    use std::time::Duration;
+
+    #[derive(Default, Clone)]
+    struct Frames(Arc<Mutex<Vec<Vec<u8>>>>);
+
+    impl FrameSink for Frames {
+        fn send(&self, frame: Vec<u8>) -> bool {
+            self.0.lock().push(frame);
+            true
+        }
+    }
+
+    impl Frames {
+        /// Kind byte and text of every frame so far.
+        fn seen(&self) -> Vec<(u8, String)> {
+            self.0
+                .lock()
+                .iter()
+                .map(|f| (f[0], String::from_utf8_lossy(&f[1..]).into_owned()))
+                .collect()
+        }
+    }
+
+    async fn until(what: &str, mut ok: impl FnMut() -> bool) {
+        tokio::time::timeout(atlas_core::scaling::HANG, async {
+            while !ok() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
+    }
+
+    // Incident (#734, release, chat-stream): every stream of a chat tab ended in EOF right after hostd's replay and
+    // the page re-attached ~10 times a second, 0.4-1.4 MB of replay each. The raw connection's write half was dropped
+    // when `pty_stream` returned (only `raw.reader` moved into the feed task), which tells hostd the client is gone.
+    // A stream must stay open for as long as the program runs: its output after the replay arrives, nothing ends it.
+    #[tokio::test]
+    async fn a_stream_stays_open_after_the_replay_and_carries_live_output() {
+        let (tmp, client) = real_hostd().await;
+        let dir = tmp.path().join("hostd");
+        let made = client
+            .call(
+                "pty_create",
+                json!({"cwd": tmp.path(), "argv": ["sh", "-c", "echo first; sleep 1; echo second; sleep 30"]}),
+            )
+            .await
+            .unwrap();
+        let pty = made["pty"].as_str().unwrap().to_string();
+        let hub = Arc::new(HostHub::default());
+        hub.set(LOCAL, Some(client)).await;
+
+        let raw = atlas_host::client::attach_raw(&dir, &pty, true)
+            .await
+            .unwrap();
+        let replayed = raw.info["replay"].as_u64().unwrap_or(0) as usize;
+        let frames = Frames::default();
+        let task = spawn_feed(
+            raw,
+            replayed,
+            hub,
+            LOCAL.into(),
+            pty,
+            frames.clone(),
+            Arc::new(Credit::default()),
+            || {},
+        );
+
+        let over = |f: &Frames| {
+            let seen = f.seen();
+            seen.iter().any(|(k, _)| matches!(*k, DROPPED | ENDED))
+                || seen.iter().any(|(_, t)| t.contains("second"))
+        };
+        until(
+            "the output the program prints after the replay, or the stream's end",
+            || over(&frames),
+        )
+        .await;
+        let kinds: Vec<u8> = frames.seen().iter().map(|(k, _)| *k).collect();
+        assert!(
+            !kinds.contains(&DROPPED) && !kinds.contains(&ENDED),
+            "the stream ended while the program runs: frame kinds {kinds:?}"
+        );
+        task.abort();
     }
 }

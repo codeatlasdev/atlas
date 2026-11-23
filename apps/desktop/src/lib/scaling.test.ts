@@ -33,5 +33,8 @@ test("a quadratic pass (a rescan from every position) is over the bound", () => 
 			return s;
 		};
 	};
-	expect(growth(quadratic, 2_048)).toBeGreaterThan(linearBound());
+	// The big input costs ~64x the small one, and `growth` sizes the small sample to `minMs`: at the default 4 ms the
+	// 21 big samples ran past bun's 5 s test timeout on every run on an AMD laptop (2026-11-23, 10 of 10). 1 ms keeps
+	// the ratio (~64 against a bound of 24): 20 of 20 runs passed there, the whole file in under 5 s.
+	expect(growth(quadratic, 2_048, { minMs: 1 })).toBeGreaterThan(linearBound());
 });

@@ -2,6 +2,61 @@
 
 Cause 3 of [linux-webkit-study.md](linux-webkit-study.md) (a flooded xterm.js terminal: 383 % / 425 % of a core, web process 205 → 1,153 MB), fixed by `pty_stream.rs` / `pty_feed.rs` / `lib/ptyChannel.ts` (design in [terminal.md](../terminal.md)). Same machine, same method, same scenario (`scripts/linux-idle-bench.ts --scenario terminal-output`: `yes … | head -c 20M` in a loop, unthrottled, 10 s settle, 30 s window), debug builds of both sides, private headless sway per run (GPU = `gles2` on `renderD128`, llvmpipe = `pixman`). **before** = `e915c5cb` (main + the study), **after** = this branch. Runs alternate before, after, before, after, before, after on a fresh instance each. Raw data: `terminal-binary-channel-gpu.jsonl`, `terminal-binary-channel-llvmpipe.jsonl`.
 
+## The re-attach loop, and the numbers after its fix
+
+**Every number below the next heading was measured with a bug**: each stream ended in EOF right after hostd's replay, and the page re-attached, replayed and re-parsed ~10 times a second (a plain terminal as much as a chat tab). The `chat-stream` scenario showed it (main 31-39 % total, this branch 208-233 %, nothing else running); the cause was not flow control.
+
+- **Not the acks.** A build that logs why each stream ends: `drop_stream=false` on every stream (the 2 MiB window was never full, the 60 s no-acknowledgement path never ran), `read = Ok(0)` (EOF) every time, 1-2 ms after the replay frame. Every acknowledgement is sent: with the fix, one chat stream gets 671 acks in 22 s, the first one for the 418 bytes of replay, 325 KB in all (`ChatTab`'s `write` calls `done()` at once).
+- **Cause.** `pty_stream` moved only `raw.reader` into the feed task; closures capture disjoint fields in edition 2024, so the rest of the connection, including its write half, dropped when the command returned. hostd reads the end of a raw connection's incoming side as "the client left" (`server.rs`, `raw()`: "any line or EOF ends it") and closes it. hostd's trace: `client line/eof None` on every connection, right after the replay write. The fix moves the whole connection into the task; a test against the real hostd (`a_stream_stays_open_after_the_replay_and_carries_live_output`) fails without it with frame kinds `[1, 2]` (replay, dropped) and passes with it.
+- **Attaches** in 15 s after the terminal settled (debug hostd, pixman): chat tab 1,695 before the fix and 0 after (1 in all); plain terminal (`sh` printing a line every 50 ms) 1,374 and 0. The backoff added in `bc521aa0` stays: it limits the damage of any other host that closes streams at once, but it was only ever a symptom limiter here.
+
+`chat-stream`, GPU, release, 3 alternated runs (start load < 2 on every run; `terminal-binary-channel-fixed-chat-gpu.jsonl`). **before** = `e915c5cb` (main + study), **after** = `b7553418`:
+
+| | total CPU | app | web | hostd | web PSS |
+|---|---|---|---|---|---|
+| before (main) | 30.3 % | 10.7 | 16.8 | 2.6 | 250 MB |
+| after, with the loop (`ab27b4e2`, 3 runs) | 208-233 % | 81-87 | 120-137 | 6.3-7.6 | |
+| after, fixed | **34.9 %** | 13.5 | 18.4 | 2.7 | 251 MB |
+
+| run | start load | end load | total CPU |
+|---|---|---|---|
+| before 1 | 1.70 | 1.81 | 30.5 |
+| after 1 | 1.66 | 1.14 | 35.0 |
+| before 2 | 1.13 | 0.92 | 30.2 |
+| after 2 | 0.93 | 0.77 | 34.7 |
+| before 3 | 0.71 | 0.45 | 30.3 |
+| after 3 | 0.38 | 0.35 | 34.9 |
+
+The +4.6 points that remain are the app's (+2.8: one acknowledgement call per ~30 ms update, a second host connection) and the page's (+1.6); they are steady, not a loop.
+
+`terminal-output`, release, 3 alternated runs per row, fresh instance each (`terminal-binary-channel-fixed-gpu.jsonl`, `-fixed-llvmpipe.jsonl`), same method as the release section below:
+
+| display | | total CPU | app | web | hostd | web PSS | total PSS |
+|---|---|---|---|---|---|---|---|
+| GPU | before | **420.2 %** | 102.7 | 114.7 | 202.5 | 2,415 MB | 2,498 MB |
+| GPU | after, fixed | **170.2 %** | 58.7 | 85.1 | 26.4 | **307 MB** | 518 MB |
+| llvmpipe | before | **439.1 %** | 113.7 | 123.1 | 201.9 | 2,635 MB | 2,717 MB |
+| llvmpipe | after, fixed | **197.3 %** | 72.8 | 98.5 | 26.0 | **330 MB** | 572 MB |
+
+The < 200 % target **holds** in release on both displays once the loop is gone (170 % GPU; 197 % llvmpipe, 3 % under). Every run:
+
+| display | run | start load | end load | total CPU |
+|---|---|---|---|---|
+| GPU | before 1 | 1.67 | 4.30 | 416.9 |
+| GPU | after 1 | 1.94 | 2.46 | 170.0 |
+| GPU | before 2 | 1.89 | 4.35 | 422.2 |
+| GPU | after 2 | 1.92 | 1.32 | 170.4 |
+| GPU | before 3 | 1.29 | 4.03 | 421.5 |
+| GPU | after 3 | 1.95 | 1.13 | 170.1 |
+| llvmpipe | before 1 | 1.28 | 3.78 | 440.0 |
+| llvmpipe | after 1 | 1.87 | 3.35 | 197.2 |
+| llvmpipe | before 2 | 1.96 | 4.86 | 435.2 |
+| llvmpipe | after 2 | 1.95 | 2.51 | 197.6 |
+| llvmpipe | before 3 | 1.99 | 5.84 | 442.0 |
+| llvmpipe | after 3 | 1.89 | 2.56 | 197.2 |
+
+Start loads are all under 2; end loads contain the app's own cores (as in the release section). The tables from here down are the numbers **with the loop**; they stay as the record of what was measured, and their "target not met" conclusions no longer apply.
+
 ## terminal-output, CPU % of one core over 30 s (mean of 3) and PSS MB at the end of the window
 
 | display | | total | app | web | hostd | web PSS | total PSS |

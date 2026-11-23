@@ -20,9 +20,15 @@ const MAX_MESSAGE_CHARS: usize = 200;
 /// The fingerprint of an error: 16 lower-case hex characters (FNV-1a, 64 bits, of `message\nframe-key`).
 /// `stack` is a JavaScript stack (V8 or WebKit shape), a Rust panic location, or empty.
 pub fn fingerprint(message: &str, stack: &str) -> String {
-    let key = format!("{}\n{}", normalize_message(message), frame_key(stack));
+    with_key(message, &frame_key(stack))
+}
+
+/// [`fingerprint`] of a message and a frame key already made (`function|file`), for the reports that have no JavaScript
+/// stack to read it from: a native crash (`crash_fingerprint`).
+pub fn with_key(message: &str, key: &str) -> String {
+    let text = format!("{}\n{key}", normalize_message(message));
     let mut h: u64 = 0xcbf29ce484222325;
-    for b in key.as_bytes() {
+    for b in text.as_bytes() {
         h ^= u64::from(*b);
         h = h.wrapping_mul(0x100000001b3);
     }

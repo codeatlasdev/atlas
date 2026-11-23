@@ -6,6 +6,7 @@ pub mod buildinfo;
 pub mod channel;
 pub mod clock;
 pub mod crash;
+pub mod crash_fingerprint;
 pub mod crash_native;
 pub mod crew;
 pub mod desktop_ctl;

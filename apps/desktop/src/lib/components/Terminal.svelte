@@ -74,6 +74,21 @@
 	});
 
 	/**
+	 * Dispose the WebGL addon and free its context now. xterm removes the renderer's canvas from the page and never loses
+	 * the context: textures, the glyph atlas and GPU buffers live until a garbage collection finds the canvas, and WebKit
+	 * caps live contexts, so closed and parked terminals piled up (study cause 6: 205 -> 1,134 MB, 725 MB after closing).
+	 * The canvases are taken before `dispose` detaches them; a 2D canvas answers `null` to `webgl2`, so only the renderer's matches.
+	 */
+	function releaseWebgl(addon: WebglAddon) {
+		const canvases = [...el.querySelectorAll("canvas")];
+		addon.dispose();
+		for (const c of canvases) {
+			const gl = c.getContext("webgl2");
+			if (gl && !gl.isContextLost()) gl.getExtension("WEBGL_lose_context")?.loseContext();
+		}
+	}
+
+	/**
 	 * WebGL renderer. Loaded before `open` so the very first paint is WebGL (loading it after `open` paints with the
 	 * DOM renderer first, then swaps). A lost context (WebKit drops the oldest when too many are live) disposes the
 	 * addon, which falls back to the DOM renderer instead of leaving a black terminal.
@@ -83,7 +98,7 @@
 		try {
 			const addon = new WebglAddon();
 			addon.onContextLoss(() => {
-				addon.dispose();
+				releaseWebgl(addon);
 				if (webgl === addon) webgl = undefined;
 			});
 			t.loadAddon(addon);
@@ -97,8 +112,8 @@
 	$effect(() => {
 		if (!term) return;
 		if (visible) loadWebgl(term);
-		else {
-			webgl?.dispose();
+		else if (webgl) {
+			releaseWebgl(webgl);
 			webgl = undefined;
 		}
 	});
@@ -251,6 +266,8 @@
 			clearTimeout(timer);
 			offs.forEach((u) => u());
 			void host.ptyDetach(pty).catch(() => {});
+			if (webgl) releaseWebgl(webgl);
+			webgl = undefined;
 			t.dispose();
 		};
 	});

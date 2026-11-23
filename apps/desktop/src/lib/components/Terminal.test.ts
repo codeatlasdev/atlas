@@ -11,6 +11,10 @@ import { prefsMock } from "../../../test/prefsMock.ts";
 
 const log: string[] = [];
 let webgl: FakeWebgl;
+/** Every WebGL context the fake renderer created: a context is freed only when it is lost (`WEBGL_lose_context`) or garbage collected. */
+const contexts: { lost: boolean }[] = [];
+/** Every Tauri command the page invoked, in order. */
+const invoked: { cmd: string; args: unknown }[] = [];
 /** The terminal's channel, as the Rust side would deliver a frame: kind byte (1 = history, 0 = output), then bytes. */
 let channel: { cb: (b: ArrayBuffer) => void };
 const emit = (p: { data: string; replay: boolean }) => {
@@ -30,6 +34,9 @@ let fontsReady: () => void;
 interface Addon {
 	name?: string;
 	activate?(t: FakeTerminal): void;
+	/** xterm tells an addon when the terminal got its element (the WebGL renderer adds its canvas then). */
+	opened?(el: HTMLElement): void;
+	dispose?(): void;
 }
 
 class FakeTerminal {
@@ -50,13 +57,18 @@ class FakeTerminal {
 	}
 	unicode = { activeVersion: "" };
 	element: HTMLElement | undefined;
+	addons: Addon[] = [];
 	loadAddon(a: Addon) {
 		log.push(`load:${a.name ?? a.constructor.name}`);
+		this.addons.push(a);
 		a.activate?.(this);
+		// An addon loaded into an open terminal builds its renderer at once (xterm defers it only until `open`).
+		if (this.element) a.opened?.(this.element);
 	}
 	open(el: HTMLElement) {
 		log.push("open");
 		this.element = el;
+		for (const a of this.addons) a.opened?.(el);
 	}
 	onRender(cb: () => void) {
 		renderCb = cb;
@@ -84,6 +96,8 @@ class FakeTerminal {
 	}
 	dispose() {
 		log.push("dispose");
+		// xterm disposes the addons it loaded with the terminal.
+		for (const a of this.addons) a.dispose?.();
 	}
 }
 class FitAddon {
@@ -98,15 +112,35 @@ class Plain {
 class FakeWebgl {
 	name = "webgl";
 	ctxLoss: (() => void) | undefined;
+	canvas: HTMLCanvasElement | undefined;
+	disposed = false;
 	constructor() {
 		webgl = this;
+	}
+	/** As xterm's WebglRenderer: a canvas in the terminal's screen whose `webgl2` context lives as long as nobody loses it. */
+	opened(el: HTMLElement) {
+		const state = { lost: false };
+		contexts.push(state);
+		const gl = {
+			isContextLost: () => state.lost,
+			getExtension: (n: string) =>
+				n === "WEBGL_lose_context" ? { loseContext: () => void (state.lost = true) } : null,
+		};
+		const canvas = document.createElement("canvas");
+		canvas.getContext = ((t: string) => (t === "webgl2" ? gl : null)) as typeof canvas.getContext;
+		el.append(canvas);
+		this.canvas = canvas;
 	}
 	onContextLoss(cb: () => void) {
 		this.ctxLoss = cb;
 		return { dispose() {} };
 	}
 	dispose() {
+		if (this.disposed) return;
+		this.disposed = true;
 		log.push("webgl:dispose");
+		// xterm removes the canvas from the DOM and nothing more: the context stays alive until a GC finds it.
+		this.canvas?.remove();
 	}
 }
 
@@ -143,12 +177,14 @@ mock.module("@tauri-apps/api/core", () => ({
 		}
 	},
 	// `pty_stream` answers with the stream id when the test says the attach is done.
-	invoke: (cmd: string) =>
-		cmd === "pty_stream"
+	invoke: (cmd: string, args?: unknown) => {
+		invoked.push({ cmd, args });
+		return cmd === "pty_stream"
 			? new Promise<number>((r) => {
 					attachDone = () => r(1);
 				})
-			: Promise.resolve(null),
+			: Promise.resolve(null);
+	},
 }));
 await (await import("../../../test/uiKit.ts")).installUiKit();
 // The theme store pulls the whole kit (colorScheme, bits-ui), which bun cannot load; no other test touches it.
@@ -201,6 +237,8 @@ const realOffset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offse
 const realRO = globalThis.ResizeObserver;
 beforeEach(() => {
 	log.length = 0;
+	contexts.length = 0;
+	invoked.length = 0;
 	// laid out: the host element has a size when the component mounts
 	Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 800 });
 	Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 400 });
@@ -301,6 +339,52 @@ test("WebGL is released while the terminal is not visible (parked neighbour spac
 	flushSync();
 	expect(log).toContain("load:webgl");
 	unmount(app);
+});
+
+// Incident (study cause 6, docs/perf/linux-webkit-study.md): the web process went 205 -> 1,134 MB after a terminal flood and
+// stayed above 725 MB with the tab closed. xterm removes the WebGL canvas from the page on dispose, but never loses its
+// context: the context (textures, the glyph atlas, GPU buffers) lives until a garbage collection finds it, and WebKit
+// caps live contexts (16), so closed and parked terminals pile up until it drops a live one.
+test("closing a terminal loses its WebGL context: the canvas leaving the page is not enough", () => {
+	const { app } = setup();
+	expect(contexts).toHaveLength(1);
+	expect(contexts[0].lost).toBe(false);
+	unmount(app);
+	expect(contexts.filter((c) => !c.lost)).toEqual([]);
+	expect(document.querySelectorAll("canvas")).toHaveLength(0);
+});
+
+test("a terminal parked behind another space gives its WebGL context back, and the next one it builds is live", () => {
+	const { app, p } = setup();
+	p.visible = false;
+	flushSync();
+	expect(contexts.map((c) => c.lost)).toEqual([true]);
+	p.visible = true;
+	flushSync();
+	expect(contexts.map((c) => c.lost)).toEqual([true, false]);
+	unmount(app);
+	expect(contexts.filter((c) => !c.lost)).toEqual([]);
+});
+
+test("closing a terminal ends its stream on the Rust side, also when it closes before the attach answered", async () => {
+	const answered = setup();
+	attachDone();
+	await Promise.resolve();
+	await Promise.resolve();
+	unmount(answered.app);
+	expect(invoked.filter((i) => i.cmd === "pty_stream_stop")).toEqual([
+		{ cmd: "pty_stream_stop", args: { id: 1 } },
+	]);
+
+	invoked.length = 0;
+	const early = setup({ pty: "p2" });
+	unmount(early.app);
+	attachDone(); // the attach answers after the tab is gone
+	await Promise.resolve();
+	await Promise.resolve();
+	expect(invoked.filter((i) => i.cmd === "pty_stream_stop")).toEqual([
+		{ cmd: "pty_stream_stop", args: { id: 1 } },
+	]);
 });
 
 // Incident (#68, xterm path): a user-installed font WKWebView could not draw fell back to a serif while the cell was

@@ -3,9 +3,9 @@
 	import { primaryKey } from "#lib/keys.ts";
 	import { Spinner } from "@codeatlasdev/ui";
 	import { ChevronDown, ChevronRight, Wrench } from "@lucide/svelte";
-	import { marked } from "marked";
 	import type { ChatState, UiRequest } from "#lib/rpc.ts";
 	import { argsLine } from "./composer.ts";
+	import Markdown from "./Markdown.svelte";
 	import ChatTextarea from "./ChatTextarea.svelte";
 	import VirtualList from "../VirtualList.svelte";
 	import { m } from "#lib/i18n/m.ts";
@@ -23,8 +23,6 @@
 
 	let list: ReturnType<typeof VirtualList<ChatState["items"][number]>> | undefined = $state();
 	let open = $state<Record<string, boolean>>({});
-
-	const md = (s: string) => marked.parse(s, { async: false, breaks: true });
 
 	/** Jump to the newest message and follow it again (the list follows appends by itself while pinned). */
 	export const scrollDown = () => list?.scrollToEnd();
@@ -50,7 +48,7 @@
 					</button>
 					{#if open[`th-${it.id}`]}<pre class="thinking ca-selectable">{it.thinking}</pre>{/if}
 				{/if}
-				{#if it.text}<div class="md ca-selectable">{@html md(it.text)}</div>{/if}
+				{#if it.text}<div class="md ca-selectable"><Markdown text={it.text} /></div>{/if}
 				{#each it.tools as id (id)}
 					{@const tc = chat.tools[id]}
 					{#if tc}

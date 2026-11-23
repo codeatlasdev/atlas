@@ -20,6 +20,18 @@ fn deps_failure(outcome: &DepsOutcome) -> Option<String> {
     }
 }
 
+/// Environment variable that sets the least seconds `--ci` waits for services before it may call them stable.
+const CI_MIN_WAIT_ENV: &str = "ATLAS_CI_MIN_WAIT_SECS";
+
+/// How long `--ci` waits before it may declare the services stable: 10 s, so a service that starts and then dies
+/// within a few seconds is seen dying. `value` is [`CI_MIN_WAIT_ENV`]; a number of seconds replaces the default (the
+/// test suites of this repo, which start `sleep` loops, set it low), anything else leaves it.
+fn min_wait(value: Option<&str>) -> Duration {
+    value
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map_or(Duration::from_secs(10), Duration::from_secs)
+}
+
 pub async fn run_ci(
     root_dir: &Path,
     timeout_secs: u64,
@@ -67,9 +79,10 @@ pub async fn run_ci(
 
     manager.start_all().await;
 
-    // Wait at least 10 s for services to start before checking stability,
+    // Wait at least `min_wait` (10 s by default) for services to start before checking stability,
     // then keep polling until no service is Starting OR deadline is hit.
-    let min_wait_until = tokio::time::Instant::now() + Duration::from_secs(10);
+    let min_wait_until =
+        tokio::time::Instant::now() + min_wait(std::env::var(CI_MIN_WAIT_ENV).ok().as_deref());
     let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs);
     // App services only start after InfraReady; never declare stable before.
     let mut apps_started = false;
@@ -202,6 +215,17 @@ mod tests {
     fn test_headless_requires_config() {
         let dir = tempfile::TempDir::new().unwrap();
         assert!(config::load(dir.path()).is_err());
+    }
+
+    #[test]
+    fn the_ci_stabilization_window_is_ten_seconds_unless_a_number_overrides_it() {
+        assert_eq!(min_wait(None), Duration::from_secs(10));
+        assert_eq!(min_wait(Some("1")), Duration::from_secs(1));
+        assert_eq!(min_wait(Some(" 0 ")), Duration::ZERO);
+        // Not a number of seconds: the default, never a zero that would skip the window.
+        assert_eq!(min_wait(Some("")), Duration::from_secs(10));
+        assert_eq!(min_wait(Some("soon")), Duration::from_secs(10));
+        assert_eq!(min_wait(Some("-3")), Duration::from_secs(10));
     }
 
     #[test]

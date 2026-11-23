@@ -111,4 +111,47 @@ describe("startTimeline", () => {
 		step(16);
 		expect(ticks).toBe(1);
 	});
+
+	// A window blurred past the app clock's grace is not "hidden" for WebKitGTK, so the loop must stop on the clock's signal.
+	const restSource = () => {
+		const fns = new Set<(r: boolean) => void>();
+		const src = {
+			resting: false,
+			onRest: (f) => (fns.add(f), () => fns.delete(f)),
+			set(r: boolean) {
+				src.resting = r;
+				fns.forEach((f) => f(r));
+			},
+		};
+		return src;
+	};
+
+	test("a resting window stops the loop, and the resting time stays out of dt and, with pauseClock, out of elapsed", () => {
+		const rest = restSource();
+		const dts: number[] = [];
+		const t = startTimeline((_now, dt) => dts.push(dt), { pauseClock: true, rest });
+		step(1000);
+		rest.set(true);
+		step(16); // the cancelled frame never ticks
+		expect(dts).toEqual([1]);
+		clock += 60_000;
+		rest.set(false);
+		step(16);
+		expect(dts).toEqual([1, 0.016]);
+		expect(t.elapsed(clock)).toBe(1016);
+		t.stop();
+	});
+
+	test("a timeline started while the window rests waits for it to wake", () => {
+		const rest = restSource();
+		rest.resting = true;
+		let ticks = 0;
+		const t = startTimeline(() => ticks++, { rest });
+		step(16);
+		expect(ticks).toBe(0);
+		rest.set(false);
+		step(16);
+		expect(ticks).toBe(1);
+		t.stop();
+	});
 });

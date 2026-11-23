@@ -253,9 +253,10 @@
 	:global(html.opaque-window) header.inset {
 		padding-left: 10px;
 	}
-	/* Windows: the caption buttons sit over the row's right end (WindowControls.svelte). */
+	/* Windows and floating Linux: the caption buttons sit over the row's right end (WindowControls.svelte). The band
+	   only widens the row's own padding: a tiling WM has no buttons (--caption-controls 0px) and keeps its 10px (#739). */
 	:global(html.custom-chrome) header {
-		padding-right: var(--caption-controls);
+		padding-right: max(10px, var(--caption-controls));
 	}
 	header > :global(.crumbs) {
 		flex: 0 1 auto;
@@ -304,31 +305,15 @@
 		border-radius: 50%;
 		background: var(--c);
 	}
-	/* The expanding halo is a pseudo-element animated with transform + opacity (a box-shadow would repaint each frame). */
+	/* Healthy is a settled state: a still halo, no loop (one infinite animation keeps WebKitGTK compositing at 60 fps). */
 	.dot.pulse::after {
 		content: "";
 		position: absolute;
 		inset: 0;
 		border-radius: 50%;
 		background: color-mix(in oklab, var(--c) 55%, transparent);
-		animation: live 2.4s ease-out infinite;
-	}
-	@keyframes live {
-		0% {
-			transform: scale(1);
-			opacity: 1;
-		}
-		70%,
-		100% {
-			transform: scale(2.8);
-			opacity: 0;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.dot.pulse::after {
-			animation: none;
-			opacity: 0;
-		}
+		transform: scale(2);
+		opacity: 0.5;
 	}
 	.grow {
 		flex: 1 1 24px;

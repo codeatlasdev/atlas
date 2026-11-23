@@ -25,5 +25,6 @@
 	"workbench_term_pane_host_unreachable": "Host de terminais inacessível",
 	"workbench_term_pane_raw_protocol_back": "Protocolo bruto do omp · voltar ao chat",
 	"workbench_term_pane_restart_host": "Reiniciar o host de terminais",
+	"workbench_term_paste_denied": "Não foi possível ler a área de transferência. Tente {key}.",
 	"workbench_term_search_label": "Localizar no terminal"
 }

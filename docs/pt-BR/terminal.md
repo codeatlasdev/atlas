@@ -1,7 +1,7 @@
 ---
 title: "Terminal GPU"
 source: terminal.md
-source_sha: "c9c833fbfa012e08d45423c09e2194927ec7f4da"
+source_sha: "b51bec17d24e9431e100451e48ba19a4e75a0b2e"
 translation: machine
 ---
 
@@ -131,7 +131,7 @@ Um terminal não carrega um bitmap, então, para uma imagem, o programa lê a á
 
 **O que fechar um terminal xterm.js libera.** Fechar a aba (ou estacionar o seu espaço) descarta o xterm (scrollback e estado do parser), encerra o seu stream (`pty_stream_stop`, a conexão bruta com o hostd fecha) e perde o seu contexto WebGL na hora: o xterm tira o canvas do renderizador da página ao ser descartado, mas nunca perde o contexto, então sem isso as texturas e o atlas de glifos viviam até uma coleta de lixo e contavam contra o limite do WebKit de contextos vivos. `scripts/linux-terminal-soak.ts` é a verificação: ele abre um terminal que imprime 50 MB, fecha, mede o PSS do web process e conta os elementos `.xterm` e os canvas que a página ainda guarda, por 10 ciclos, e falha quando o PSS termina mais de 100 MB acima da linha de base ociosa ou quando sobra alguma coisa.
 
-**Teclas da área de transferência em terminais xterm.js (Linux, hosts SSH).** Ctrl+Shift+C copia a seleção e Ctrl+Shift+V a cola (bracketed); Ctrl+C só copia enquanto há texto selecionado e, fora disso, continua sendo SIGINT. Com `terminal.copy_on_select` (ativado), selecionar também copia. A seleção PRIMARY (colar com o botão do meio) não é preenchida. O macOS mantém ⌘C/⌘V pelo menu Editar.
+**Teclas da área de transferência em terminais xterm.js (Linux, hosts SSH).** Ctrl+Shift+C copia a seleção e Ctrl+Shift+V a cola (bracketed); Ctrl+C só copia enquanto há texto selecionado e, fora disso, continua sendo SIGINT. Com `terminal.copy_on_select` (ativado), selecionar também copia. A seleção PRIMARY (colar com o botão do meio) não é preenchida. O macOS mantém ⌘C/⌘V pelo menu Editar. Ctrl+Shift+V lê a área de transferência pela webview, então no Linux a janela do próprio app tem acesso a ela (as abas do navegador embutido nunca têm); se a leitura for negada mesmo assim, um aviso diz isso e Ctrl+V simples continua colando.
 
 ## Scrollback
 

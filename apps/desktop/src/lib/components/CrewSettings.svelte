@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { clock } from "#lib/clock.svelte.ts";
 	import { Button, Switch, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
@@ -28,6 +29,7 @@
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
 	import { m } from "#lib/i18n/m.ts";
+	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 
 	type Device = { node_id: string; name: string; revoked: boolean };
 
@@ -65,7 +67,7 @@
 		for (const h of remoteServers) {
 			void loadHost(h.key).catch(() => {});
 		}
-		const t = setInterval(() => {
+		const off = clock.every(1000, () => {
 			now = Date.now();
 			// Keep QR codes ticking; poll for new pairings while a code is live.
 			for (const [key, p] of Object.entries(pairings)) {
@@ -73,8 +75,8 @@
 					void loadHost(key).catch(() => {});
 				}
 			}
-		}, 1000);
-		return () => clearInterval(t);
+		});
+		return off;
 	});
 
 	async function startPair(key: string) {
@@ -106,7 +108,13 @@
 	}
 
 	async function doRemoveServer(key: string, name: string) {
-		if (!confirm(m.settings_agents_crew_remove_confirm({ name }))) return;
+		if (
+			!(await confirmDialog(m.settings_agents_crew_remove_confirm({ name }), {
+				confirmLabel: m.common_action_remove(),
+				destructive: true,
+			}))
+		)
+			return;
 		try {
 			await crew.removeServer(key);
 			toast.success(m.settings_agents_crew_removed({ name }));

@@ -214,6 +214,38 @@ export function apply(s: ChatState, line: string): ChatState {
 	return s;
 }
 
+/** The cumulative `partial` of a delta replaces the previous one: a line carries everything its predecessors did. */
+const UPDATE = '{"type":"message_update"';
+/** Tool events change `tools`, never the transcript item a delta lands on. */
+const TOOL = '{"type":"tool_execution_';
+
+/**
+ * Drops every `message_update` that a later one supersedes (omp sends the whole message so far in each), so a batch of N
+ * deltas costs one parse and one item update. Only updates separated by nothing but tool events are merged: any other
+ * line (`message_end`, `agent_end`, a history `response`) reads or closes the item, so the updates before it stay.
+ * Lines are told apart by their prefix (omp writes `type` first) so dropping one costs no JSON.parse; a line that does
+ * not look like either kind is kept and ends the run, which is always safe.
+ */
+export function coalesce(lines: readonly string[]): string[] {
+	const keep: string[] = [];
+	let later = false;
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const l = lines[i];
+		if (l.startsWith(UPDATE)) {
+			if (later) continue;
+			later = true;
+		} else if (!l.startsWith(TOOL)) later = false;
+		keep.push(l);
+	}
+	return keep.reverse();
+}
+
+/** Apply a batch of lines, newest delta only. Mutates and returns `s`. */
+export function applyBatch(s: ChatState, lines: readonly string[]): ChatState {
+	for (const l of coalesce(lines)) apply(s, l);
+	return s;
+}
+
 /** Splits a byte stream into complete lines, keeping the unfinished tail. */
 export class LineBuffer {
 	private tail = "";

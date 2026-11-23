@@ -80,14 +80,8 @@
 	.space:hover:not(.on) {
 		transform: translateY(-1px);
 	}
-	/* A running stack keeps its icon at full strength and breathes softly. */
+	/* A running stack keeps its icon at near full strength (still: a settled state does not loop). */
 	.space.up:not(.on) {
 		opacity: 0.9;
-		animation: breathe 3s ease-in-out infinite;
-	}
-	@keyframes breathe {
-		50% {
-			opacity: 0.68;
-		}
 	}
 </style>

@@ -123,7 +123,8 @@ class FakeWebgl {
 		contexts.push(state);
 		const gl = {
 			isContextLost: () => state.lost,
-			getExtension: (n: string) => (n === "WEBGL_lose_context" ? { loseContext: () => void (state.lost = true) } : null),
+			getExtension: (n: string) =>
+				n === "WEBGL_lose_context" ? { loseContext: () => void (state.lost = true) } : null,
 		};
 		const canvas = document.createElement("canvas");
 		canvas.getContext = ((t: string) => (t === "webgl2" ? gl : null)) as typeof canvas.getContext;
@@ -371,7 +372,9 @@ test("closing a terminal ends its stream on the Rust side, also when it closes b
 	await Promise.resolve();
 	await Promise.resolve();
 	unmount(answered.app);
-	expect(invoked.filter((i) => i.cmd === "pty_stream_stop")).toEqual([{ cmd: "pty_stream_stop", args: { id: 1 } }]);
+	expect(invoked.filter((i) => i.cmd === "pty_stream_stop")).toEqual([
+		{ cmd: "pty_stream_stop", args: { id: 1 } },
+	]);
 
 	invoked.length = 0;
 	const early = setup({ pty: "p2" });
@@ -379,7 +382,9 @@ test("closing a terminal ends its stream on the Rust side, also when it closes b
 	attachDone(); // the attach answers after the tab is gone
 	await Promise.resolve();
 	await Promise.resolve();
-	expect(invoked.filter((i) => i.cmd === "pty_stream_stop")).toEqual([{ cmd: "pty_stream_stop", args: { id: 1 } }]);
+	expect(invoked.filter((i) => i.cmd === "pty_stream_stop")).toEqual([
+		{ cmd: "pty_stream_stop", args: { id: 1 } },
+	]);
 });
 
 // Incident (#68, xterm path): a user-installed font WKWebView could not draw fell back to a serif while the cell was

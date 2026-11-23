@@ -127,6 +127,19 @@ jobs:
         with:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
 
+      # CPU-only parser throughput of `Vt::feed` per corpus against the committed baseline (docs/perf/terminal-linux.md):
+      # a ratio to a calibration workload timed in the same process, so a faster or slower runner does not matter, a slower
+      # parser does. Linux only (the baseline is x86-64 Linux; the GPU and latency numbers are local, never in CI).
+      - name: Install Bun
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: Terminal parser throughput gate
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        run: bun scripts/term-parser-gate.ts
+
   # The Linux app, opened: the debug build with the frontend bundled runs on a private headless sway (Mesa
   # llvmpipe, no GPU) and fails on a crash, a window that never maps, a blank page or an error in the app's log
   # (scripts/linux-launch-check.sh, #283). Principle: Linux ships nothing that no CI job has opened. The screenshot

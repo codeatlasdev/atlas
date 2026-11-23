@@ -58,6 +58,12 @@ pub(crate) fn read_lines(path: &Path) -> Vec<String> {
 /// `durable`: flush the data to disk before returning (a state change must survive a power cut).
 /// Returns the file's length afterwards.
 pub(crate) fn append_line(path: &Path, line: &str, durable: bool) -> io::Result<u64> {
+    append_lines(path, &[line], durable)
+}
+
+/// [`append_line`] for several lines: one open, one write, one flush (the file is created even for none). A
+/// poll that records a hundred ids must not open the file a hundred times.
+pub(crate) fn append_lines(path: &Path, lines: &[&str], durable: bool) -> io::Result<u64> {
     let mut f = atlas_core::sys::owner_only(
         std::fs::OpenOptions::new()
             .create(true)
@@ -66,7 +72,10 @@ pub(crate) fn append_line(path: &Path, line: &str, durable: bool) -> io::Result<
     )
     .open(path)?;
     let len = f.metadata()?.len();
-    let mut buf = String::with_capacity(line.len() + 2);
+    if lines.is_empty() {
+        return Ok(len);
+    }
+    let mut buf = String::with_capacity(lines.iter().map(|l| l.len() + 1).sum::<usize>() + 1);
     if len > 0 {
         let mut last = [0u8; 1];
         f.seek(SeekFrom::End(-1))?;
@@ -75,8 +84,10 @@ pub(crate) fn append_line(path: &Path, line: &str, durable: bool) -> io::Result<
             buf.push('\n');
         }
     }
-    buf.push_str(line);
-    buf.push('\n');
+    for line in lines {
+        buf.push_str(line);
+        buf.push('\n');
+    }
     // One write: with O_APPEND it lands at the end whatever the seek above did.
     f.write_all(buf.as_bytes())?;
     if durable {

@@ -159,6 +159,8 @@ Inicia todos os serviços selecionados (tudo, a menos que `SERVICE…` / `--prof
 
 O `--ci` não serve o socket de controle. Tanto o `--ci` quanto o `--headless` rodam o `pre_command` antes de iniciar os serviços (veja [pre_command](configuration.md#pre_command)).
 
+`ATLAS_CI_MIN_WAIT_SECS=<n>` substitui a espera mínima de 10 s (um número de segundos; qualquer outra coisa mantém 10). As suítes de teste do próprio Atlas o definem baixo para serviços que nunca morrem; um pipeline que quer pegar um serviço morrendo logo depois de iniciar deve deixá-lo como está.
+
 ### Uma instância por projeto
 
 `--ci`, `--headless` e `--detach` usam o mesmo lock de instância única da TUI. Se outro `atlas dev` já roda nesse diretório, `--ci` e `--headless` imprimem ``O `atlas dev` já está rodando (pid N). Veja o estado com `atlas dev --status`.`` e saem com `1`, sem tocar em nenhum processo. A TUI simples **se conecta** a um runner, e só quando quem detém o lock é outra TUI (à qual não dá para se conectar) ela pergunta `Encerrar o processo e reiniciar? [s/N]`; veja [Runtime](runtime.md#singleton-e-o-socket-de-controle) (instância única e socket de controle).

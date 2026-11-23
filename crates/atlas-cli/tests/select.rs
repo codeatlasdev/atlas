@@ -51,11 +51,14 @@ fn project(extra_local: Option<&str>) -> tempfile::TempDir {
     dir
 }
 
+/// `atlas dev --ci` calls services stable only after a 10 s window by default; these services never die, so the
+/// window is cut to one second (it took 10 s of every test, 13 s on a Windows runner).
 fn dev(dir: &Path, args: &[&str]) -> Output {
     Command::new(BIN)
         .arg("dev")
         .args(args)
         .args(["--dir", dir.to_str().unwrap()])
+        .env("ATLAS_CI_MIN_WAIT_SECS", "1")
         .stdin(Stdio::null())
         .output()
         .unwrap()

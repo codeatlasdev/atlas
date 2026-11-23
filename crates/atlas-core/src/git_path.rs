@@ -313,37 +313,81 @@ mod tests {
         }
     }
 
+    /// A repo whose first commit has each of `files` with a body of its own (git pairs a rename by content, so two
+    /// files with one body would be paired either way round).
+    fn repo_with_distinct(files: &[String]) -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        git(d.path(), true, &["init", "-q", "."]);
+        write(d.path(), "README.md", "hello\n");
+        for (i, f) in files.iter().enumerate() {
+            write(d.path(), f, &format!("{BODY}unique {i}\n"));
+        }
+        git(d.path(), true, &["add", "-A"]);
+        git(d.path(), true, &["commit", "-qm", "init"]);
+        d
+    }
+
+    /// Move `from` to `to` on disk (making the folders) and stage it all.
+    fn move_all(d: &Path, moves: &[(String, String)]) {
+        for (from, to) in moves {
+            std::fs::create_dir_all(d.join(to).parent().unwrap()).unwrap();
+            std::fs::rename(d.join(from), d.join(to)).unwrap();
+        }
+        git(d, true, &["add", "-A"]);
+    }
+
     // `rename from` / `rename to` quote like the header, and each side on its own: a plain name renamed to a quoted
-    // one, and the other way round.
+    // one, and the other way round. Every name of one scenario is renamed in one repo and read by one diff per
+    // quotepath setting: a repo and a `git mv` per name was 144 processes, 17 s on a Windows runner.
     #[test]
     fn a_rename_to_or_from_such_a_name_keeps_both_names() {
+        let staged = [&REVIEW_DIFF[..], &["--cached"]].concat();
+        let ns = names();
+        let plain_old = |i: usize| format!("plain old {i}.txt");
+        let plain_new = |i: usize| format!("plain new {i}.txt");
+        let other = |i: usize| format!("nova ç {i}.txt");
+
+        // plain -> name
+        let d = repo_with_distinct(&(0..ns.len()).map(plain_old).collect::<Vec<_>>());
+        let moves: Vec<_> = ns
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (plain_old(i), n.to_string()))
+            .collect();
+        move_all(d.path(), &moves);
         for quotepath in [true, false] {
-            for n in names() {
-                let staged = [&REVIEW_DIFF[..], &["--cached"]].concat();
-                // plain -> name
-                let d = repo_with(&["plain old.txt"]);
-                std::fs::create_dir_all(d.path().join(Path::new(n).parent().unwrap())).unwrap();
-                git(d.path(), quotepath, &["mv", "plain old.txt", n]);
-                let f = parse(&git(d.path(), quotepath, &staged), true);
-                assert_eq!(f.len(), 1, "{n:?} quotepath={quotepath}");
-                assert_eq!(f[0].path, n, "quotepath={quotepath}");
-                assert_eq!(f[0].old_path.as_deref(), Some("plain old.txt"), "{n:?}");
-                assert_eq!(f[0].status, "renamed", "{n:?}");
+            let f = parse(&git(d.path(), quotepath, &staged), true);
+            assert_eq!(f.len(), ns.len(), "quotepath={quotepath}");
+            for (i, n) in ns.iter().enumerate() {
+                let one = f
+                    .iter()
+                    .find(|x| x.path == *n)
+                    .unwrap_or_else(|| panic!("{n:?} quotepath={quotepath}: {f:?}"));
+                assert_eq!(one.old_path.as_deref(), Some(plain_old(i).as_str()), "{n:?}");
+                assert_eq!(one.status, "renamed", "{n:?}");
+            }
+        }
 
-                // name -> plain
-                let d = repo_with(&[n]);
-                git(d.path(), quotepath, &["mv", n, "plain new.txt"]);
+        // name -> plain, and name -> another name
+        for (to, what) in [(&plain_new as &dyn Fn(usize) -> String, "plain"), (&other, "another name")] {
+            let d = repo_with_distinct(&ns.iter().map(|n| n.to_string()).collect::<Vec<_>>());
+            let moves: Vec<_> = ns
+                .iter()
+                .enumerate()
+                .map(|(i, n)| (n.to_string(), to(i)))
+                .collect();
+            move_all(d.path(), &moves);
+            for quotepath in [true, false] {
                 let f = parse(&git(d.path(), quotepath, &staged), true);
-                assert_eq!(f.len(), 1, "{n:?} quotepath={quotepath}");
-                assert_eq!(f[0].path, "plain new.txt", "{n:?}");
-                assert_eq!(f[0].old_path.as_deref(), Some(n), "quotepath={quotepath}");
-
-                // name -> another name
-                let d = repo_with(&[n]);
-                git(d.path(), quotepath, &["mv", n, "nova ç x.txt"]);
-                let f = parse(&git(d.path(), quotepath, &staged), true);
-                assert_eq!(f.len(), 1, "{n:?} quotepath={quotepath}");
-                assert_eq!(f[0].old_path.as_deref(), Some(n), "{n:?}");
+                assert_eq!(f.len(), ns.len(), "{what} quotepath={quotepath}");
+                for (i, n) in ns.iter().enumerate() {
+                    let one = f
+                        .iter()
+                        .find(|x| x.path == to(i))
+                        .unwrap_or_else(|| panic!("{what} {n:?} quotepath={quotepath}: {f:?}"));
+                    assert_eq!(one.old_path.as_deref(), Some(*n), "{what} quotepath={quotepath}");
+                    assert_eq!(one.status, "renamed", "{what} {n:?}");
+                }
             }
         }
     }

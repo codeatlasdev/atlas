@@ -115,6 +115,10 @@ impl Refusal {
 pub(crate) struct DeliveryLog {
     path: PathBuf,
     ids: Mutex<Seen>,
+    /// Ids kept, and the size past which the file is cut back to its newest half ([`KEEP_IDS`], [`IDS_MAX_BYTES`];
+    /// smaller in tests, where every claim is an fsync).
+    keep: usize,
+    max_bytes: u64,
 }
 
 #[derive(Default)]
@@ -125,6 +129,10 @@ struct Seen {
 
 impl DeliveryLog {
     pub(crate) fn open(dir: &Path) -> Self {
+        Self::open_capped(dir, KEEP_IDS, IDS_MAX_BYTES)
+    }
+
+    pub(crate) fn open_capped(dir: &Path, keep: usize, max_bytes: u64) -> Self {
         let path = dir.join(DELIVERIES_FILE);
         let mut seen = Seen::default();
         for line in crate::crew::store::jsonl::read_lines(&path) {
@@ -133,7 +141,7 @@ impl DeliveryLog {
                 seen.order.push_back(id.to_string());
             }
         }
-        while seen.order.len() > KEEP_IDS {
+        while seen.order.len() > keep {
             if let Some(old) = seen.order.pop_front() {
                 seen.set.remove(&old);
             }
@@ -141,6 +149,8 @@ impl DeliveryLog {
         Self {
             path,
             ids: Mutex::new(seen),
+            keep,
+            max_bytes,
         }
     }
 
@@ -156,13 +166,16 @@ impl DeliveryLog {
             .map_err(|e| format!("{}: {e}", self.path.display()))?;
         seen.set.insert(id.to_string());
         seen.order.push_back(id.to_string());
-        if seen.order.len() > KEEP_IDS
+        if seen.order.len() > self.keep
             && let Some(old) = seen.order.pop_front()
         {
             seen.set.remove(&old);
         }
-        let _ =
-            crate::crew::store::jsonl::trim_to_tail(&self.path, IDS_MAX_BYTES, IDS_MAX_BYTES / 2);
+        let _ = crate::crew::store::jsonl::trim_to_tail(
+            &self.path,
+            self.max_bytes,
+            self.max_bytes / 2,
+        );
         Ok(true)
     }
 }
@@ -706,12 +719,15 @@ mod tests {
         assert_eq!(again.claim("d-3"), Ok(true));
     }
 
-    // The store is bounded: past the cap the oldest id is forgotten (memory and file), the newest are kept.
+    // The store is bounded: past the cap the oldest id is forgotten (memory and file), the newest are kept. Each
+    // claim fsyncs, which costs milliseconds on a Windows runner (1 200 of them took 31 s), so the caps are small:
+    // the same eviction and the same trim, crossed a few times over.
     #[test]
     fn the_delivery_log_is_bounded_and_keeps_the_newest() {
         let t = tempfile::tempdir().unwrap();
-        let log = DeliveryLog::open(t.path());
-        let total = KEEP_IDS + 200;
+        let (keep, max_bytes) = (20usize, 400u64);
+        let log = DeliveryLog::open_capped(t.path(), keep, max_bytes);
+        let total = keep + 50;
         for n in 0..total {
             assert_eq!(log.claim(&format!("id-{n:06}")), Ok(true));
         }
@@ -721,12 +737,13 @@ mod tests {
             Ok(false),
             "the newest is kept"
         );
-        let again = DeliveryLog::open(t.path());
+        let again = DeliveryLog::open_capped(t.path(), keep, max_bytes);
         assert_eq!(again.claim(&format!("id-{:06}", total - 1)), Ok(false));
         let len = std::fs::metadata(t.path().join(DELIVERIES_FILE))
             .unwrap()
             .len();
-        assert!(len <= IDS_MAX_BYTES + 128, "the file grew to {len}");
+        // 10 bytes an id: the 71 written would be 710 without the trim.
+        assert!(len <= max_bytes + 10, "the file grew to {len}");
     }
 
     #[test]

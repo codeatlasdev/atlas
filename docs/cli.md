@@ -157,6 +157,8 @@ Starts all selected services (everything unless narrowed by `SERVICE…` / `--pr
 
 `--ci` does not serve the control socket. Both `--ci` and `--headless` run `pre_command` before starting services (see [pre_command](configuration.md#pre_command)).
 
+`ATLAS_CI_MIN_WAIT_SECS=<n>` replaces the 10 s minimum wait (a number of seconds; anything else keeps 10). Atlas's own test suites set it low for services that never die; a pipeline that wants to catch a service dying right after it starts should leave it alone.
+
 ### One instance per project
 
 `--ci`, `--headless` and `--detach` take the same singleton lock as the TUI. If another `atlas dev` already runs for that directory `--ci` and `--headless` print `` `atlas dev` is already running (pid N). Check it with `atlas dev --status`. `` and exit `1`, without touching any process. The plain TUI **attaches** to a runner, and only when the lock holder is another TUI (which cannot be attached to) does it ask `Kill it and restart? [y/N]`; see [Runtime › Singleton](runtime.md#singleton-and-the-control-socket).

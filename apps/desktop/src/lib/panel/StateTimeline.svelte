@@ -91,13 +91,14 @@
 		overflow: hidden;
 	}
 	/* A full-width bar placed and sized with transform (compositor only): `--x` is the start and `--w` the length as
-	   fractions of the track, so a growing open band animates without a relayout per frame. */
+	   fractions of the track. It moves in steps with no transition: the right edge advances every sample, and a
+	   transition on every band made each one a running animation for ~40 % of the time, which kept WebKitGTK compositing
+	   at 60 fps (4 points of CPU on an idle dashboard, docs/perf/linux-webkit-study.md). */
 	.band {
 		position: absolute;
 		inset: 0;
 		transform-origin: left;
 		transform: translateX(calc(var(--x) * 100%)) scaleX(var(--w));
-		transition: transform 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 	.b-running {
 		background: var(--atlas-state-success, var(--ca-semantic-success));
@@ -114,10 +115,5 @@
 		margin-left: calc(min(max(64px, 15%), 120px) + 10px);
 		font-size: 10.5px;
 		color: var(--ca-text-secondary);
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.band {
-			transition: none;
-		}
 	}
 </style>

@@ -11,6 +11,7 @@ let t: number;
 let timers: { fn: () => void; ms: number; id: number; alive: boolean }[];
 let visible: boolean;
 let focus: boolean;
+let rests: boolean[];
 const listeners: Record<string, Set<() => void>> = {
 	visibility: new Set(),
 	focus: new Set(),
@@ -37,6 +38,7 @@ function make(blurGraceMs = 60_000) {
 		onVisibility: (f) => (listeners.visibility.add(f), () => listeners.visibility.delete(f)),
 		onFocus: (f) => (listeners.focus.add(f), () => listeners.focus.delete(f)),
 		onBlur: (f) => (listeners.blur.add(f), () => listeners.blur.delete(f)),
+		rest: (r) => rests.push(r),
 		blurGraceMs,
 	});
 }
@@ -48,6 +50,7 @@ beforeEach(() => {
 	timers = [];
 	visible = true;
 	focus = true;
+	rests = [];
 	Object.values(listeners).forEach((s) => s.clear());
 });
 afterEach(() => {});
@@ -208,4 +211,35 @@ test("re-opening an already open gate does not poll again or stack timers", () =
 	expect(live()).toHaveLength(1);
 	p.stop();
 	expect(live()).toHaveLength(0);
+});
+
+// #289: WebKitGTK on Wayland never reports a blurred window, or one on another workspace, as hidden, so CSS motion kept the
+// compositor at 60 fps behind the user's back. The clock's grace is the one signal the app has: it tells the page to rest.
+test("the page rests once the window has been blurred past the grace, with no subscriber at all, and wakes on focus", () => {
+	make(60_000);
+	focus = false;
+	listeners.blur.forEach((f) => f());
+	expect(rests).toEqual([]);
+	live()
+		.find((x) => x.ms === 60_000)
+		.fn();
+	expect(rests).toEqual([true]);
+	focus = true;
+	listeners.focus.forEach((f) => f());
+	expect(rests).toEqual([true, false]);
+});
+
+test("a brief blur never rests the page, and a hidden document does at once", () => {
+	make(60_000);
+	focus = false;
+	listeners.blur.forEach((f) => f());
+	focus = true;
+	listeners.focus.forEach((f) => f());
+	expect(rests).toEqual([]);
+	visible = false;
+	listeners.visibility.forEach((f) => f());
+	expect(rests).toEqual([true]);
+	visible = true;
+	listeners.visibility.forEach((f) => f());
+	expect(rests).toEqual([true, false]);
 });

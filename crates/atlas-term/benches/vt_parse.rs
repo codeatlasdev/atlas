@@ -39,6 +39,8 @@ struct Args {
     only: Option<Vec<String>>,
     json: Option<PathBuf>,
     corpus: Option<PathBuf>,
+    /// Bytes per `feed` call (the size of a pty read: 4 KiB on Linux, ~100 B for `seq` with output processing on).
+    chunk: usize,
 }
 
 fn args() -> Args {
@@ -48,6 +50,7 @@ fn args() -> Args {
         only: None,
         json: None,
         corpus: None,
+        chunk: CHUNK,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -55,6 +58,7 @@ fn args() -> Args {
         match k.as_str() {
             "--mib" => a.mib = val().parse().expect("--mib N"),
             "--passes" => a.passes = val().parse().expect("--passes N"),
+            "--chunk" => a.chunk = val().parse().expect("--chunk BYTES"),
             "--only" => a.only = Some(val().split(',').map(str::to_owned).collect()),
             "--json" => a.json = Some(val().into()),
             "--corpus" => a.corpus = Some(val().into()),
@@ -132,10 +136,10 @@ fn calibration() -> f64 {
     BYTES as f64 / 1e6 / best
 }
 
-fn pass(data: &[u8]) -> f64 {
+fn pass(data: &[u8], chunk: usize) -> f64 {
     let vt = Vt::new(COLS, ROWS, |_| {});
     let t = Instant::now();
-    for chunk in data.chunks(CHUNK) {
+    for chunk in data.chunks(chunk) {
         vt.feed(black_box(chunk));
     }
     // Ends any synchronized update still open, so the grid work of the last frame is inside the timing.
@@ -159,8 +163,8 @@ fn main() {
         }
         let data = std::fs::read(dir.join(format!("{name}.bin"))).expect("corpus file");
         let load_before = load1();
-        pass(&data);
-        let mut s: Vec<f64> = (0..a.passes).map(|_| pass(&data)).collect();
+        pass(&data, a.chunk);
+        let mut s: Vec<f64> = (0..a.passes).map(|_| pass(&data, a.chunk)).collect();
         let load_after = load1();
         s.sort_by(f64::total_cmp);
         let (best, median) = (s[s.len() - 1], s[s.len() / 2]);
@@ -183,7 +187,7 @@ fn main() {
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
         "grid": [COLS, ROWS],
-        "chunk": CHUNK,
+        "chunk": a.chunk,
         "passes": a.passes,
         "mib": a.mib,
         "calibration_mbps": round1(calib),

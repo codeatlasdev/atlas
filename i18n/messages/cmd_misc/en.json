@@ -187,7 +187,12 @@
 	"cmd_misc_mcp_not_dir": "{path} is not a folder. Pass an existing project folder with --dir, or run `atlas mcp` inside the project.",
 	"cmd_misc_release_checksum_mismatch": "checksum mismatch for {name} (expected {expected}, got {actual})",
 	"cmd_misc_release_ctx_missing_asset": "{tag} has no {asset} (download failed or missing asset)",
+	"cmd_misc_release_ctx_missing_signed": "{missing}; signed releases only, refusing an unsigned install",
 	"cmd_misc_release_no_checksum": "{name} has no {name}.sha256; refusing unverified install",
+	"cmd_misc_release_predates_signing": "{tag} predates release signing: only its .sha256 (served by the same release) vouches for {asset}",
+	"cmd_misc_release_refusing_asset": "{tag}: refusing to install {asset}",
+	"cmd_misc_release_sig_invalid": "{tag}: SHA256SUMS.sig does not verify; refusing to install",
+	"cmd_misc_release_signed_by": "SHA256SUMS signed by {key}",
 	"cmd_misc_run_cache_ctx_key": "cannot compute the cache key",
 	"cmd_misc_run_cache_hit": [
 		{

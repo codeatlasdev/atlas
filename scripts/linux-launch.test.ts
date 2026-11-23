@@ -192,6 +192,13 @@ describe("linux-launch-check.sh", () => {
 			expect(markers.test("(atlas-desktop:2680831): Gtk-CRITICAL **: 09:31:53.199: gtk_widget_get_scale_factor: assertion 'GTK_IS_WIDGET (widget)' failed")).toBe(true);
 			expect(read("scripts/linux-launch-check.sh")).not.toMatch(/KNOWN|gtk_widget_get_scale_factor/);
 		});
+		// LinuxFixes item 3: the two lines a web process printed per AudioContext.resume() on a host without GStreamer's
+		// autoaudiosink (copied from the real stderr). The app no longer starts the context there (`audio_output_available`),
+		// so a GLib-GObject-CRITICAL is the app's own bug again and fails the launch, like the GTK one.
+		test("a GLib-GObject CRITICAL from a web process fails the launch", () => {
+			expect(markers.test("(WebKitWebProcess:1386367): GLib-GObject-CRITICAL **: 08:19:04.449: invalid (NULL) pointer instance")).toBe(true);
+			expect(markers.test("(WebKitWebProcess:1386367): GLib-GObject-CRITICAL **: 08:19:04.449: g_signal_connect_data: assertion 'G_TYPE_CHECK_INSTANCE (instance)' failed")).toBe(true);
+		});
 		test("a host with no audio sink or no AAC decoder is not a launch failure", () => {
 			expect(markers.test("GStreamer element autoaudiosink not found. Please install it")).toBe(false);
 			expect(markers.test("Missing decoder: MPEG-4 AAC (audio/x-m4a)")).toBe(false);

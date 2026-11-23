@@ -1147,6 +1147,15 @@ jobs:
           shasum -a 256 manifest.json >> SHA256SUMS
           cat SHA256SUMS
 
+      # The attest job attests exactly these bytes, and the maintainer signs them (scripts/release-sign.sh).
+      - name: Keep SHA256SUMS for attest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sha256sums
+          path: SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
       # The release body: this version's CHANGELOG.md section, who worked on it, then install/update steps, within
       # GitHub's size cap (scripts/release-notes.ts shortens a section that would not fit; 1.5.0-alpha.26's was cut
       # mid-entry). scripts/release-contributors.ts fails the step if a commit identity maps to nobody.
@@ -1188,7 +1197,7 @@ jobs:
 
           Or download `atlas-*-aarch64-apple-darwin.tar.gz` (macOS), `atlas-*-x86_64-unknown-linux-gnu.tar.gz`
           or `atlas-*-aarch64-unknown-linux-gnu.tar.gz` (Linux) or `atlas-*-x86_64-pc-windows-msvc.tar.gz` (Windows)
-          below, verify it against its `.sha256` (or `SHA256SUMS`), extract it and run `./atlas install`.
+          below, verify it against `SHA256SUMS` (signed: `SHA256SUMS.sig`, see SECURITY.md#verifying-downloads; or its `.sha256`), extract it and run `./atlas install`.
 
           ## Desktop app
 
@@ -1237,11 +1246,38 @@ jobs:
             artifacts/**/*.cdx.json
             manifest.json
             SHA256SUMS
-          draft: false
+          # A DRAFT, for every channel (a stable promotion too): nothing is public, and no client can fetch it, until a
+          # maintainer signs SHA256SUMS with an offline key and publishes it (scripts/release-sign.sh, run by
+          # `bun run release`; docs/release.md "Release signing"). Latest/prerelease below are applied at that publish.
+          draft: true
           # A build of the default channel (alpha pre-GA) is a normal release and "Latest"; anything more adventurous is a
           # prerelease. Stable clients never trust /releases/latest: they read the feed (docs/versioning.md).
           prerelease: ${{ steps.flags.outputs.prerelease }}
           make_latest: ${{ steps.flags.outputs.make_latest }}
+
+  # A GitHub artifact attestation (Sigstore) for every asset listed in SHA256SUMS, from this workflow run: a second,
+  # independent layer next to the maintainer's signature. Verify with `gh attestation verify` (SECURITY.md). It signs
+  # no release and cannot publish; the clients' trust anchor is the maintainer key, not this.
+  attest:
+    name: Attest Release
+    needs: [publish]
+    if: ${{ !cancelled() && !inputs.build_only && needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download SHA256SUMS
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sha256sums
+
+      - name: Attest the release assets
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: SHA256SUMS
 
   # #267: the rendered PKGBUILD of a published release goes to the AUR as `codeatlas-atlas-bin`, so Arch users get it from
   # their AUR helper and `pacman -Syu`. It needs the maintainer's AUR account, which is not in this repository: without the

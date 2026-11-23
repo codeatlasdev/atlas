@@ -21,6 +21,9 @@ thiserror = { workspace = true }
 dirs = { workspace = true }
 parking_lot = { workspace = true }
 semver = { workspace = true }
+# Release signature verification (release_verify.rs): ring is already in the tree for TLS.
+base64 = { workspace = true }
+ring = "0.17"
 tokio = { workspace = true }
 sha2 = "0.11"
 hex = "0.4"

@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { clock as appClock } from "#lib/clock.svelte.ts";
 	import { ExternalLink } from "@lucide/svelte";
 	import { Button, SegmentedControl, Spinner, Switch, TextField } from "@codeatlasdev/ui";
 	import Group from "#lib/settings/Group.svelte";
@@ -44,8 +45,7 @@
 	$effect(() => {
 		if (flow.phase !== "waiting") return;
 		now = Date.now();
-		const t = setInterval(() => (now = Date.now()), 1000);
-		return () => clearInterval(t);
+		return appClock.every(1000, () => (now = Date.now()));
 	});
 
 	async function remove() {

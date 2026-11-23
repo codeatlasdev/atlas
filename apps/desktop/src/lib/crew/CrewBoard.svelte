@@ -5,6 +5,7 @@
 	 * Replaces the right panel (CrewmateView) when crewView === 'board'.
 	 */
 	import { onMount } from "svelte";
+	import { clock } from "#lib/clock.svelte.ts";
 	import { flip } from "svelte/animate";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import { crewView } from "#lib/crew/crewView.svelte.ts";
@@ -19,12 +20,7 @@
 	// ─── clock ────────────────────────────────────────────────────────────────
 
 	let now = $state(Date.now());
-	$effect(() => {
-		const id = setInterval(() => {
-			now = Date.now();
-		}, 1000);
-		return () => clearInterval(id);
-	});
+	$effect(() => clock.every(1000, () => (now = Date.now())));
 
 	// ─── board data ───────────────────────────────────────────────────────────
 

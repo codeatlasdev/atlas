@@ -172,6 +172,30 @@ async fn stuck_raw_reader_does_not_block_the_program() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The desktop feeds xterm.js from a raw stream (`pty_attach_raw`) and has to know whether the first bytes it reads
+/// are the history (the terminal resets before them) or none at all (an empty ring still resets the view): the
+/// attach answer says how many bytes the replay holds, and a stream attached without replay says 0.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_raw_attach_says_how_many_bytes_of_replay_it_queued() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Session::spawn(shell_req("echo atlas-raw-replay"), dir.path()).unwrap();
+    until_exited(&s).await;
+    let ring = s.buf.lock().ring_bytes();
+    assert!(!ring.is_empty());
+
+    let (tx, mut rx) = mpsc::channel(RAW_QUEUE);
+    let info = s.attach_raw(1, tx, true);
+    assert_eq!(info["replay"], ring.len());
+    assert_eq!(
+        rx.recv().await.unwrap(),
+        ring,
+        "the replay is the first chunk"
+    );
+
+    let (tx, _rx) = mpsc::channel(RAW_QUEUE);
+    assert_eq!(s.attach_raw(2, tx, false)["replay"], 0);
+}
+
 /// A pty running `script` through the platform shell, in the temp dir.
 fn shell_req(script: &str) -> PtyCreate {
     let argv = if cfg!(windows) {

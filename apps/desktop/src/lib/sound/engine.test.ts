@@ -39,8 +39,10 @@ function rig(over = {}) {
 		reducedMotion: false,
 		...over,
 	};
+	delete state.output;
 	const engine = createEngine({
 		AudioContext: Ctx,
+		output: over.output,
 		fetchAsset: async (name) => {
 			log.fetched.push(name);
 			return new ArrayBuffer(16);
@@ -354,5 +356,38 @@ describe("playOnGesture (the cold-start signature)", () => {
 		await new Promise((r) => setTimeout(r, 0));
 		expect(log.started.length).toBe(1);
 		expect(log.fetched).toEqual(["update"]);
+	});
+});
+
+// Incident (LinuxFixes item 3): on a Linux with no GStreamer audio sink (`autoaudiosink` missing: gst-plugins-good not
+// installed) WebKit's AudioContext.resume() logs `GLib-GObject-CRITICAL` twice from the web process, on the first click
+// of every session. The context must not even be created when the shell says there is no output.
+describe("no audio output on this machine", () => {
+	test("a gesture creates no AudioContext and never resumes one, and sounds are silent misses", async () => {
+		const { engine, log } = rig({ output: () => false });
+		engine.gesture();
+		engine.playOnGesture("boot");
+		engine.gesture();
+		await engine.play("success", { preview: true });
+		expect(log.contexts).toBe(0);
+		expect(log.resumed).toBe(0);
+		expect(log.fetched).toEqual([]);
+	});
+
+	test("the answer is read at gesture time: an output that appears later works from then on", async () => {
+		let output = false;
+		const { engine, log } = rig({ output: () => output });
+		engine.gesture();
+		expect(log.contexts).toBe(0);
+		output = true;
+		engine.gesture();
+		expect(log.contexts).toBe(1);
+		expect(log.resumed).toBe(1);
+	});
+
+	test("an engine told nothing about the output behaves as before", () => {
+		const { engine, log } = rig();
+		engine.gesture();
+		expect(log.contexts).toBe(1);
 	});
 });

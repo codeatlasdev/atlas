@@ -61,10 +61,13 @@ mod loose_fs;
 mod native_ui;
 mod natives;
 mod open_path;
-mod pty_batch;
+mod pty_feed;
+mod pty_stream;
 mod registry;
 mod remote;
 mod shell_env;
+#[cfg(test)]
+mod test_hostd;
 // Capture: the pure, tested parts are driven only by the macOS side; elsewhere the commands answer "not available".
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod shots;
@@ -168,6 +171,7 @@ macro_rules! handlers {
             cmds::hygiene_fix,
             cmds::projects_add,
             cmds::system_ui_sounds,
+            cmds::audio_output_available,
             cmds::locale_get,
             cmds::locale_set,
             cmds::live_resync,
@@ -232,6 +236,9 @@ macro_rules! handlers {
             shell_env::shell_set,
             host::host_call,
             host::host_pty_list,
+            pty_stream::pty_stream,
+            pty_stream::pty_stream_ack,
+            pty_stream::pty_stream_stop,
             host::host_status,
             host::host_take_prompt,
             host::host_restart,

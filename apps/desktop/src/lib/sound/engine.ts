@@ -26,6 +26,11 @@ export interface EngineDeps {
 	formats?: readonly string[];
 	/** Raw bytes of an earcon in one format (`/sounds/<name>.<format>` in the app). */
 	fetchAsset: (name: Category, format: string) => Promise<ArrayBuffer>;
+	/**
+	 * Whether the machine can play audio at all, read at each gesture. `false` = no context is created (WebKitGTK
+	 * without a GStreamer audio sink logs `GLib-GObject-CRITICAL` on `resume()`); undefined = assume it can.
+	 */
+	output?: () => boolean;
 	/** Live world state, read at call time. `now` is the clock. */
 	context: () => Ctx;
 	/** Last-played times that must survive a restart (`{ boot: ms }`), and where to write them back. */
@@ -104,7 +109,7 @@ export function createEngine(deps: EngineDeps): Engine {
 		play,
 
 		gesture() {
-			if (!deps.AudioContext) return;
+			if (!deps.AudioContext || deps.output?.() === false) return;
 			ctx ??= new deps.AudioContext();
 			// #87: WebKitGTK without a usable audio device rejects resume(); unhandled, every gesture surfaced as an
 			// app error. A device that failed to start stays silent for the session instead of being retried.

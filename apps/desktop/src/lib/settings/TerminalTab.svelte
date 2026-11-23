@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button, Select, SegmentedControl, Switch } from "@codeatlasdev/ui";
-	import { gpu, setGpuTerminal } from "#lib/stores/gpu.svelte.ts";
+	import { gpu } from "#lib/stores/gpu.svelte.ts";
+	import { setGpuTerminal } from "#lib/stores/gpuControl.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import type { Prefs } from "#lib/prefs.ts";

@@ -45,6 +45,18 @@ pub fn decide(env: &Env) -> Result<String, String> {
     }
 }
 
+/// The line for `app.log`, if any. That log holds incidents only (`scripts/linux-launch-check.sh` fails a launch on any
+/// other line), and a session that cannot draw the native terminal is the normal state of an X11 or software-GL
+/// machine, asked about on every launch. It is an incident only when the user asked for the terminal and cannot have it.
+pub fn incident(decision: &Result<String, String>, setting: bool) -> Option<String> {
+    match decision {
+        Err(why) if setting => Some(format!(
+            "native terminal: asked for, but not available: {why}"
+        )),
+        _ => None,
+    }
+}
+
 /// Whether the user turned the native terminal on: `env` is `ATLAS_GPU_TERMINAL`, `setting` the settings.json value.
 /// The environment wins (a test or an agent instance sets it without touching a settings file); off when neither says.
 pub fn wanted(env: Option<&str>, setting: Option<&serde_json::Value>) -> bool {
@@ -238,5 +250,33 @@ mod tests {
         assert_eq!(v["setting"], true);
         assert_eq!(v["active"], false);
         assert!(v["adapter"].is_null());
+    }
+}
+
+#[cfg(test)]
+mod incident_tests {
+    use super::incident;
+
+    // Guards the CI "Desktop opens (Linux)" failure of #774: an llvmpipe runner answered `term_capability` with
+    // "no usable GPU", the app logged it, and the launch check reads every app.log line as an incident.
+    #[test]
+    fn a_machine_that_cannot_but_was_not_asked_leaves_app_log_alone() {
+        assert_eq!(
+            incident(&Err("no usable GPU: llvmpipe".into()), false),
+            None
+        );
+        assert_eq!(incident(&Err("not a Wayland session".into()), false), None);
+    }
+
+    #[test]
+    fn asking_for_the_terminal_on_a_machine_that_cannot_logs_why() {
+        let l = incident(&Err("no usable GPU: llvmpipe".into()), true).unwrap();
+        assert!(l.contains("no usable GPU: llvmpipe"), "{l}");
+    }
+
+    #[test]
+    fn a_machine_that_can_logs_nothing() {
+        assert_eq!(incident(&Ok("radv".into()), true), None);
+        assert_eq!(incident(&Ok("radv".into()), false), None);
     }
 }

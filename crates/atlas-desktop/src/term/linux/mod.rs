@@ -106,10 +106,11 @@ pub async fn capability(app: &AppHandle) -> Capability {
         gpu,
     };
     let decision = capability::decide(&env);
-    if let Err(why) = &decision {
-        crate::diag::log(&format!("native terminal: not available: {why}"));
+    let setting = capability::setting_on();
+    if let Some(line) = capability::incident(&decision, setting) {
+        crate::diag::log(&line);
     }
-    capability::reply(decision, capability::setting_on(), window_clear())
+    capability::reply(decision, setting, window_clear())
 }
 
 /// Was the main window made see-through at launch? Set once by `main` from [`window_wanted`].

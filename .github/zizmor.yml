@@ -15,7 +15,7 @@ rules:
     ignore:
       - release.yml
   # `desktop-linux` restores the main-branch cargo cache (never saved from a pull request, same rule as rust-gate) and uploads
-  # a screenshot and logs. The artifact is read by people, never executed or published. `scripts` (:464) restores the same
+  # a screenshot and logs. The artifact is read by people, never executed or published. `scripts` (:477) restores the same
   # cache only to build the CLI its flicker-sweep fixture tests run; it uploads and publishes nothing.
   cache-poisoning:
     ignore:

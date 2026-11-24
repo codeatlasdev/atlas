@@ -1161,3 +1161,132 @@ fn an_erase_then_draw_repaint_inside_2026_never_shows_the_erased_rows() {
     }
     assert!(vt.text().contains("f2 row4"));
 }
+
+fn composing(vt: &Vt, preedit: &str) -> Frame {
+    let mut f = Frame {
+        focused: true,
+        blink_on: true,
+        ..Frame::default()
+    };
+    vt.snapshot(&pal(), &mut f);
+    f.overlay_preedit(preedit);
+    f
+}
+
+fn glyph_at(f: &Frame, col: u16) -> Option<&GlyphCell> {
+    f.glyphs.iter().find(|g| g.col == col && g.row == 0)
+}
+
+// IME on Linux: the preedit ("ni hao" before the candidate is chosen) is drawn at the cursor, not sent to the program.
+#[test]
+fn a_preedit_is_drawn_at_the_cursor_and_the_programs_own_text_is_untouched() {
+    let vt = Vt::new(12, 2, |_| {});
+    vt.feed(b"$ ab");
+    let f = composing(&vt, "ni");
+    assert_eq!(vt.text(), "$ ab", "the preedit never reaches the grid");
+    assert_eq!(glyph_at(&f, 4).map(|g| g.ch), Some('n'));
+    assert_eq!(glyph_at(&f, 5).map(|g| g.ch), Some('i'));
+    assert_eq!(
+        glyph_at(&f, 3).map(|g| g.ch),
+        Some('b'),
+        "text before the cursor stays"
+    );
+    // Underlined on both cells, and no cursor bars while composing.
+    let under = |c: u16| {
+        f.decos
+            .iter()
+            .any(|d| d.col == c && d.row == 0 && d.kind == DecoKind::Underline)
+    };
+    assert!(under(4) && under(5) && !under(6));
+    assert!(f.cursor.is_none());
+}
+
+// Chinese, Japanese and Korean preedit is double width: the glyph spans two columns and covers what was under it.
+#[test]
+fn a_wide_preedit_takes_two_cells_per_character_and_covers_what_was_there() {
+    let vt = Vt::new(12, 2, |_| {});
+    vt.feed(b"abcdef\x1b[1;3H");
+    let f = composing(&vt, "你好");
+    let g = glyph_at(&f, 2).unwrap();
+    assert_eq!((g.ch, g.wide), ('你', true));
+    assert_eq!(glyph_at(&f, 4).map(|g| (g.ch, g.wide)), Some(('好', true)));
+    assert!(
+        glyph_at(&f, 3).is_none(),
+        "the second cell of a wide glyph holds no glyph"
+    );
+    assert_eq!(glyph_at(&f, 1).map(|g| g.ch), Some('b'));
+    // `cdef` under cols 2..6 is gone; `ef` was at 4,5 (covered), nothing of it remains there but the preedit.
+    assert!(
+        !f.glyphs
+            .iter()
+            .any(|g| matches!(g.ch, 'c' | 'd' | 'e' | 'f'))
+    );
+}
+
+// The cursor sits on a double-width glyph (a block cursor covers both cells): a narrow preedit there replaces the whole
+// glyph, never leaving half of it drawn next to the preedit.
+#[test]
+fn a_preedit_over_a_wide_glyph_replaces_the_whole_glyph() {
+    let vt = Vt::new(12, 2, |_| {});
+    vt.feed("中z".as_bytes());
+    vt.feed(b"\x1b[1;2H");
+    let f = composing(&vt, "a");
+    assert!(!f.glyphs.iter().any(|g| g.ch == '中'));
+    assert_eq!(glyph_at(&f, 0).map(|g| g.ch), Some('a'));
+    assert_eq!(glyph_at(&f, 2).map(|g| g.ch), Some('z'));
+}
+
+// Never wraps and never grows past the line: a long preedit at the right edge is cut, a wide char that does not fit is
+// not half drawn.
+#[test]
+fn a_preedit_is_clipped_at_the_right_edge_without_wrapping() {
+    let vt = Vt::new(6, 2, |_| {});
+    vt.feed(b"abcde");
+    let f = composing(&vt, "你好x");
+    assert_eq!(
+        glyph_at(&f, 4).map(|g| g.ch),
+        Some('e'),
+        "the program's text stays"
+    );
+    assert!(
+        glyph_at(&f, 5).is_none(),
+        "a wide char needs two cells, one is left: nothing is drawn"
+    );
+    let f = composing(&vt, "xyz");
+    assert_eq!(glyph_at(&f, 5).map(|g| g.ch), Some('x'));
+    assert!(
+        f.glyphs.iter().all(|g| g.row == 0),
+        "nothing on the next row"
+    );
+    assert!(!f.glyphs.iter().any(|g| g.ch == 'y' || g.ch == 'z'));
+}
+
+#[test]
+fn an_empty_preedit_or_a_cursor_out_of_view_draws_nothing() {
+    let vt = Vt::new(8, 2, |_| {});
+    vt.feed(b"x");
+    let before = composing(&vt, "");
+    let plain = {
+        let mut f = Frame {
+            focused: true,
+            blink_on: true,
+            ..Frame::default()
+        };
+        vt.snapshot(&pal(), &mut f);
+        f
+    };
+    assert_eq!(before.glyphs, plain.glyphs);
+    assert_eq!(before.decos.len(), plain.decos.len());
+    // Scrolled back: the program's cursor is below the viewport.
+    for _ in 0..10 {
+        vt.feed(b"\r\nline");
+    }
+    vt.scroll_to_top();
+    let f = composing(&vt, "ni");
+    assert!(f.cursor_at.is_none());
+    assert!(
+        !f.glyphs
+            .iter()
+            .any(|g| g.ch == 'n' && g.fg == [235, 235, 235, 255])
+    );
+}

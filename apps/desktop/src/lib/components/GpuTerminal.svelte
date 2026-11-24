@@ -28,6 +28,7 @@
 	import { shellQuote } from "./terminal/geometry.ts";
 	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
 	import { Pointer } from "./terminal/pointer.ts";
+	import { SINK_REST, sinkBox, type CursorStats, type SinkBox } from "./terminal/ime.ts";
 	import TermSearchBar from "./terminal/TermSearchBar.svelte";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -213,8 +214,36 @@
 			void invoke("term_key", { tab, key: "", text, shift: false, alt: false, ctrl: false }).catch(quiet);
 	}
 
+	/**
+	 * An input method (fcitx5, ibus) is composing: WebKit runs the GTK IM context on the sink. The sink moves onto the
+	 * cursor so the candidate window opens there, and the renderer draws the preedit at the cursor.
+	 */
+	async function oncompositionstart() {
+		if (!input) return;
+		const stats = await invoke<Record<string, CursorStats>>("term_stats").catch(
+			() => ({}) as Record<string, CursorStats>,
+		);
+		const s = stats[tab];
+		const box = sinkBox(s, prefs.value.terminal);
+		if (box) placeSink(box);
+	}
+
+	function oncompositionupdate(e: CompositionEvent) {
+		if (!readonly) void invoke("term_preedit", { tab, text: e.data ?? "" }).catch(quiet);
+	}
+
 	function oncompositionend() {
+		void invoke("term_preedit", { tab, text: "" }).catch(quiet);
+		placeSink(SINK_REST);
 		oninput(new InputEvent("input"));
+	}
+
+	function placeSink(b: SinkBox) {
+		if (!input) return;
+		input.style.left = `${b.left}px`;
+		input.style.top = `${b.top}px`;
+		input.style.width = `${b.width}px`;
+		input.style.height = `${b.height}px`;
 	}
 
 	/**
@@ -352,6 +381,8 @@
 			{onkeydown}
 			{onkeyup}
 			{oninput}
+			{oncompositionstart}
+			{oncompositionupdate}
 			{oncompositionend}
 			onfocus={() => {
 				termFocus.on = true;

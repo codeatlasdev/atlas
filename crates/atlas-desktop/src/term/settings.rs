@@ -28,6 +28,8 @@ pub fn term_stats(app: AppHandle) -> Value {
             (st.stats, st.cell)
         };
         let mut row = stats_row(stats, cell, sh.vt.size(), scale);
+        let at = sh.vt.cursor();
+        row["cursor"] = cursor_row(at.column.0, at.line.0);
         row["vt"] = wheel_row(sh.vt.wheel_state());
         (tab, row)
     });
@@ -41,6 +43,12 @@ fn wheel_row(s: atlas_term::WheelState) -> Value {
         "display_offset": s.display_offset, "max_offset": s.max_offset,
         "mouse": s.mouse, "alt_screen": s.alt_screen, "alt_scroll": s.alt_scroll,
     })
+}
+
+/// Where the program's cursor is, in cells of the viewport (`{col, row}`): the page puts its input sink there while an
+/// input method composes, so the candidate window opens at the cursor (`terminal/ime.ts`).
+fn cursor_row(col: usize, row: i32) -> Value {
+    json!({"col": col, "row": row})
 }
 
 /// One terminal's entry of `term_stats`: what the frontend (`cell_w`/`cell_h`, `cols`, `rows`) and
@@ -150,6 +158,17 @@ pub fn term_focus(tab: String, focused: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// The input method's preedit text for `tab` (the page's `compositionupdate`; empty when composing ends), drawn at the
+/// cursor until then. The committed text arrives as ordinary input.
+#[tauri::command]
+pub fn term_preedit(tab: String, text: String) -> Result<(), String> {
+    with_term(&tab)?.update(|s| {
+        s.preedit = text;
+        s.dirty = true;
+    });
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +204,12 @@ mod tests {
         ] {
             assert_eq!(v[k].as_u64(), Some(want), "{k}");
         }
+    }
+
+    /// Contract with `terminal/ime.ts` (`cursor.col` / `cursor.row`, cells from the viewport's top left).
+    #[test]
+    fn the_cursor_is_reported_as_col_and_row() {
+        assert_eq!(cursor_row(17, 3), json!({"col": 17, "row": 3}));
     }
 
     /// Before the first frame the renderer has not measured a cell: the frontend treats 0 as "unknown".

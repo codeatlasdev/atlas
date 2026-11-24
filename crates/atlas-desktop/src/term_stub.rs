@@ -61,6 +61,8 @@ unsupported!(
     term_recolor,
     term_set_prefs,
     term_focus,
+    term_preedit,
+    term_paste_primary,
     term_jump_prompt,
     term_scroll_to,
     term_select_all,

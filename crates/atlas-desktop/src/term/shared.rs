@@ -47,6 +47,9 @@ pub(super) struct State {
     /// Physical pixels per logical pixel the terminal is drawn at (its font and swapchain are sized by it). Linux: the
     /// compositor's scale for the window, which changes when the window moves to another output.
     pub(super) scale: f64,
+    /// The input method's preedit text (what is being composed, not yet committed): drawn at the cursor while it is
+    /// not empty (`term_preedit`, from the page's composition events).
+    pub(super) preedit: String,
     /// Rebuilds that failed in a row (reset by one that worked): at `REBUILD_GIVE_UP` the page is told on Linux.
     pub(super) rebuild_failures: u32,
 }
@@ -224,6 +227,7 @@ impl Shared {
                 scroll_frac: 0.0,
                 scale: 2.0,
                 rebuild_failures: 0,
+                preedit: String::new(),
             }),
             osc52: Mutex::new("ask".into()),
             wake: Condvar::new(),

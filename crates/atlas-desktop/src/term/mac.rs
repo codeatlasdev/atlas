@@ -181,5 +181,13 @@ pub fn write_clipboard(text: &str) {
     }
 }
 
+/// macOS has no PRIMARY selection: a selection is copied only when `copy-on-select` says so, and a middle click is
+/// the program's. The page never asks (`pointer.ts`); these keep the shared commands compiling.
+pub fn read_primary() -> Option<String> {
+    None
+}
+
+pub fn write_primary(_text: &str) {}
+
 /// Wake and display-change observers (`system.rs`).
 pub use super::system::install as install_system_observers;

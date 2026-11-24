@@ -68,6 +68,19 @@ pub fn term_paste_clipboard(tab: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Middle click on Linux: paste the PRIMARY selection (what was last selected anywhere, in any app), the X11 and
+/// Wayland convention. Text only: PRIMARY holds no files or images. An empty or missing selection pastes nothing.
+#[tauri::command]
+pub fn term_paste_primary(tab: String) -> Result<(), String> {
+    let sh = with_term(&tab)?;
+    let clip = input::Clipboard::classify(vec![], super::read_primary(), false);
+    // The same paste rules as Ctrl+Shift+V: bracketed paste when the program asked, control characters made safe.
+    if let Some(bytes) = input::paste_clipboard(&clip, sh.vt.mode()) {
+        sh.input(&bytes);
+    }
+    Ok(())
+}
+
 /// Where `term_scroll_to` goes (⌘Home / ⌘End / ⌘PgUp / ⌘PgDn, Ghostty's scroll_* actions).
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

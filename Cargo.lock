@@ -626,6 +626,7 @@ dependencies = [
  "raw-window-handle",
  "serde_json",
  "swash",
+ "unicode-width",
  "wgpu",
 ]
 

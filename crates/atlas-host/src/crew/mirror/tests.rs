@@ -475,8 +475,7 @@ fn a_crewmate_uid_clones_the_mirror_of_another_uid_and_cannot_write_it() {
     use crate::crew::spawn::protocol::{GitReq, Response};
     use crate::crew::spawn::server::{Config, Memory};
     use std::process::Command as C;
-    // SAFETY: plain getter.
-    assert_eq!(unsafe { libc::geteuid() }, 0, "this test must run as root");
+    assert_eq!(atlas_core::sys::euid(), 0, "this test must run as root");
     let user = "atlas-cm-fffffffffffd";
     let sh = |cmd: &str| C::new("sh").args(["-c", cmd]).status().unwrap().success();
     assert!(sh(&format!(

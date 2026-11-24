@@ -1,6 +1,6 @@
 # Native GPU terminal on Linux (Wayland) against xterm.js: measured
 
-The Linux native terminal of [#247](https://github.com/codeatlasdev/atlas/issues/247) (PR #774) against the xterm.js terminal the same build uses with the setting off, on the same machine in the same session (2026-11-23). Design and options: [terminal-linux-design.md](terminal-linux-design.md) is on its own branch; the recommendation it records (GTK3, `wl_subsurface` below a transparent page, Vulkan only) is what is built.
+The Linux native terminal of [#247](https://github.com/codeatlasdev/atlas/issues/247) (PR #774) against the xterm.js terminal the same build uses with the setting off, on the same machine in the same session (2026-11-23). The design it implements (GTK3, `wl_subsurface` below a transparent page, Vulkan only) is `docs/terminal-linux-design.md` on its own branch.
 
 ## Method and limits
 

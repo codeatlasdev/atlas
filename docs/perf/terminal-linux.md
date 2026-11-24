@@ -83,7 +83,27 @@ The design (section 5.2) read a stack sample as "35 % of `seq`/ASCII time is dro
 | ascii | **on** | 18,512 | 916 B | 0 % | 140 |
 | seq | **on** | **194,406** | **97 B** | 0 % | 31 |
 
-A real session has output processing on (`\n` to `\r\n`): a `seq` flood then arrives in ~100-byte pieces, so per-read cost, not parsing, decides throughput. That is phase 2's (#253) target; the probe is its before/after.
+A real session has output processing on (`\n` to `\r\n`): a `seq` flood then arrives in ~100-byte pieces. The design (5.4) read that as per-read cost deciding throughput and made phase 2 (#253: coalesce reads, parse off the reader thread) its fix; the next section tests that.
+
+## Read sizes, coalescing and a parse thread (phase 2)
+
+**The premise does not hold, and the acceptance numbers (`seq` >= 100 MB/s, ASCII >= 120) are not reachable by this phase.**
+
+- **`Vt::feed` per call is cheap.** `cargo bench -p atlas-term --bench vt_parse -- --chunk N` feeds N bytes per call (`terminal-linux-chunks.jsonl`, after phase 1, load 0.8-1.0, best of 5, MB/s):
+
+| chunk | seq | ascii | sgr | repaint256 | truecolor | ink-2026 | ratatui-diff | omp-boxes |
+|---|---|---|---|---|---|---|---|---|
+| 97 B | 106.7 | 123.8 | 93.7 | 141.9 | 140.2 | 162.2 | 169.9 | 183.8 |
+| 512 B | 115.6 | 122.0 | 93.8 | 152.0 | 151.2 | 176.0 | 175.6 | 193.1 |
+| 4,095 B | 114.3 | 128.5 | 99.9 | 153.8 | 155.0 | 174.7 | 184.3 | 205.3 |
+| 64 KiB | 111.8 | 129.7 | 100.3 | 157.0 | 157.3 | 177.2 | 193.2 | 200.3 |
+
+  A 97-byte read costs 4.6 % on `seq` and ascii, 6.6 % on sgr and 8-12 % on the repaint and agent corpora (truecolor 11 %, ratatui-diff 12 %) against 64 KiB: the three locks and scans per call are not what held `seq` at 34 MB/s.
+- **`seq` is capped by the pty, not by Atlas.** `pty_probe.py --opost seq`, which reads the master and parses nothing, gets 30.6 MB/s (194,406 reads of 97 B). The same flood into a reader that feeds `Vt` (`pty_flood.rs`: `cat` into a pty slave with output processing on, one 64 KiB `read` per call, load 0.7): `seq` **33.3-34.0 MB/s** on one thread, **33.1-33.4** with a reader thread plus a parse thread that takes everything queued (the coalescing is the backpressure), and **33.3** if the reader sleeps to coalesce (it then stalls the producer: the tty buffer is 4 KiB, ASCII dropped 96 to 13-23 MB/s with a 200-1,000 us sleep). Nothing in the consumer moves `seq` past the kernel's per-character output processing.
+- **A parse thread does help where the pty is fast and parsing is the cost**, in that in-process single-reader configuration (3 runs each, MB/s): truecolor 115-117 to 158-161 (+37 %), ink-2026 128-132 to 160-185 (+27 %), sgr 82-85 to 94 (+11 %), ascii 96-99 to 102-112 (+10 %). That is the overlap of the `read` syscall with parsing.
+- **Atlas does not read the pty in the app.** hostd reads it (in another process, already overlapping with the app's parsing) and the app reads hostd's socket (`lifecycle.rs::spawn_reader`, a 64 KiB buffer). [INFERENCE: not measured end to end] While the app parses, the socket fills, so its next read returns everything queued, large: the consumer is the bottleneck there and batches by itself, and a parse thread would overlap only the socket read, a fraction of the in-process gain above. It was not built: nothing here runs hostd's framing end to end, and the macOS reader that would carry it (`term/lifecycle.rs`) cannot be run on this machine.
+
+Decision for the maintainer: keep phase 2 as written (a thread per terminal and a bounded ring, for up to +10-37 % on the in-process shape and nothing on `seq`), drop it, or re-scope it to the end-to-end measurement through hostd first. Nothing else in the plan depends on it (design: phases 1, 2, 4 and 6 are independent of 3).
 
 ## xterm.js in-page rows
 
@@ -111,4 +131,4 @@ What each phase records: level 1 in every run (cheap, comparable across commits)
 
 ## Files
 
-`docs/perf/terminal-linux-baseline.json`, `terminal-linux-parser.jsonl` (phase 0 runs), `terminal-linux-parser-phase1.jsonl`, `terminal-linux-pty.jsonl`, `terminal-linux-xterm.jsonl`, `terminal-linux-tools/` (`up.sh`, `inenv.sh`, `down.sh`, `pty_probe.py`, `xterm_inpage.py`, `ptrace_sample.py`, `alacritty-grid-counters.patch`, `grid_counters_main.rs`); `crates/atlas-term/benches/vt_parse.rs`, `crates/atlas-term/src/vt/warm.rs`; `scripts/term-corpus-gen.ts`, `term-parser-gate.ts`, `term-parser-judge.ts` (+ tests); the gate's CI step in `.github/workflows/ci.yml` and its row in `scripts/checks/map.ts`.
+`docs/perf/terminal-linux-baseline.json`, `terminal-linux-parser.jsonl` (phase 0 runs), `terminal-linux-parser-phase1.jsonl`, `terminal-linux-chunks.jsonl`, `terminal-linux-pty.jsonl`, `terminal-linux-xterm.jsonl`, `terminal-linux-tools/` (`up.sh`, `inenv.sh`, `down.sh`, `pty_probe.py`, `pty_flood.rs`, `xterm_inpage.py`, `ptrace_sample.py`, `alacritty-grid-counters.patch`, `grid_counters_main.rs`); `crates/atlas-term/benches/vt_parse.rs`, `crates/atlas-term/src/vt/warm.rs`; `scripts/term-corpus-gen.ts`, `term-parser-gate.ts`, `term-parser-judge.ts` (+ tests); the gate's CI step in `.github/workflows/ci.yml` and its row in `scripts/checks/map.ts`.

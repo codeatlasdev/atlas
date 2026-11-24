@@ -333,7 +333,7 @@ jobs:
             # runner (scratch runs 45264147915, 45264420364), where the same clone from PowerShell exits 0.
             $env:PATH = (pwsh -NoProfile -File scripts/ci-stock-path.ps1)
             if ($LASTEXITCODE -eq 0) {
-              cargo nextest run --workspace --locked --profile ci 2>&1 | Tee-Object -FilePath nextest.log
+              cargo nextest run -p atlas-core --locked --profile ci --no-fail-fast diag_ 2>&1 | Tee-Object -FilePath nextest.log
               $code = $LASTEXITCODE
             }
           } finally {

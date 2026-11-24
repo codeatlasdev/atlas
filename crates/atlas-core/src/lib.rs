@@ -6,6 +6,8 @@ pub mod buildinfo;
 pub mod channel;
 pub mod clock;
 pub mod crash;
+#[cfg(all(test, windows))]
+mod diag_win;
 pub mod crash_fingerprint;
 pub mod crash_native;
 pub mod crew;

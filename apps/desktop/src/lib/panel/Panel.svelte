@@ -67,7 +67,7 @@
 	let timelineData = $derived.by(() => {
 		void revision.rev;
 		return {
-			end: Date.now(),
+			end: metrics.sampledAt(project.id),
 			lanes: names.map((name) => ({
 				name,
 				segments: metrics.service(project.id, name).segments.map((s) => ({ ...s })),

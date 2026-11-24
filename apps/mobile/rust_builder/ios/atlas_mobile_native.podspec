@@ -36,7 +36,8 @@ iroh P2P transport for Atlas Mobile, bound to Flutter via flutter_rust_bridge.
     'DEFINES_MODULE' => 'YES',
     # Flutter.framework does not contain a i386 slice.
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    # iroh (netwatch/netdev/portmapper) links Apple networking frameworks.
-    'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/libatlas_mobile_native.a -framework Network -framework SystemConfiguration -framework Security -framework CoreFoundation',
+    # iroh (netwatch/netdev/portmapper) links Apple networking frameworks, and netdev (>= 0.47) reads the DNS servers
+    # through libresolv: a static library does not carry its `#[link]`s to the app, so they are named here.
+    'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/libatlas_mobile_native.a -framework Network -framework SystemConfiguration -framework Security -framework CoreFoundation -lresolv',
   }
 end

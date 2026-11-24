@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
-import { afterEach, expect, mock, test } from "bun:test";
+import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import views from "../__fixtures__/project-views.json";
 
 // Incident (#289, docs/perf/linux-webkit-study.md): the runner re-sends every service row every few seconds, and the
@@ -104,11 +104,21 @@ test("a service that appears or goes does reach the charts and the timeline lane
 	expect([...t.querySelectorAll(".tl .lane .label")].map((l) => l.textContent)).toEqual(["api", "worker"]);
 });
 
-test("a new sample still moves the timeline's right edge", () => {
-	const t = open(running(["api"]));
-	const band = () => t.querySelector(".tl .band")?.getAttribute("style");
-	const before = band();
-	metrics.sample(Date.now() + 6000);
-	flushSync();
-	expect(band()).not.toBe(before);
+// Regression: the right edge was the wall clock at render time, not the sample's time, so a sample rendered in the same
+// millisecond as the panel left the band where it was (this test failed ~1 run in 20). The clock is frozen here so the
+// sample's own time is the only thing that can move the edge.
+test("a new sample moves the timeline's right edge to the sample's time, whatever the wall clock says", () => {
+	setSystemTime(Date.now());
+	try {
+		// Its own project: `metrics` is one store for the process, and a history other files left on "shop" can already
+		// fill the whole window, where no new sample moves anything.
+		const t = open(running(["api"], "edge"));
+		const band = () => t.querySelector(".tl .band")?.getAttribute("style");
+		const before = band();
+		metrics.sample(Date.now() + 6000);
+		flushSync();
+		expect(band()).not.toBe(before);
+	} finally {
+		setSystemTime();
+	}
 });

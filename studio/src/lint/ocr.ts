@@ -103,31 +103,47 @@ export function checkTextSize(boxes: TextBox[], frameH: number, profile: Profile
 }
 
 /**
- * Contrast of detected text, WCAG 2.x: the text colour is the pixel of the box farthest from the box's background
- * (median of the border), the background is that border median. Large text needs 3:1, normal text 4.5:1.
+ * The ink of an OCR box, WCAG 2.x: the text colour is the pixel of the box farthest from the box's background (mean of
+ * the band above it), `best` the contrast between the two.
  */
+function ink(img: Image, r: Rect): { best: number; fg: [number, number, number]; bg: [number, number, number] } {
+	const pad = Math.max(2, Math.round(r.h * 0.15));
+	const bg = meanRgb(img, { x: r.x - pad, y: r.y - pad, w: r.w + 2 * pad, h: pad });
+	const bgL = luminance(...bg);
+	let best = 0;
+	let fg: [number, number, number] = bg;
+	for (let y = r.y; y < r.y + r.h; y++)
+		for (let x = r.x; x < r.x + r.w; x++) {
+			const i = (y * img.w + x) * 3;
+			if (x < 0 || y < 0 || x >= img.w || y >= img.h) continue;
+			const rgb: [number, number, number] = [img.data[i]!, img.data[i + 1]!, img.data[i + 2]!];
+			const c = contrastRatio(luminance(...rgb), bgL);
+			if (c > best) {
+				best = c;
+				fg = rgb;
+			}
+		}
+	return { best, fg, bg };
+}
+
+/** Below this, a box's "ink" is the picture's own noise (a gradient, JPEG blocks): no glyph a viewer can see. */
+const NO_INK = 1.2;
+
+/**
+ * The OCR lines a viewer can see. OCR reads letters into gradients and noise ("ibs" at 1.05:1 in the poster's aurora);
+ * such a line is neither too small nor low contrast, it is not text. Faint but visible text (1.5:1) stays.
+ */
+export function withInk(img: Image, boxes: TextBox[]): TextBox[] {
+	return boxes.filter((b) => ink(img, b.rect).best >= NO_INK);
+}
+
+/** Contrast of detected text against its background: large text needs 3:1, normal text 4.5:1. */
 export function checkContrast(img: Image, boxes: TextBox[], profile: Profile): Diagnostic[] {
 	const out: Diagnostic[] = [];
 	for (const b of boxes) {
 		if (b.conf < 0.5 || b.text.trim().length < 3) continue;
 		const r = b.rect;
-		const pad = Math.max(2, Math.round(r.h * 0.15));
-		const bgRect = { x: r.x - pad, y: r.y - pad, w: r.w + 2 * pad, h: pad };
-		const bg = meanRgb(img, bgRect);
-		const bgL = luminance(...bg);
-		let best = 0;
-		let fg: [number, number, number] = bg;
-		for (let y = r.y; y < r.y + r.h; y++)
-			for (let x = r.x; x < r.x + r.w; x++) {
-				const i = (y * img.w + x) * 3;
-				if (x < 0 || y < 0 || x >= img.w || y >= img.h) continue;
-				const rgb: [number, number, number] = [img.data[i]!, img.data[i + 1]!, img.data[i + 2]!];
-				const c = contrastRatio(luminance(...rgb), bgL);
-				if (c > best) {
-					best = c;
-					fg = rgb;
-				}
-			}
+		const { best, fg, bg } = ink(img, r);
 		const shown = (r.h * profile.displayHeight) / img.h;
 		const large = shown >= 24;
 		const need = large ? 3 : 4.5;

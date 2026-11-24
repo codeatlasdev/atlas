@@ -1,7 +1,7 @@
 ---
 title: "Labels e triagem"
 source: labels.md
-source_sha: "9beb42ac28334b6408b3fe6d0331add77309e12b"
+source_sha: "7f864f6f5482ec98d135c02d216892f753f7d830"
 translation: machine
 ---
 
@@ -58,6 +58,7 @@ Não há bots: os minutos do Actions ficam para o CI. As issues paradas são tra
 - Sem resposta depois desses **14 dias**, ela é fechada como *not planned*, com um comentário dizendo que pode ser reaberta com as informações que faltam.
 - Bugs confirmados, features aceitas e issues `help wanted` **nunca** são fechadas por inatividade.
 - Issues `status: wontfix` e `status: duplicate` são fechadas na hora, com o motivo ou o link para a outra issue.
+- Todo relatório de erro que o Atlas abre traz uma linha `Fingerprint:` (16 caracteres hexadecimais da mensagem normalizada e do primeiro frame dentro do app, igual para o mesmo bug em qualquer máquina, versão ou linha). Para achar duplicatas, busque issues abertas por ele: `is:issue is:open in:body <fingerprint>`. O "Reportar issue" do Atlas Desktop faz essa busca sozinho e oferece acrescentar à issue existente em vez de abrir uma nova.
 
 Um mantenedor pode listar as candidatas com:
 

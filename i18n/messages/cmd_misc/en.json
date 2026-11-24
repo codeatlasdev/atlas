@@ -21,6 +21,8 @@
 	"cmd_misc_cache_totals": "hits: {hits}, misses: {misses}, saved: {saved}",
 	"cmd_misc_config_ports": "ports (+{offset}):",
 	"cmd_misc_config_valid": "OK: {path} is valid",
+	"cmd_misc_crash_fingerprint_none": "{path} has nothing to fingerprint (no message and no frame of the executable).",
+	"cmd_misc_crash_fingerprint_unreadable": "Cannot read {path}: {error}",
 	"cmd_misc_dc_app_mismatch": "{path} is {version}, the CLI is {cli}",
 	"cmd_misc_dc_app_missing": "Atlas Desktop is not installed",
 	"cmd_misc_dc_app_none": "not installed (no graphical session)",

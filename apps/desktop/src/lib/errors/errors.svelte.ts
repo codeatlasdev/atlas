@@ -10,13 +10,13 @@ import { gatherContext } from "./context.ts";
 import { hostErrorReport, parseDiagnostics } from "./diagnostics.ts";
 import { isHostFailure } from "#lib/hostText.ts";
 import {
-	fingerprint,
 	isBenign,
 	messageOf,
 	RESTART_HOST,
 	report,
 	withContext,
 	type ErrorOrigin,
+	withFingerprint,
 	type ErrorReport,
 } from "./report.ts";
 
@@ -73,10 +73,13 @@ class Errors {
 		const message = messageOf(e);
 		if (isBenign(e, message)) return;
 		if (isHostFailure(e, message)) return this.captureHost(message);
-		const r = await this.enrich({ ...report(e, { where, origin }), version: await this.version() });
+		const r = await withFingerprint(
+			await this.enrich({ ...report(e, { where, origin }), version: await this.version() }),
+		);
 		crumbs.add(`error: ${r.message.split("\n")[0]}`);
 		console.error(`[atlas] ${where}: ${r.message}`, e instanceof Error ? e : "");
-		const fp = fingerprint(r);
+		// The key falls back to the message when the fingerprint chunk could not load.
+		const fp = r.fingerprint ?? r.message;
 		const now = Date.now();
 		const prev = this.#seen.get(fp);
 		if (prev && now - prev.at < DEDUPE_MS) {

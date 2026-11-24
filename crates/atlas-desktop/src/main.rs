@@ -47,6 +47,7 @@ mod github_app;
 mod github_auth;
 mod host;
 mod hotkeys;
+mod issue_search;
 mod lifecycle;
 #[cfg(any(target_os = "linux", test))]
 mod linux_gfx;
@@ -211,6 +212,7 @@ macro_rules! handlers {
             diag::diag_frontend_error,
             crash_card::crash_card_pending,
             crash_card::crash_card_dismiss,
+            issue_search::issue_search,
             cmds::open_in_editor,
             cmds::open_url,
             cmds::reveal,

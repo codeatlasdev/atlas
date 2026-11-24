@@ -6,6 +6,7 @@
 	import { errors } from "#lib/errors/errors.svelte.ts";
 	import Terminal from "#lib/components/Terminal.svelte";
 	import { gpu } from "#lib/stores/gpu.svelte.ts";
+	import { useNativeTerminal } from "#lib/components/terminal/openFailure.ts";
 	import { openPreview } from "#lib/stores/browser.svelte.ts";
 	import PaneNotice from "./PaneNotice.svelte";
 	import { ws, type Tab } from "#lib/stores/workspace.svelte.ts";
@@ -73,7 +74,7 @@
 {/if}
 {#if ended !== "gone"}
 	{#key pty}
-		{#if gpu.supported && gpu.terminal && !gpu.failed && !gpu.hostTooOld && !ws.worktree(t.worktreeId)?.hostId}
+		{#if useNativeTerminal(gpu, !!ws.worktree(t.worktreeId)?.hostId)}
 			<GpuTerminal
 				tab={t.id}
 				{pty}

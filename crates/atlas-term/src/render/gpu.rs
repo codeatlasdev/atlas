@@ -95,6 +95,21 @@ pub(super) fn pick_alpha(modes: &[wgpu::CompositeAlphaMode]) -> wgpu::CompositeA
     }
 }
 
+/// The color format of a surface: the non-sRGB `Bgra8Unorm` when listed (cell colors are sRGB bytes, written as-is), else
+/// the first one it lists. A surface that lists none is not supported by the adapter (a Wayland compositor without
+/// linux-dmabuf, such as sway on pixman, gives RADV nothing to present to): that is an `Err` for the caller to report,
+/// not a panic on the main thread.
+pub(super) fn pick_format(formats: &[wgpu::TextureFormat]) -> Result<wgpu::TextureFormat, String> {
+    formats
+        .iter()
+        .copied()
+        .find(|f| *f == wgpu::TextureFormat::Bgra8Unorm)
+        .or_else(|| formats.first().copied())
+        .ok_or_else(|| {
+            "the surface lists no color format: the adapter cannot present to this display".into()
+        })
+}
+
 /// The surface size wgpu accepts for a requested pixel size: `Surface::configure` panics on a zero side and on one
 /// past the device's `max_texture_dimension_2d`, so every configure goes through here.
 pub(super) fn surface_extent(width: u32, height: u32, max_side: u32) -> (u32, u32) {

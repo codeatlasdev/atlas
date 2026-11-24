@@ -12,3 +12,16 @@ export function openFailure(message: string, mac: boolean): OpenFailure {
 	if (message.includes("pty_attach_raw")) return "hostTooOld";
 	return mac ? "toast" : "fallback";
 }
+
+/** The state of the native terminal a pane decides on (`gpu` in `stores/gpu.svelte.ts`). */
+export interface NativeState {
+	supported: boolean;
+	terminal: boolean;
+	failed: boolean;
+	hostTooOld: boolean;
+}
+
+/** Mount the native terminal for a pane? Every other answer is xterm.js: never a pane with neither. `remote`: the worktree is on another host. */
+export function useNativeTerminal(s: NativeState, remote: boolean): boolean {
+	return !remote && s.supported && s.terminal && !s.failed && !s.hostTooOld;
+}

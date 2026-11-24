@@ -107,6 +107,8 @@ export class NativeView {
 		private colors: (el: Element) => Record<string, unknown> = termColors,
 		/** Focus the terminal's input sink (where its keys are read). */
 		private focusInput: () => void = () => {},
+		/** The platform, for what a failed open means (`openFailure`); injected by the tests. */
+		mac: boolean = IS_MAC,
 	) {
 		const open = async (rect: NativeRect) => {
 			const { tab, pty } = this.ids();
@@ -144,7 +146,7 @@ export class NativeView {
 			gone: isViewDropped,
 			onError: (e) => {
 				const msg = errText(e);
-				switch (openFailure(msg, IS_MAC)) {
+				switch (openFailure(msg, mac)) {
 					// A host that predates the raw stream and could not be replaced: xterm.js until it restarts. (The app
 					// normally upgrades it live on connect, see `host.rs`.)
 					case "hostTooOld":

@@ -12,8 +12,17 @@ const call = async (cmd: string) => {
 	if (cmd === "term_open") await new Promise<void>((r) => (releaseOpen = r));
 	return null;
 };
-mock.module("@codeatlasdev/ui", () => ({ toast: { error: () => {}, info: () => {} } }));
-mock.module("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
+const toasts: string[] = [];
+const handlers: Record<string, (e: { payload: unknown }) => void> = {};
+mock.module("@codeatlasdev/ui", () => ({
+	toast: { error: (t: string) => toasts.push(`error: ${t}`), info: (t: string) => toasts.push(`info: ${t}`) },
+}));
+mock.module("@tauri-apps/api/event", () => ({
+	listen: async (name: string, h: (e: { payload: unknown }) => void) => {
+		handlers[name] = h;
+		return () => {};
+	},
+}));
 // the theme store globs the bundled theme files (a Vite feature): this test needs none of it
 mock.module("../../stores/theme.svelte.ts", () => ({ themes: { terminal: null, current: null } }));
 // the colour payload normalizes CSS colours through a 2D canvas, which the test DOM lacks
@@ -22,7 +31,8 @@ HTMLCanvasElement.prototype.getContext = () => ({
 	fillRect() {},
 	getImageData: () => ({ data: [0, 0, 0, 255] }),
 });
-const { NativeView } = await import("./nativeView.ts");
+const { NativeView, listenFontFallback } = await import("./nativeView.ts");
+const { gpu } = await import("../../stores/gpu.svelte.ts");
 const { prefs } = await import("../../stores/prefs.svelte.ts");
 const { DEFAULT_PREFS } = await import("../../prefs.ts");
 
@@ -80,4 +90,53 @@ test("after dispose no sync opens or shows the view again", async () => {
 	await v.dispose();
 	await v.sync();
 	expect(calls.filter((c) => c === "term_open" || c === "term_bounds")).toEqual([]);
+});
+
+// Phase 3 (Linux) "never a blank terminal": a `term_open` that fails (here the message Rust's Vulkan surface creation gives
+// on a compositor with no dmabuf, as the pixman sway showed) must leave every terminal on xterm.js with one toast saying
+// why, not an empty slot. The same for the render thread giving up on its surface (`term://unusable`).
+async function openThatFails(tab: string, error: string) {
+	const area = slot();
+	const failing = async (cmd: string) => {
+		if (cmd === "term_open") throw error;
+		return null;
+	};
+	const v = new NativeView(
+		() => ({ tab, pty: `p-${tab}` }),
+		() => area,
+		() => true,
+		failing,
+		() => ({}),
+		() => {},
+		false, // Linux: the suite runs as macOS (test/setup.ts)
+	);
+	await v.sync();
+	for (let i = 0; i < 200 && !gpu.failed; i++) await Promise.resolve();
+	return v;
+}
+
+test("a failed term_open sends every terminal to xterm.js with one toast that says why", async () => {
+	gpu.failed = false;
+	toasts.length = 0;
+	await openThatFails("f1", "Vulkan surface: VK_ERROR_INITIALIZATION_FAILED");
+	expect(gpu.failed).toBe(true);
+	expect(toasts).toHaveLength(1);
+	expect(toasts[0]).toStartWith("info: ");
+	expect(toasts[0]).toContain("VK_ERROR_INITIALIZATION_FAILED");
+	// a second terminal failing the same way adds no second toast
+	await openThatFails("f2", "Vulkan surface: VK_ERROR_INITIALIZATION_FAILED");
+	expect(toasts).toHaveLength(1);
+	gpu.failed = false;
+});
+
+test("a render thread that gives up on its surface (term://unusable) falls back the same way", async () => {
+	gpu.failed = false;
+	toasts.length = 0;
+	listenFontFallback();
+	for (let i = 0; i < 200 && !handlers["term://unusable"]; i++) await Promise.resolve();
+	handlers["term://unusable"]({ payload: { tab: "t9", error: "the surface never came back" } });
+	expect(gpu.failed).toBe(true);
+	expect(toasts).toHaveLength(1);
+	expect(toasts[0]).toContain("the surface never came back");
+	gpu.failed = false;
 });

@@ -355,3 +355,26 @@ fn the_alpha_mode_is_opaque_when_listed_else_the_first_the_surface_offers() {
     );
     assert_eq!(pick_alpha(&[]), Alpha::Auto);
 }
+
+use super::gpu::pick_format;
+use wgpu::TextureFormat as Fmt;
+
+// Found live on a pixman sway (#774, phase 3 fallback proof): the Vulkan surface listed no format, `caps.formats[0]` panicked
+// on the main thread and the terminal tab showed "index out of bounds" in a toast. It must be an error that says why.
+#[test]
+fn a_surface_that_lists_no_format_is_an_error_not_a_panic() {
+    let e = pick_format(&[]).unwrap_err();
+    assert!(e.contains("no color format"), "{e}");
+}
+
+#[test]
+fn the_format_is_non_srgb_bgra_when_listed_else_the_first_the_surface_offers() {
+    assert_eq!(
+        pick_format(&[Fmt::Bgra8UnormSrgb, Fmt::Bgra8Unorm]).unwrap(),
+        Fmt::Bgra8Unorm
+    );
+    assert_eq!(
+        pick_format(&[Fmt::Rgba8UnormSrgb, Fmt::Rgba8Unorm]).unwrap(),
+        Fmt::Rgba8UnormSrgb
+    );
+}

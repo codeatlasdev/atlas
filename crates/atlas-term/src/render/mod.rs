@@ -19,7 +19,7 @@ use std::time::Instant;
 
 use gpu::{
     DecoInst, Gpu, ImgInst, Reconfig, Uniforms, VBuf, bind_group, bind_layout, configure_checked,
-    glyph_vertex_layout, gpu, pick_alpha, pipeline, surface_extent, texture,
+    glyph_vertex_layout, gpu, pick_alpha, pick_format, pipeline, surface_extent, texture,
 };
 use images::{Tex, TexCache};
 use stats::Timing;
@@ -134,13 +134,7 @@ impl Renderer {
         }
         .map_err(|e| e.to_string())?;
         let caps = surface.get_capabilities(&g.adapter);
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            // Non-sRGB target: cell colors are sRGB bytes (CSS theme values), written as-is.
-            .find(|f| *f == wgpu::TextureFormat::Bgra8Unorm)
-            .unwrap_or(caps.formats[0]);
+        let format = pick_format(&caps.formats)?;
         let (width, height) =
             surface_extent(width, height, g.device.limits().max_texture_dimension_2d);
         let mut config = surface

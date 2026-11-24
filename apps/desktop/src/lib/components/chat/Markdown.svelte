@@ -3,7 +3,8 @@
 	import { markdownBlocks } from "./markdownBlocks.ts";
 
 	let { text }: { text: string } = $props();
-	const blocks = $derived(markdownBlocks(text));
+	const render = markdownBlocks();
+	const blocks = $derived(render(text));
 </script>
 
 {#each blocks as html, i (`${i}:${html}`)}{@html html}{/each}

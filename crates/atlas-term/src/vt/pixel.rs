@@ -68,7 +68,7 @@ impl PixelScan {
         while i < bytes.len() {
             // Plain text never changes the state: jump to the next ESC instead of matching every byte.
             if self.st == St::Text {
-                match bytes[i..].iter().position(|&b| b == 0x1b) {
+                match memchr::memchr(0x1b, &bytes[i..]) {
                     Some(k) => i += k,
                     None => break,
                 }

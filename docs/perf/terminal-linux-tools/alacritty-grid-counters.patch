@@ -1,0 +1,49 @@
+diff -r a/src/grid/row.rs b/src/grid/row.rs
+--- a/alacritty_terminal-0.26.0/src/grid/row.rs	2026-11-23 18:38:28.003101677 -0300
++++ b/alacritty_terminal-0.26.0/src/grid/row.rs	2026-11-23 18:38:28.054199915 -0300
+@@ -102,6 +102,7 @@
+         }
+ 
+         // Reset every dirty cell in the row.
++        crate::bump(5); crate::CNT[6].fetch_add(self.occ as u64, std::sync::atomic::Ordering::Relaxed);
+         for item in &mut self.inner[0..self.occ] {
+             item.reset(template);
+         }
+diff -r a/src/lib.rs b/src/lib.rs
+--- a/alacritty_terminal-0.26.0/src/lib.rs	2026-11-23 18:38:28.003693656 -0300
++++ b/alacritty_terminal-0.26.0/src/lib.rs	2026-11-23 18:38:28.051358679 -0300
+@@ -15,6 +15,12 @@
+ pub mod tty;
+ pub mod vi_mode;
+ 
++/// Scratch counters: 0 writes, 1 writes over Some(extra), 2 writes with template extra Some, 3 Cell::reset, 4 Cell::reset over Some, 5 Row::reset calls, 6 cells reset by Row::reset.
++pub static CNT: [std::sync::atomic::AtomicU64; 8] = [const { std::sync::atomic::AtomicU64::new(0) }; 8];
++#[inline(always)]
++pub fn bump(i: usize) { CNT[i].fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
++
++
+ pub use crate::grid::Grid;
+ pub use crate::term::Term;
+ pub use vte;
+diff -r a/src/term/cell.rs b/src/term/cell.rs
+--- a/alacritty_terminal-0.26.0/src/term/cell.rs	2026-11-23 18:38:28.004431466 -0300
++++ b/alacritty_terminal-0.26.0/src/term/cell.rs	2026-11-23 18:38:28.053607167 -0300
+@@ -250,6 +250,7 @@
+ 
+     #[inline]
+     fn reset(&mut self, template: &Self) {
++        crate::bump(3); if self.extra.is_some() { crate::bump(4); }
+         *self = Cell { bg: template.bg, ..Cell::default() };
+     }
+ }
+diff -r a/src/term/mod.rs b/src/term/mod.rs
+--- a/alacritty_terminal-0.26.0/src/term/mod.rs	2026-11-23 18:38:28.004655797 -0300
++++ b/alacritty_terminal-0.26.0/src/term/mod.rs	2026-11-23 18:38:28.052547876 -0300
+@@ -1010,6 +1010,7 @@
+             cursor_cell = self.grid.cursor_cell();
+         }
+ 
++        crate::bump(0); if cursor_cell.extra.is_some() { crate::bump(1); } if extra.is_some() { crate::bump(2); }
+         cursor_cell.c = c;
+         cursor_cell.fg = fg;
+         cursor_cell.bg = bg;

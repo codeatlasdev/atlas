@@ -51,7 +51,7 @@ impl SeqScan {
         while i < bytes.len() {
             // Plain text: jump to the next ESC.
             if self.st == 0 {
-                match bytes[i..].iter().position(|&b| b == 0x1b) {
+                match memchr::memchr(0x1b, &bytes[i..]) {
                     Some(k) => i += k,
                     None => break,
                 }
@@ -135,7 +135,7 @@ impl ClearScan {
         while i < bytes.len() {
             // Outside a match only an ESC can start one: jump to it instead of testing every byte.
             if self.at == 0 {
-                match bytes[i..].iter().position(|&b| b == 0x1b) {
+                match memchr::memchr(0x1b, &bytes[i..]) {
                     Some(k) => i += k,
                     None => break,
                 }

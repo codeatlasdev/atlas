@@ -276,6 +276,10 @@ jobs:
   # and the Windows end-to-end hostd test (named pipe, ConPTY, cmd.exe). No Unix tools assumed.
   rust-windows:
     name: Rust (Windows, full workspace)
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8]
     needs: plan
     if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.rust == 'true' }}
     runs-on: windows-latest
@@ -333,7 +337,7 @@ jobs:
             # runner (scratch runs 45264147915, 45264420364), where the same clone from PowerShell exits 0.
             $env:PATH = (pwsh -NoProfile -File scripts/ci-stock-path.ps1)
             if ($LASTEXITCODE -eq 0) {
-              cargo nextest run -p atlas-core --locked --profile ci --no-fail-fast diag_ 2>&1 | Tee-Object -FilePath nextest.log
+              cargo nextest run --workspace --locked --profile ci --no-fail-fast 2>&1 | Tee-Object -FilePath nextest.log
               $code = $LASTEXITCODE
             }
           } finally {

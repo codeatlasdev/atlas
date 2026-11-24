@@ -4,7 +4,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::*};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 fn sh(c: &str) -> String {
     let o = std::process::Command::new("cmd")
@@ -123,14 +123,17 @@ fn diag_posix_rename_gap() {
     let cpus = std::thread::available_parallelism().unwrap().get();
     rep += &format!("cpus {cpus}\n");
     let mut total_missing = 0u64;
-    for (label, load) in [("idle", 0usize), ("load", cpus)] {
-        for i in 0..10 {
+    for (label, load) in [("idle", 0usize)] {
+        for i in 0..80 {
             let d = tempfile::tempdir().unwrap();
             let (r, spans) = round(d.path(), load);
             let missing: u64 = r.runs.iter().map(|x| x.2).sum();
             total_missing += missing;
             let mut durs: Vec<f64> = spans.iter().map(|(a, b)| b - a).collect();
             durs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            if missing == 0 {
+                continue;
+            }
             rep += &format!(
                 "{label} #{i}: opens {} missing {missing} codes {:?} rename ms p50 {:.3} p99 {:.3} max {:.3}\n",
                 r.opens,
@@ -151,71 +154,9 @@ fn diag_posix_rename_gap() {
             }
         }
     }
-    rep += &format!("TOTAL missing {total_missing}\n");
-    panic!("DIAG REPORT\n{rep}");
-}
-
-fn spawn_idle() -> std::process::Child {
-    crate::sys::shell("ping -n 31 127.0.0.1 >NUL")
-        .spawn()
-        .unwrap()
-}
-
-#[test]
-fn diag_idle_child_tree_settles_late() {
-    let mut rep = String::new();
-    let mut late = 0;
-    for i in 0..20 {
-        let d = tempfile::tempdir().unwrap();
-        let reg = crate::hygiene::Registry::at(d.path());
-        let t0 = Instant::now();
-        let mut child = spawn_idle();
-        let start = crate::procs::start_time(child.id()).unwrap();
-        let spawned = t0.elapsed();
-        // when does a descendant other than the root appear?
-        let mut seen = None;
-        let mut polls = 0;
-        while t0.elapsed() < Duration::from_secs(5) {
-            let table = crate::procs::table();
-            polls += 1;
-            let tree = crate::procs::tree(child.id(), &table);
-            if tree.len() > 1 {
-                seen = Some(t0.elapsed());
-                break;
-            }
-        }
-        let _ = child.kill();
-        let _ = child.wait();
-        // and the registry scenario of the test, timed: add_root + first track
-        let mut child2 = spawn_idle();
-        let t1 = Instant::now();
-        reg.add_root(crate::hygiene::Root {
-            session: "s".into(),
-            owner: crate::hygiene::Owner::current(),
-            pid: child2.id(),
-            start: crate::procs::start_time(child2.id()).unwrap(),
-            kind: crate::hygiene::Kind::Agent,
-            label: "agent".into(),
-            project: None,
-            started_at: 1,
-        })
-        .unwrap();
-        reg.track().unwrap();
-        let first = t1.elapsed();
-        let m1 = reg.members().len();
-        std::thread::sleep(Duration::from_millis(300));
-        reg.track().unwrap();
-        let m2 = reg.members().len();
-        if m2 != m1 {
-            late += 1;
-        }
-        let _ = child2.kill();
-        let _ = child2.wait();
-        let _ = start;
-        rep += &format!(
-            "#{i}: spawn returned in {spawned:?}, descendant seen after {seen:?} ({polls} polls); add_root+first track {first:?}: members {m1} -> {m2} after 300 ms\n"
-        );
-    }
-    rep += &format!("registry changed between tracks in {late}/20\n");
+    rep += &format!(
+        "TOTAL missing {total_missing} over 80 rounds of 299 replaces, started at {:?}\n",
+        std::time::SystemTime::now()
+    );
     panic!("DIAG REPORT\n{rep}");
 }

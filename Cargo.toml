@@ -49,7 +49,7 @@ anyhow = "1.0"
 # bundled in the binary, which `atlas_core::time::zone` reads: like chrono-tz, a named zone does not depend on the
 # machine's tzdata (a Ubuntu 24.04 server has none of `US/Pacific`, `EST5EDT`, `Zulu` without `tzdata-legacy`).
 jiff = "0.2"
-jiff-tzdb = "0.1"
+jiff-tzdb = "1.0"
 semver = "1.0"
 dirs = "7"
 tempfile = "3.27"

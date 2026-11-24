@@ -20,6 +20,7 @@
 	"workbench_term_clipboard_title": "Copiar para a área de transferência?",
 	"workbench_term_font_fallback": "A fonte {font} não está instalada, então o terminal GPU usa {resolved}.",
 	"workbench_term_gpu_after_restart": "O terminal GPU é ativado depois que o host de terminais reiniciar (Configurações → Terminal).",
+	"workbench_term_native_fell_back": "O terminal rápido não conseguiu iniciar ({reason}). Os terminais usam o renderizador clássico até você reiniciar o Atlas.",
 	"workbench_term_pane_ended": "Processo encerrado ({code})",
 	"workbench_term_pane_gone": "O terminal não existe mais",
 	"workbench_term_pane_host_unreachable": "Host de terminais inacessível",

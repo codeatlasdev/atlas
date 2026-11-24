@@ -65,6 +65,7 @@
 	"settings_terminal_tab_restart_host_body": "Confirm dialog body of Restart in Settings > Terminal.",
 	"settings_terminal_tab_restart_host_title": "Confirm dialog title of Restart in Settings > Terminal.",
 	"settings_terminal_tab_restart_terminal_host": "Button label in the <Button> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_terminal_tab_restart_to_apply_fast_terminal": "Notice under the Fast terminal switch on Linux, shown when the choice differs from what this run started with",
 	"settings_terminal_tab_scrollback": "label prop of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_terminal_tab_scrollback_memory": "label prop of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_terminal_tab_selecting_text_copies_it_to": "description prop (help line) of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",

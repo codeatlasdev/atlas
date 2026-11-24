@@ -92,3 +92,94 @@ pub fn destroy(view: usize) {
         view.removeFromSuperview();
     }
 }
+
+// ---- what `term` asks of its platform (the Linux twin is `term/linux`) ----
+
+/// The main `NSWindow*` the views are added to.
+pub fn window(app: &tauri::AppHandle) -> Result<usize, String> {
+    use tauri::Manager;
+    let win = app.get_window("main").ok_or("no main window")?;
+    Ok(win.ns_window().map_err(|e| e.to_string())? as usize)
+}
+
+/// Backing scale factor of the main window.
+pub fn scale(app: &tauri::AppHandle) -> Result<f64, String> {
+    use tauri::Manager;
+    let win = app.get_window("main").ok_or("no main window")?;
+    win.scale_factor().map_err(|e| e.to_string())
+}
+
+/// A terminal keeps the scale it was opened at (a display change rebuilds the surface, not the font).
+pub fn scale_changed(_old: f64, _new: f64) -> bool {
+    false
+}
+
+/// The swapchain size, in physical pixels, of a slot of `w` x `h` points.
+pub fn pixel_size(_x: f64, _y: f64, w: f64, h: f64, scale: f64) -> (u32, u32) {
+    ((w * scale) as u32, (h * scale) as u32)
+}
+
+/// A renderer drawing into `view`.
+///
+/// # Safety
+/// `view` is a live `NSView*` that outlives the renderer. Call on the main thread.
+pub unsafe fn renderer(
+    view: usize,
+    pixels: (u32, u32),
+    font_pt: f32,
+    scale: f32,
+    spec: atlas_term::FontSpec,
+) -> Result<(atlas_term::Renderer, atlas_term::FontResolution), String> {
+    let ptr = std::ptr::NonNull::new(view as *mut std::ffi::c_void).ok_or("null view")?;
+    // SAFETY: the caller's contract.
+    unsafe { atlas_term::Renderer::new(ptr, pixels.0, pixels.1, font_pt, scale, spec) }
+}
+
+/// The general pasteboard as a paste decision (⌘V). Read natively because the webview's paste
+/// event only exposes text: a screenshot or a Finder file copy arrives as nothing.
+pub fn read_clipboard() -> atlas_term::input::Clipboard {
+    use objc2_app_kit::{
+        NSPasteboard, NSPasteboardTypeFileURL, NSPasteboardTypePNG, NSPasteboardTypeString,
+        NSPasteboardTypeTIFF,
+    };
+    use objc2_foundation::NSURL;
+    // SAFETY: the general pasteboard is safe to read off the main thread; the type constants
+    // are static NSStrings.
+    unsafe {
+        let pb = NSPasteboard::generalPasteboard();
+        let mut files = Vec::new();
+        for item in pb.pasteboardItems().iter().flatten() {
+            let Some(s) = item.stringForType(NSPasteboardTypeFileURL) else {
+                continue;
+            };
+            if let Some(p) = NSURL::URLWithString(&s).and_then(|u| u.path()) {
+                files.push(p.to_string());
+            }
+        }
+        let text = pb
+            .stringForType(NSPasteboardTypeString)
+            .map(|s| s.to_string());
+        let has_image = pb.types().is_some_and(|t| {
+            t.iter().any(|t| {
+                t.isEqualToString(NSPasteboardTypePNG) || t.isEqualToString(NSPasteboardTypeTIFF)
+            })
+        });
+        atlas_term::input::Clipboard::classify(files, text, has_image)
+    }
+}
+
+/// Text → the system pasteboard (⌘C, OSC 52).
+pub fn write_clipboard(text: &str) {
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+    use objc2_foundation::NSString;
+    // SAFETY: NSPasteboard general pasteboard is safe off the main thread for plain writes;
+    // `NSPasteboardTypeString` is a static NSString constant.
+    unsafe {
+        let pb = NSPasteboard::generalPasteboard();
+        pb.clearContents();
+        pb.setString_forType(&NSString::from_str(text), NSPasteboardTypeString);
+    }
+}
+
+/// Wake and display-change observers (`system.rs`).
+pub use super::system::install as install_system_observers;

@@ -156,6 +156,29 @@ export function keyToSend(
 	return { key, shift: e.shiftKey, alt, ctrl: e.ctrlKey };
 }
 
+/** What a focused native terminal does with a Linux chord (the page reads keys and forwards them; the native view has no input). */
+export type NativeKey = "copy" | "paste" | "search" | null;
+
+/**
+ * Linux native-terminal chords, by the convention of GNOME Terminal, Konsole and Kitty: Ctrl+Shift+C copies the selection
+ * (so the chord never reaches the program as ^C), Ctrl+Shift+V pastes, Ctrl+Shift+F searches. Plain Ctrl+C is always
+ * SIGINT here: the page cannot see the renderer's selection, so "copy when something is selected" is xterm.js's alone.
+ * macOS has its ⌘ table (`termAction`): always `null`.
+ */
+export function nativeKey(e: KeyLike, mac: boolean): NativeKey {
+	if (mac || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return null;
+	switch (e.key.toLowerCase()) {
+		case "c":
+			return "copy";
+		case "v":
+			return "paste";
+		case "f":
+			return "search";
+		default:
+			return null;
+	}
+}
+
 /** What the xterm.js terminal does with a keydown before it encodes it for the program. */
 export type XtermKey = "search" | "copy" | "paste" | "app" | "shiftEnter" | null;
 

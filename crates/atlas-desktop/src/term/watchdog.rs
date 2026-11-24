@@ -36,7 +36,8 @@ pub(super) enum Why {
     Stalled,
     /// The user asked ("Reload terminal").
     Manual,
-    /// The Mac woke from sleep.
+    /// The Mac woke from sleep (raised by `system.rs`'s macOS observer; Linux reconfigures a lost swapchain itself).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Wake,
     /// A display was added, removed or reconfigured.
     Screens,

@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { fontStep, keyToSend, optionActsAsAlt, termAction, xtermKey } from "./termKeys.ts";
+import { fontStep, keyToSend, nativeKey, optionActsAsAlt, termAction, xtermKey } from "./termKeys.ts";
 
 const ev = (
 	key: string,
@@ -227,4 +227,16 @@ test("a focused terminal keeps ⌘= ⌘+ ⇧⌘= ⌘- ⌘0 for its font size, no
 	// ⇧⌘- and ⇧⌘0 are not font chords: the app keeps them
 	expect(terminalKeeps(e("-", true))).toBe(false);
 	expect(terminalKeeps(e("0", true))).toBe(false);
+});
+
+// Linux native terminal: the chords the page handles for a view that takes no input itself.
+test("Linux native chords: Ctrl+Shift+C/V/F, and plain Ctrl+C stays SIGINT", () => {
+	const cs = { ctrlKey: true, shiftKey: true };
+	expect(nativeKey(ev("C", cs), false)).toBe("copy");
+	expect(nativeKey(ev("v", cs), false)).toBe("paste");
+	expect(nativeKey(ev("F", cs), false)).toBe("search");
+	expect(nativeKey(ev("c", { ctrlKey: true }), false)).toBeNull();
+	expect(nativeKey(ev("c", { ctrlKey: true, shiftKey: true, altKey: true }), false)).toBeNull();
+	expect(nativeKey(ev("x", cs), false)).toBeNull();
+	expect(nativeKey(ev("c", cs), true)).toBeNull();
 });

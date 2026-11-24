@@ -86,9 +86,9 @@ mod swipe_mac;
 mod swipe_mac;
 #[cfg(test)]
 mod swipe_trace;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod term;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 #[path = "term_stub.rs"]
 mod term;
 mod tray;
@@ -321,6 +321,7 @@ macro_rules! handlers {
             browser::window_region_png,
             capture::capture_cmd,
             term::term_open,
+            term::term_capability,
             term::term_bounds,
             term::term_slide,
             term::term_close,
@@ -489,17 +490,31 @@ fn visible_on_any(win: (i32, i32, i32, i32), screens: &[(i32, i32, i32, i32)]) -
     })
 }
 
-/// Whether the main window is see-through. Only macOS shows anything through it (vibrancy behind the sidebar); on
-/// Linux the page paints an opaque backdrop (`html.opaque-window`), so an alpha window gives WebKitGTK and the
-/// compositor per-frame alpha blending of the whole window for nothing. Same mechanism as tauri-apps/tauri#15471
-/// (measured on macOS: ~8x GPU power for a static page); the Linux cost is inferred, not measured.
+/// Whether the main window is see-through. macOS shows vibrancy through it (behind the sidebar). On Linux the page paints
+/// an opaque backdrop (`html.opaque-window`), so an alpha window gives WebKitGTK and the compositor per-frame alpha
+/// blending of the whole window for nothing (same mechanism as tauri-apps/tauri#15471; the Linux cost is inferred, not
+/// measured), EXCEPT when the native terminal is on: it is a Wayland subsurface BELOW the page and shows through a hole
+/// the page cuts over its slot, so the window must have an alpha channel. That is the opt-in `gpuTerminal` setting on
+/// a Wayland session (`term::window_wanted`), decided here, before any page exists.
 fn window_transparent(configured: bool) -> bool {
-    transparent_on(configured, std::env::consts::OS)
+    #[cfg(target_os = "linux")]
+    let native_terminal = {
+        let wanted = term::window_wanted();
+        term::set_window_clear(wanted);
+        wanted
+    };
+    #[cfg(not(target_os = "linux"))]
+    let native_terminal = false;
+    transparent_on(configured, std::env::consts::OS, native_terminal)
 }
 
 /// [`window_transparent`] for an explicit OS name (`std::env::consts::OS`), so every platform's answer is testable.
-fn transparent_on(configured: bool, os: &str) -> bool {
-    configured && os != "linux"
+fn transparent_on(configured: bool, os: &str, native_terminal: bool) -> bool {
+    if os == "linux" {
+        native_terminal
+    } else {
+        configured
+    }
 }
 
 /// What window-state saves and restores. Not VISIBLE: showing is `boot`'s call (first frame). Not DECORATIONS:
@@ -894,18 +909,31 @@ mod window_tests {
     #[test]
     fn the_main_window_is_transparent_only_where_something_shows_through() {
         assert!(
-            !transparent_on(true, "linux"),
+            !transparent_on(true, "linux", false),
             "Linux: opaque page, no vibrancy"
         );
         assert!(
-            transparent_on(true, "macos"),
+            transparent_on(false, "linux", true),
+            "Linux with the native terminal: it shows through a hole in the page"
+        );
+        assert!(
+            transparent_on(true, "macos", false),
             "macOS: vibrancy shows through"
         );
-        assert!(transparent_on(true, "windows"), "Windows keeps what it had");
+        assert!(
+            transparent_on(true, "windows", false),
+            "Windows keeps what it had"
+        );
         for os in ["linux", "macos", "windows"] {
             assert!(
-                !transparent_on(false, os),
+                !transparent_on(false, os, false),
                 "never transparent when not configured"
+            );
+        }
+        for os in ["macos", "windows"] {
+            assert!(
+                !transparent_on(false, os, true),
+                "the Linux terminal's window rule is Linux's only"
             );
         }
     }

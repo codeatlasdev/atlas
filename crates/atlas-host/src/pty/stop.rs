@@ -36,19 +36,18 @@ impl Stop {
     }
 
     /// Ask the reader to stop and wake it if it sleeps in `poll`. A full socket buffer means a wake is already queued.
+    /// Unix only: a live upgrade (`freeze`) does not exist on Windows.
+    #[cfg(unix)]
     pub(super) fn set(&self) {
+        use std::io::Write;
         self.flag.store(true, Ordering::Release);
-        #[cfg(unix)]
-        {
-            use std::io::Write;
-            let _ = (&self.wake.1).write(&[1]);
-        }
+        let _ = (&self.wake.1).write(&[1]);
     }
 
     /// Withdraw the request (a failed handoff resumes the session) and drop any wake still queued.
+    #[cfg(unix)]
     pub(super) fn clear(&self) {
         self.flag.store(false, Ordering::Release);
-        #[cfg(unix)]
         self.drain();
     }
 

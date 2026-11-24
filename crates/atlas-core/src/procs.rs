@@ -304,7 +304,10 @@ mod imp {
             for task in tasks.flatten() {
                 match std::fs::read_to_string(task.path().join("children")) {
                     Ok(kids) => {
-                        for kid in kids.split_whitespace().filter_map(|k| k.parse::<u32>().ok()) {
+                        for kid in kids
+                            .split_whitespace()
+                            .filter_map(|k| k.parse::<u32>().ok())
+                        {
                             if seen.insert(kid) {
                                 queue.push_back(kid);
                             }
@@ -444,7 +447,8 @@ mod imp {
         }
 
         #[test]
-        fn a_subtree_follows_the_children_files_of_every_thread_and_ignores_the_rest_of_the_machine() {
+        fn a_subtree_follows_the_children_files_of_every_thread_and_ignores_the_rest_of_the_machine()
+         {
             let proc = fake_proc(500);
             let d = proc.path();
             // 10 -> 11, 12 (the second one forked by another thread of 10); 11 -> 13. Everything else is unrelated.

@@ -11,6 +11,7 @@
 
 mod capability;
 mod clipboard;
+mod fault;
 mod geometry;
 mod wl;
 
@@ -60,6 +61,14 @@ pub unsafe fn renderer(
     scale: f32,
     spec: FontSpec,
 ) -> Result<(Renderer, FontResolution), String> {
+    #[cfg(debug_assertions)]
+    {
+        static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if let Some(e) = fault::fault(std::env::var("ATLAS_TERM_FAULT").ok().as_deref(), call) {
+            return Err(e);
+        }
+    }
     let (display, window) = wl::raw_handles(view)?;
     // SAFETY: the display is GDK's and lives for the process; the surface is `view`'s, per the caller's contract.
     unsafe { Renderer::new_raw(display, window, pixels.0, pixels.1, font_pt, scale, spec) }

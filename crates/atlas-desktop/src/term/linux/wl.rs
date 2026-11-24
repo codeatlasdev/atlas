@@ -119,9 +119,10 @@ struct Parent {
 }
 
 static PARENT: Mutex<Option<Parent>> = Mutex::new(None);
-/// Subsurfaces alive: the tick runs while there are any.
+/// Subsurfaces alive: the connection watch runs while there are any.
 static LIVE: AtomicUsize = AtomicUsize::new(0);
-static TICKING: AtomicBool = AtomicBool::new(false);
+/// The connection watch is installed.
+static WATCHING: AtomicBool = AtomicBool::new(false);
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -398,7 +399,7 @@ pub fn create(w: f64, h: f64) -> Result<usize, String> {
     };
     sub.place(wl, *lock(&sub.rect));
     LIVE.fetch_add(1, Ordering::AcqRel);
-    start_tick();
+    start_watch();
     Ok(Box::into_raw(Box::new(sub)) as usize)
 }
 
@@ -489,32 +490,56 @@ pub fn destroy(view: usize) {
     LIVE.fetch_sub(1, Ordering::AcqRel);
 }
 
-/// While terminals exist: once a second take what GDK's reads left on our queue (a fractional scale change when the
-/// window moves to another output), and notice that GDK made a new toplevel surface (the window was hidden and shown).
-/// Either one means every terminal must be drawn again (`super::super::rescale_all`).
-fn start_tick() {
-    if TICKING.swap(true, Ordering::AcqRel) {
+/// While terminals exist: whenever the Wayland connection has traffic (a fractional scale change when the window moves
+/// to another output, a new toplevel surface when the window was hidden and shown), take what GDK's reads left on our
+/// queue and notice a scale change or a new toplevel. Either one means every terminal must be drawn again
+/// (`super::super::rescale_all`).
+///
+/// There is no timer: the display fd is watched on the GTK main loop, which GDK's own source wakes for the same traffic,
+/// so a window with nothing happening costs this module no wakeup (a 1 s tick was one of the app's idle wakeups). The
+/// check runs in an idle callback, after GDK's source has read and dispatched the events of that iteration; it would
+/// otherwise race GDK for them and miss the ones GDK took first.
+fn start_watch() {
+    if WATCHING.swap(true, Ordering::AcqRel) {
         return;
     }
-    let mut seen = scale();
-    gtk::glib::timeout_add_seconds_local(1, move || {
+    let Ok(w) = wl() else {
+        WATCHING.store(false, Ordering::Release);
+        return;
+    };
+    let fd = std::os::fd::AsRawFd::as_raw_fd(&w.conn.backend().poll_fd());
+    let seen = std::rc::Rc::new(std::cell::Cell::new(scale()));
+    let queued = std::rc::Rc::new(std::cell::Cell::new(false));
+    gtk::glib::unix_fd_add_local(fd, gtk::glib::IOCondition::IN, move |_, _| {
         if LIVE.load(Ordering::Acquire) == 0 {
-            TICKING.store(false, Ordering::Release);
+            WATCHING.store(false, Ordering::Release);
             return gtk::glib::ControlFlow::Break;
         }
-        let (Ok(w), Ok(win)) = (wl(), main_window()) else {
-            return gtk::glib::ControlFlow::Continue;
-        };
-        w.pump();
-        GTK_SCALE.store(win.scale_factor().max(1) as u32, Ordering::Relaxed);
-        let moved = sync_parent(w, &win).unwrap_or(false);
-        let now = scale();
-        if moved || (now - seen).abs() > 1e-6 {
-            seen = now;
-            super::super::rescale_all();
+        if !queued.replace(true) {
+            let (seen, queued) = (seen.clone(), queued.clone());
+            gtk::glib::idle_add_local_once(move || {
+                queued.set(false);
+                check(&seen);
+            });
         }
         gtk::glib::ControlFlow::Continue
     });
+}
+
+/// Take what GDK left on our queue, and rescale every terminal when the scale or the toplevel surface changed since
+/// `seen`.
+fn check(seen: &std::cell::Cell<f64>) {
+    let (Ok(w), Ok(win)) = (wl(), main_window()) else {
+        return;
+    };
+    w.pump();
+    GTK_SCALE.store(win.scale_factor().max(1) as u32, Ordering::Relaxed);
+    let moved = sync_parent(w, &win).unwrap_or(false);
+    let now = scale();
+    if moved || (now - seen.get()).abs() > 1e-6 {
+        seen.set(now);
+        super::super::rescale_all();
+    }
 }
 
 /// The Vulkan-surface handles of `view`.

@@ -28,9 +28,47 @@ Method: per-thread CPU and context switches over the idle window (`scripts/linux
 
 Wakeups per second: app 83 -> 64, web process 47 -> 30. Raw windows: [terminal-linux-idle-fixed.jsonl](terminal-linux-idle-fixed.jsonl).
 
-**The 0.5 % target is not met**: an idle native terminal costs 1.1-1.2 %, about 0.5 points above xterm.js. What is left, by thread: the web process's compositor and main threads (0.4-0.5 %: the transparent window the compositor keeps blending, [HYPOTHESIS]), WebKit's `VBlankMonitor` thread in the app (39 wakeups a second at 0.1 %, present with the terminal idle; its trigger was not found), and the app's main thread (0.2-0.4 %). None of them is the terminal's render loop, which now sleeps.
+**The 0.5 % target was not met by that change** (1.1-1.2 %); the next section found what was left and met it.
+
+## Every wakeup of an idle terminal, by thread ([#289](https://github.com/codeatlasdev/atlas/issues/289))
+
+Method: `terminal-linux-idle-tools/prof.py` reads `/proc/<pid>/task/*/schedstat` (column 3 = times the thread ran = wakeups, column 1 = ns on CPU) and `stat` for the app, the web process, the network process and hostd over a 30 s window, 25 s after one idle bash terminal is open; release build (`debug-assertions` on `atlas-desktop` for the debug bridge), private headless sway on the Radeon 680M, fresh instance and HOME per window, a window starts only when the 1-minute load is under 2 (`run2.sh`). "Base" is `7d5aba71` (main).
+
+| thread (base, native terminal idle) | wakeups/s | what woke it | now |
+|---|---|---|---|
+| app `VBlankMonitor` | 39 | WebKit's display link, armed by the focused input sink's caret animator | 0 |
+| web process main + compositor threads, `ReceiveQueue` of both | 30 + 10 | the same animator repainting, both processes' IPC | 7 + 1.5 |
+| app main thread | 7 + 3 | the repaint, plus the 1 s tick of `wl.rs` | 2 |
+| `atlas` (hostd) `tokio-rt-worker` | 10 | the pty reader's 100 ms `poll` (a `std::thread` started from a tokio worker inherits its name), per open terminal | 0 (`pty-<id>`) |
+| hostd CPU | 0.65-0.74 % | `Registry::track` every 2 s reading `/proc/<pid>/stat` of all 433 processes of the machine (a scan is ~16 ms here) | 0.14 % |
+| `atlas-term-render` | 0 | nothing: the render loop has no timer when idle, no frame callbacks, no damage | 0 |
+
+Eliminations (each against the live app, one change at a time): pausing the page's running animations (the only one is the loading strip) and removing the strip changed nothing; blurring the sink dropped the app to 17 wakeups/s, so the cause is a **focused collapsed caret**, not the page. That also explains why xterm.js, once its helper textarea has focus, costs 1.4-1.5 % (96-99 wakeups/s, 4 windows; its unfocused run, 0.5 %, is the number the earlier tables called xterm.js). A zero-area sink, `opacity: 0`, `caret-color: transparent`, `contain: strict`, `font-size: 0`, `content-visibility: hidden`, `transform: scale(0)`, `-webkit-user-select: none` and `gtk-cursor-blink=false` in `settings.ini` all left the 105-114 wakeups/s; a `tabindex` div (no caret) and a textarea with a **range selection** gave 27-31; `contenteditable` gave 113.
+
+What changed:
+
+- **The sink rests on a selected placeholder** (`terminal/sink.ts`: U+200B, selected; typed text replaces it and is read back without it; `restSink` runs on focus, on every input and after every key release, writes nothing when already at rest). A programmatic selection does not own PRIMARY (a `wl-copy --primary` sentinel survived `select()` and typing, so middle-click paste is intact). Checked live with fcitx5 pinyin (preedit, commit) and without an input method (typing, arrows, Backspace, UTF-8).
+- **hostd's pty reader sleeps** until the program prints or `freeze` wakes it: `pty/stop.rs` gives the stop flag a socket pair the reader `poll`s next to the master, with no timeout. `freeze` returns at once instead of within one 100 ms tick; `thaw` withdraws a request and drains its byte. The thread is named `pty-<id>`.
+- **Session tracking reads the processes below its roots** (`procs::subtree`: the kernel's per-thread `children` lists on Linux, the table scan elsewhere and on a kernel without them), not every process of the machine.
+- **The scale and toplevel check has no timer** (`wl.rs`): the display fd is watched on the GTK main loop, which GDK's source wakes for the same traffic, and the check runs in an idle callback after GDK has dispatched (it would race GDK for the events otherwise). Checked live: `swaymsg output HEADLESS-1 scale 2` and `1.5` re-render the terminal at the new scale (crisp glyphs, the page's logical size) with no tick.
+
+### Numbers (release, 3 runs each, native and xterm.js alternated, every window started at load under 2)
+
+| idle terminal | total CPU | wakeups/s | load before -> after |
+|---|---|---|---|
+| native, base | 2.04 / 2.10 / 2.10 % | 107 | 1.43 / 0.99 / 1.03 (all < 2) |
+| native, this change | 0.48 / 0.46 / 0.49 % | 18 | 1.41 / 0.50 / 1.76 |
+| xterm.js, this change (unfocused page, as the earlier tables) | 0.56 / 0.53 / 0.57 % | 20 | 0.73 / 0.94 / 1.30 |
+| xterm.js, base | 1.12 / 1.09 / 1.01 % | 30 | 1.10 / 1.99 / 0.66 |
+| xterm.js, helper textarea focused (this change; the sink fix does not apply to it) | 1.54 / 1.52 / 1.47 % | 97 | 0.63 / 2.31 / 1.07 |
+
+**The 0.5 % target is met: 0.46-0.49 % against 0.53-0.57 % for xterm.js.** Base measured higher than the 1.1-1.2 % above (2.0-2.1 %): this machine has 433 processes (hostd's scan alone: 0.7 %) and the build has `debug-assertions`; read the comparison within this table only. Windows that started at load 2 or more are marked: the focused-xterm window at 2.31 is in the row above (marked, 1.52 %), one at 13.6 (1.50 %) is `discarded` by `summ.py` and in no cell; its repeat started at 1.07 (1.47 %). Raw windows with the per-thread split: [terminal-linux-idle-wakeups.jsonl](terminal-linux-idle-wakeups.jsonl); tools: [terminal-linux-idle-tools/](terminal-linux-idle-tools/). What is left (18 wakeups/s, none of them traced further): the web process (7), the app's tokio worker (3.7), hostd's sweeper (0.5/s) and tokio workers. [INFERENCE: the web process's remaining wakeups are WebKit's own timers; no stack was taken.] The 16 ms process-table scan was timed with a Python loop over `/proc/*/stat` on this machine.
+
+Not changed: `xterm.js` with its helper textarea focused costs 1.5 % for the same reason (a collapsed caret in a textarea); the fix would be the same selection trick on xterm's own textarea and is not part of this change.
 
 ## Tests
+
+Tests (each written first and seen red): `terminal/sink.test.ts` (the sink rests on a ranged selection over the placeholder, typed text is read back without it and the sink rests again, a collapsed caret is repaired, a lost placeholder comes back; it fails with no `sink.ts`), `pty::tests::a_quiet_terminals_reader_sleeps_instead_of_polling` (fails with 14 wakeups in 1.5 s, passes with at most 1; output still arrives) and `freeze_stops_a_blocked_reader_at_once_and_thaw_reads_again`, `procs::tests::a_subtree_is_the_root_and_everything_below_it_and_nothing_else` and the fake-`/proc` pair `a_subtree_follows_the_children_files_of_every_thread...` / `a_kernel_without_children_files_says_so...` (the kernel without the lists must fall back to the scan, never return an empty subtree). The connection watch has no unit test (it needs a GTK main loop and a compositor): it is covered by the live scale 2 / 1.5 check above and the idle windows.
 
 `blink::tests` (the policy: flips each half cycle, rests after 10 s with the cursor visible and no wakeup, comes back once when it rests in the off phase, restarts on output, never wakes when hidden or steady, ignores a tick before the deadline). Incident-named test `the_blink_rests_with_the_cursor_visible_and_the_thread_sleeps` was run against the old behavior (rest disabled) and fails with 113 frames in 60 s against 19 + 0.
 

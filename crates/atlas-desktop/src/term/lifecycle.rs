@@ -610,7 +610,7 @@ pub(super) fn spawn_reader(
 /// Linux: the compositor's scale for the window changed (it moved to another output), or GDK gave the window a new
 /// toplevel surface (hidden and shown again) that the terminals' child surfaces no longer belong to. Every terminal
 /// takes the new scale, re-fits its swapchain to its last slot and rebuilds its surface and font at it. Main thread
-/// (`wl`'s tick); the rebuilds run on the render threads.
+/// (`wl`'s connection watch); the rebuilds run on the render threads.
 #[cfg(target_os = "linux")]
 pub(super) fn rescale_all() {
     let Some(app) = APP.get() else { return };

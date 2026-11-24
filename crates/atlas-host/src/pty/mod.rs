@@ -24,6 +24,7 @@ mod lifecycle;
 mod master;
 mod out;
 mod spawn;
+mod stop;
 mod stream;
 mod title;
 
@@ -34,7 +35,6 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
@@ -158,7 +158,7 @@ pub struct Session {
     dir: PathBuf,
     /// Set by `freeze`: the reader thread stops after its current read and the
     /// coalescer flushes and signals `frozen` instead of finishing the session.
-    stop: Arc<AtomicBool>,
+    stop: Arc<stop::Stop>,
     frozen: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     /// Set when the process runs as a crewmate's own user: it is reached through the spawn helper.
     #[cfg(unix)]

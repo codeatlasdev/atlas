@@ -87,7 +87,7 @@ pub fn destroy(view: usize) {
 }
 
 /// No wake or display-change notifications to hook: a lost or outdated Vulkan swapchain is reconfigured by the renderer,
-/// and a new toplevel surface or scale is noticed by `wl`'s tick.
+/// and a new toplevel surface or scale is noticed by `wl`'s watch of the Wayland connection.
 pub fn install_system_observers() {}
 
 /// What this session can do, for the Settings toggle and the page's choice of terminal. `gpu` is the GPU probe, which

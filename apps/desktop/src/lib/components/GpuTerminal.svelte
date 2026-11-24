@@ -29,6 +29,7 @@
 	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
 	import { Pointer } from "./terminal/pointer.ts";
 	import { SINK_REST, sinkBox, type CursorStats, type SinkBox } from "./terminal/ime.ts";
+	import { restSink, sinkText } from "./terminal/sink.ts";
 	import TermSearchBar from "./terminal/TermSearchBar.svelte";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -133,6 +134,9 @@
 	function onkeyup(e: KeyboardEvent) {
 		if (e.key === "Meta") void pointer.metaChanged(false);
 		if (e.code === "AltLeft" || e.code === "AltRight") optionSide = null;
+		// A key the page did not take (a stray arrow) can collapse the sink's selection to a caret, which starts
+		// WebKit's caret animator again (`terminal/sink.ts`).
+		if (input && !e.isComposing) restSink(input);
 	}
 
 	/** Font size this terminal is at (⌘+ / ⌘− step it; a `terminal.font_size` change resets it). */
@@ -208,8 +212,8 @@
 
 	function oninput(e: Event) {
 		if ((e as InputEvent).isComposing) return;
-		const text = input!.value;
-		input!.value = "";
+		const text = sinkText(input!.value);
+		restSink(input!);
 		if (text && !readonly)
 			void invoke("term_key", { tab, key: "", text, shift: false, alt: false, ctrl: false }).catch(quiet);
 	}
@@ -386,6 +390,7 @@
 			{oncompositionend}
 			onfocus={() => {
 				termFocus.on = true;
+				if (input) restSink(input);
 				void invoke("term_focus", { tab, focused: true }).catch(quiet);
 			}}
 			onblur={() => {
@@ -393,6 +398,7 @@
 				void invoke("term_focus", { tab, focused: false }).catch(quiet);
 			}}
 			{oncopy}
+			oncut={(e) => e.preventDefault()}
 			{onpaste}></textarea>
 	</div>
 </div>
@@ -421,7 +427,8 @@
 	}
 	/* Focus target for keys/IME/paste; the native view draws the terminal. It has NO area (xterm.js's helper textarea is
 	   the same): a focused 1 px textarea still blinks its caret, which makes WebKit repaint and the compositor commit the
-	   whole window twice a second (idle terminal: 1.6 % of a core against 0.3-0.7 % for xterm.js, #774). */
+	   whole window twice a second (#774). Even with no area a focused collapsed caret keeps WebKit's caret animator and so
+	   the display link running (~80 wakeups a second): the sink rests on a selected placeholder instead (`terminal/sink.ts`). */
 	.sink {
 		position: absolute;
 		opacity: 0;

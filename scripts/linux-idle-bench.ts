@@ -13,7 +13,7 @@
 //   --label L       prefix of the window's label in the report (`<label>/<scenario>`), e.g. the renderer or the knob under test
 //   --scenario S    put the app in a state first and measure it: welcome (start with no project), workspace (SCM dock open),
 //                   stack-running, stack-running-unfocused (a second window holds the focus), stack-running-behind-tab (a terminal tab in front of the Panel), terminal-idle, terminal-output, chat-idle, chat-stream, list-scroll, unfocused, hidden-workspace,
-//                   hidden-chat-stream, unfocused-chat-stream, crew (the crew workspace with three faces), crew-unfocused. Without it the app is measured as it is. The scenarios open a
+//                   hidden-chat-stream, unfocused-chat-stream, unfocused-terminal-output (a flood in a window that rests: needs --settle 70, past the clock's 60 s blur grace), crew (the crew workspace with three faces), crew-unfocused. Without it the app is measured as it is. The scenarios open a
 //                   fixture project (git repo, 2 worktrees, 2000 files) under the instance's HOME and use
 //                   scripts/fixtures/linux-idle/fake-omp.py as the chat engine; "unfocused" needs `foot` and a keyboard on the
 //                   instance's own sway (docs/perf/linux-webkit-study.md, "Method").
@@ -288,6 +288,7 @@ export const SCENARIOS = [
 	"stack-running-behind-tab",
 	"hidden-chat-stream",
 	"unfocused-chat-stream",
+	"unfocused-terminal-output",
 	"crew",
 	"crew-unfocused",
 ] as const;
@@ -372,6 +373,12 @@ async function enter(name: (typeof SCENARIOS)[number], c: Ctx): Promise<() => vo
 		}
 		case "unfocused-chat-stream": {
 			const stop = await enter("chat-stream", c);
+			const off = await enter("unfocused", c);
+			return () => (off(), stop());
+		}
+		case "unfocused-terminal-output": {
+			// The shared clock rests after 60 s of blur (`--settle 70`): xterm keeps parsing the flood but must stop drawing it.
+			const stop = await enter("terminal-output", c);
 			const off = await enter("unfocused", c);
 			return () => (off(), stop());
 		}

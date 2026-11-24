@@ -1,7 +1,7 @@
 ---
 title: "Publicar uma versão"
 source: release.md
-source_sha: "2567e4ae2d4decbe31efc08876b56c314732081f"
+source_sha: "b05330889f2c69253477a2659b5490424b464ee7"
 translation: machine
 ---
 
@@ -78,6 +78,7 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lista os arqu
 7. **Commit, tag, push.** Commit `chore(release): vX.Y.Z[-pre.N]`, tag anotada e depois `git push --atomic origin <main|release/X.Y> <tag>`: a branch e a tag chegam juntas ou não chegam.
 8. **Push da tag; o GitHub roda o `release.yml`** (gate → builds para macOS, Linux e Windows, pacote Arch → verificação do Linux em containers → publicação). O script acompanha a execução (`gh run watch`) e depois faz o deploy do site (mantido; ele nunca faz a versão falhar).
 9. **Assinar e publicar** (`scripts/release-sign.sh <tag>`, o mesmo para todo canal, inclusive uma promoção para stable). O `release.yml` deixa a versão como **rascunho**, então nada é público ainda. O script baixa o `SHA256SUMS`, imprime o arquivo, assina com a sua chave offline, confere a assinatura contra as chaves do repositório, envia o `SHA256SUMS.sig` e só então publica o rascunho ([Assinatura de versões](#assinatura-de-versões)). Com uma chave configurada, uma versão sem assinatura nunca é publicada e o site não recebe deploy. Depois ele faz o deploy do site.
+10. **Avisar quem reportou** (`scripts/release-notify.ts <tag>`, por último, depois do site). O `Fixes #N` fecha uma issue no merge, dias antes de a alpha que a leva sair, e não diz o que rodar. O script comenta `Fixed in vX (alpha channel)`, com como obtê-la, em toda issue fechada como concluída (não "não planejada", nem `type: question`, `status: wontfix` ou `status: duplicate`) entre o horário do commit da tag da versão anterior e o desta, e nos reports marcados como duplicados delas. Uma issue que já tem um comentário dele (marcador oculto `<!-- atlas-fixed-in:vX -->`) é deixada em paz, então uma nova execução ou a próxima versão nunca avisa ninguém duas vezes. Ele nunca faz a versão falhar. Para ensaiar ou repetir à mão: `bun run release:notify <tag> --dry-run` imprime uma linha por comentário (e o texto completo uma vez), `bun run release:notify <tag>` os escreve.
 
 ### Guarda de promoção (stable)
 
@@ -325,6 +326,15 @@ scripts/symbols.sh resolve crash-native-<ms>-<pid>.toml symbols/   # uma linha p
 Os binários entregues, o AppImage, o `.deb`, o `.rpm`, o `.dmg` e o instalador NSIS **não** carregam informações de depuração: o workflow as retira logo depois do build (`scripts/symbols.sh split` no Linux, `strip -S` depois do `.dSYM` no macOS, um PDB que já é separado no Windows) e as confere (`symbols.sh verify-stripped`) antes de qualquer pacote ser feito. Os nomes dos símbolos ficam no binário, então um backtrace simples ainda tem nomes de função; arquivo e linha vêm do arquivo de símbolos.
 
 O `resolve` procura o frame como `frame - load_bias - 1` em `symbols/<build_id>.debug`, então um relatório de um build cujo arquivo não foi publicado diz isso em vez de adivinhar. Os relatórios ficam na máquina do usuário até que ele anexe um; nada é enviado.
+
+### Fingerprint de um crash
+
+Todo relatório de crash nomeia o bug com um `fingerprint` de 16 caracteres hexadecimais, para achar dois relatórios do mesmo bug buscando uma issue por ele (#320). Um relatório de panic tem a linha no arquivo, feita da mensagem e do local. Um relatório nativo (`crash-native-*.toml`) é escrito em contexto de sinal, onde nada pode ser calculado, então o fingerprint é calculado quando ele é lido, a partir dos frames:
+
+- **Com os símbolos do build**: `atlas crash-fingerprint <crash.toml> --resolved <saída do symbols.sh resolve>` usa a primeira função resolvida dentro do Atlas e o arquivo dela (sem linha, sem diretório, sem hash no nome), então o mesmo crash em duas versões tem um fingerprint só.
+- **Sem eles** (o que o app tem na máquina do usuário, que não leva debug info; também `atlas crash-fingerprint <crash.toml>`): `build_id` e o offset, o primeiro frame dentro do executável depois dos frames do próprio handler de crash, menos `load_bias`. O ASLR não o muda, então o mesmo crash do mesmo build em duas máquinas tem um fingerprint só; duas versões têm dois, porque um offset não significa nada fora do seu build.
+
+Um relatório sem nenhum frame dentro do executável não tem fingerprint e nunca coincide com outro. Os mesmos 16 caracteres estão no corpo da issue que o "Reportar issue" abre (a linha `Fingerprint:`), e o "Reportar issue" do app procura issues abertas por eles antes de abrir uma nova.
 
 ## Retirar uma versão com defeito
 

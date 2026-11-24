@@ -36,6 +36,8 @@ export interface ErrorReport {
 	context?: ErrorContext;
 	/** Title and hint of a report whose wording lives with its producer (the crash card), so the startup chunk does not carry it. */
 	headline?: { title: string; hint: string };
+	/** Names the bug across reports (`fingerprint.ts`); set where the producer knows better than the text does: a crash file carries its own. */
+	fingerprint?: string;
 }
 
 /** One thing the app did shortly before the error (a command, a host call, a navigation). */
@@ -530,6 +532,7 @@ function render(r: ErrorReport, b: Budget): string {
 	return [
 		"# Atlas desktop error",
 		"",
+		...(r.fingerprint ? [`Fingerprint: \`${r.fingerprint}\``, ""] : []),
 		"## Error",
 		...fence(redactText(clip(r.message, b.msg))),
 		"",
@@ -654,7 +657,18 @@ export function aiDiagnosePrompt(r: ErrorReport): string {
 	].join("\n");
 }
 
-/** Same error fired in a burst (a render loop, a timer) should surface once. */
-export function fingerprint(r: Pick<ErrorReport, "message" | "stack">): string {
-	return `${r.message}\n${r.stack.split("\n")[0] ?? ""}`;
+/**
+ * The report with the fingerprint that names its bug across reports (`fingerprint.ts`, #320): the one it carries
+ * (a crash file's), else the one of its message and stack. The computation loads on first use, not at startup (the
+ * startup bundle budget); a failed load returns the report as it is, and a report without one files without the line.
+ * The same error fired in a burst (a render loop, a timer) surfaces once, by this value.
+ */
+export async function withFingerprint(r: ErrorReport): Promise<ErrorReport> {
+	if (r.fingerprint) return r;
+	try {
+		const { fingerprint } = await import("./fingerprint.ts");
+		return { ...r, fingerprint: fingerprint(r.message, r.stack) };
+	} catch {
+		return r;
+	}
 }

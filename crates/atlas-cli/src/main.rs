@@ -94,6 +94,10 @@ enum Commands {
     #[command(hide = true, name = "crew-spawn")]
     CrewSpawn(commands::crew_spawn::CrewSpawnArgs),
 
+    /// The fingerprint of a crash report, to look for its issue
+    #[command(hide = true, name = "crash-fingerprint")]
+    CrashFingerprint(commands::crash_fingerprint::CrashFingerprintArgs),
+
     /// Inspect and drive Atlas Desktop terminals: ls, read, send, kill, wait
     Term(commands::hostd::TermArgs),
 
@@ -263,6 +267,7 @@ async fn run() -> Result<()> {
             | Commands::Hook(_)
             | Commands::Hostd(_)
             | Commands::CrewSpawn(_)
+            | Commands::CrashFingerprint(_)
             | Commands::Term(_)
             | Commands::Wt { .. }
             | Commands::Browser(_)
@@ -295,6 +300,7 @@ async fn run() -> Result<()> {
         Commands::Hook(args) => args.run().await?,
         Commands::Hostd(args) => args.run().await?,
         Commands::CrewSpawn(args) => args.run().await?,
+        Commands::CrashFingerprint(args) => args.run().await?,
         Commands::Term(args) => args.run().await?,
         Commands::Wt { command, json } => (commands::wt::WtArgs { command, json }).run().await?,
         Commands::Browser(args) => args.run().await?,

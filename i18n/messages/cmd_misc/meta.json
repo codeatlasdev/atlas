@@ -4,6 +4,8 @@
 	"cmd_misc_cache_totals": "Line of `atlas cache status` (the total, then one per project after the project name): cache hits and misses, and the time hits saved.",
 	"cmd_misc_config_ports": "Heading of the service port list printed by `atlas config check` when the project has a port offset; {offset} is the number added to each port.",
 	"cmd_misc_config_valid": "Output of `atlas config check` when atlas.yaml has no errors; {path} is the file.",
+	"cmd_misc_crash_fingerprint_none": "Error of the hidden 'atlas crash-fingerprint' when a crash report has no message and no frame inside the executable to key on. {path} is the report file.",
+	"cmd_misc_crash_fingerprint_unreadable": "Error of the hidden 'atlas crash-fingerprint' when the report (or the --resolved file) cannot be read. {path} is the file, {error} the system's reason.",
 	"cmd_misc_dc_app_mismatch": "Detail of the desktop-app check when the app's version differs from the CLI's; {version} may be dc_unknown_version.",
 	"cmd_misc_dc_app_missing": "Detail of the desktop-app check on a machine with a graphical session and no app.",
 	"cmd_misc_dc_app_none": "Detail of the desktop-app check on a machine with no graphical session, which is fine.",

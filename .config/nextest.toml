@@ -18,11 +18,13 @@ path = "junit.xml"
 # `sync_data` per append) take 35-105 s each, up to 2 s per write while the other three test threads do the same
 # (the JUnit report of a green run, measured). Four of them at once keep the disk, which the runner's own agent
 # writes its logs and heartbeat to, busy for minutes; the runner is lost in a window those tests fill. At most two
-# at a time; every other test still runs on all CPUs.
+# at a time; every other test still runs on all CPUs. The telegram tests were in this group too and are not disk
+# tests: their 2 s per iteration was a connect to a closed port, which Windows retries (`closed_api` in
+# `crew/telegram.rs`), so they left it.
 [test-groups]
 disk-sync = { max-threads = 2 }
 
 [[profile.ci.overrides]]
 platform = 'cfg(windows)'
-filter = '(package(atlas-host) & test(/^crew::(store::log_tests|telegram::|triggers::github::seen_tests)/)) | (package(atlas-core) & test(/^(fs|taskcache)::tests::/))'
+filter = '(package(atlas-host) & test(/^crew::(store::log_tests|triggers::github::seen_tests)/)) | (package(atlas-core) & test(/^(fs|taskcache)::tests::/))'
 test-group = 'disk-sync'

@@ -21,6 +21,8 @@
 	"cmd_misc_cache_totals": "hits: {hits}, misses: {misses}, tempo economizado: {saved}",
 	"cmd_misc_config_ports": "portas (+{offset}):",
 	"cmd_misc_config_valid": "OK: {path} é válido",
+	"cmd_misc_crash_fingerprint_none": "{path} não tem nada para identificar (sem mensagem e sem frame do executável).",
+	"cmd_misc_crash_fingerprint_unreadable": "Não foi possível ler {path}: {error}",
 	"cmd_misc_dc_app_mismatch": "{path} está na versão {version} e a CLI está na versão {cli}",
 	"cmd_misc_dc_app_missing": "o Atlas Desktop não está instalado",
 	"cmd_misc_dc_app_none": "não instalado (sem sessão gráfica)",

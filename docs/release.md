@@ -76,6 +76,7 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lists files a
 7. **Commit, tag, push.** Commit `chore(release): vX.Y.Z[-pre.N]`, annotated tag, then `git push --atomic origin <main|release/X.Y> <tag>`: the branch and the tag land together or not at all.
 8. **Push the tag; GitHub runs `release.yml`** (gate → macOS, Linux and Windows builds, Arch package → Linux verification in containers → publish). The script watches the run (`gh run watch`), then deploys the site (kept; it never fails the release).
 9. **Sign and publish** (`scripts/release-sign.sh <tag>`, the same for every channel, a stable promotion included). `release.yml` leaves the release a **draft**, so nothing is public yet. The script downloads `SHA256SUMS`, prints it, signs it with your offline key, checks the signature against the keys in the repository, uploads `SHA256SUMS.sig` and only then publishes the draft ([Release signing](#release-signing)). With a key configured an unsigned release is never published and the site is not deployed. Then it deploys the site.
+10. **Tell the reporters** (`scripts/release-notify.ts <tag>`, last, after the site). `Fixes #N` closes an issue at merge, days before the alpha that carries it ships, and says nothing about what to run. The script comments `Fixed in vX (alpha channel)`, with how to get it, on every issue closed as completed (not "not planned", not `type: question`, `status: wontfix` or `status: duplicate`) between the commit time of the previous release tag and this one, and on the reports that were marked as duplicates of them. An issue that already carries one of its comments (hidden `<!-- atlas-fixed-in:vX -->` marker) is left alone, so a rerun or the next release never tells anyone twice. It never fails the release. Rehearse or repeat it by hand: `bun run release:notify <tag> --dry-run` prints one line per comment (and the full text once), `bun run release:notify <tag>` writes them.
 
 ### Promotion guard (stable)
 
@@ -323,6 +324,15 @@ scripts/symbols.sh resolve crash-native-<ms>-<pid>.toml symbols/   # one line pe
 The shipped binaries, the AppImage, `.deb`, `.rpm`, `.dmg` and the NSIS installer carry **no** debug info: the workflow takes it out right after the build (`scripts/symbols.sh split` on Linux, `strip -S` after the `.dSYM` on macOS, a PDB that is already separate on Windows) and checks it (`symbols.sh verify-stripped`) before any package is made. Symbol names stay in the binary, so a plain backtrace still has function names; file and line come from the archive.
 
 `resolve` looks the frame up as `frame - load_bias - 1` in `symbols/<build_id>.debug`, so a report from a build whose archive was not published says so instead of guessing. The reports stay on the user's machine until he attaches one; nothing is uploaded.
+
+### Fingerprint of a crash
+
+Every crash report names the bug with a `fingerprint` of 16 hex characters, so two reports of one bug can be found by searching an issue for it (#320). A panic report has the line in the file, made from its message and location. A native report (`crash-native-*.toml`) is written in signal context, where nothing can be hashed, so its fingerprint is computed when it is read, from the frames:
+
+- **With the symbols of its build**: `atlas crash-fingerprint <crash.toml> --resolved <output of symbols.sh resolve>` keys it by the first resolved function inside Atlas and its file (no line, no directory, no hash in the name), so the same crash on two releases is one fingerprint.
+- **Without them** (what the app has on a user's machine, which ships no debug info; also `atlas crash-fingerprint <crash.toml>`): by `build_id` and the offset, the first frame inside the executable after the crash handler's own minus `load_bias`. ASLR does not change it, so the same crash of the same build on two machines is one fingerprint; two releases are two, since an offset means nothing outside its build.
+
+A report with no frame inside the executable has no fingerprint and never matches another. The same 16 characters are in the issue body that "Report issue" files (the `Fingerprint:` line), and "Report issue" in the app searches open issues for them before opening a new one.
 
 ## Yanking a bad release
 

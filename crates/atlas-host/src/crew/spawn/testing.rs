@@ -18,10 +18,9 @@ use super::server::{self, Config, Server};
 pub const USER: &str = "atlas-cm-3f2a9c1e5b7d";
 
 fn me(_: &str) -> io::Result<Ids> {
-    // SAFETY: plain getters.
     Ok(Ids {
-        uid: unsafe { libc::geteuid() },
-        gid: unsafe { libc::getegid() },
+        uid: atlas_core::sys::euid(),
+        gid: atlas_core::sys::egid(),
     })
 }
 
@@ -201,7 +200,7 @@ fn rig_full(memory: server::Memory, egress: fn() -> io::Result<()>) -> Rig {
     let cm = dir.path().join("cm/3f2a9c1e5b7d");
     std::fs::create_dir_all(&engines).unwrap();
     let server = Server::new(Config {
-        crew_uid: unsafe { libc::geteuid() },
+        crew_uid: atlas_core::sys::euid(),
         cm_root: dir.path().join("cm").to_string_lossy().into(),
         engines: vec![engines.to_string_lossy().into()],
         resolve: me,
@@ -228,7 +227,7 @@ fn rig_full(memory: server::Memory, egress: fn() -> io::Result<()>) -> Rig {
             crew: "atlas-crew".into(),
             cm_root: root.clone(),
         },
-        unsafe { libc::geteuid() },
+        atlas_core::sys::euid(),
         Box::new(host),
     );
     let prov_sock = dir.path().join("provision.sock");

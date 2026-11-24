@@ -176,7 +176,7 @@ async fn git(args: &[&str], token: Option<String>, scope: Option<&str>) -> Resul
     // SAFETY: only `umask(2)`, which is async-signal-safe, runs between fork and exec.
     unsafe {
         cmd.pre_exec(|| {
-            libc::umask(0o022);
+            atlas_core::sys::set_umask(0o022);
             Ok(())
         });
     }

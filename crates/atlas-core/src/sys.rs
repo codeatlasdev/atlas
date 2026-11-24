@@ -430,6 +430,14 @@ pub use crate::sys_install::{
     user_path_remove,
 };
 
+/// Who this process is, signals to a process group (`kill_tree` is the Windows one's twin: the group the root leads
+/// here, its descendants there), the umask and Unix socket peers. For the unix-only crew modules. See `sys_unix`.
+#[cfg(unix)]
+pub use crate::sys_unix::{
+    PeerCred, SIGKILL, SIGSTOP, SIGTERM, egid, euid, kill_group, kill_tree, peer_cred, set_umask,
+    uid,
+};
+
 /// [`shell`] for a tokio command.
 pub fn shell_tokio(script: &str) -> tokio::process::Command {
     imp::shell_tokio(script)

@@ -195,8 +195,7 @@ mod linux {
 
         /// [`Pool::detect`] with the mount and the cgroup file given (tests).
         pub fn detect_at(mount: &Path, proc_cgroup: &Path, cap: u64) -> Result<Self, String> {
-            // SAFETY: plain getter.
-            if unsafe { libc::geteuid() } != 0 {
+            if atlas_core::sys::euid() != 0 {
                 return Err("the spawn helper is not root".into());
             }
             if !mount.join("cgroup.controllers").is_file() {
@@ -495,8 +494,7 @@ mod tests {
     /// is the layout `Pool::detect` must handle by moving itself down.
     #[cfg(target_os = "linux")]
     fn in_delegated_unit(inside: &str) -> Result<String, String> {
-        // SAFETY: plain getter.
-        if unsafe { libc::geteuid() } != 0 || !Path::new("/run/systemd/system").is_dir() {
+        if atlas_core::sys::euid() != 0 || !Path::new("/run/systemd/system").is_dir() {
             return Err("needs root and systemd as PID 1".into());
         }
         let version = systemd_version().ok_or("no systemctl")?;
@@ -786,7 +784,11 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(50));
         };
-        assert_eq!(status.signal(), Some(libc::SIGKILL), "{status:?}");
+        assert_eq!(
+            status.signal(),
+            Some(atlas_core::sys::SIGKILL),
+            "{status:?}"
+        );
         assert!(
             leaf.oom_kills() > before,
             "memory.events oom_kill did not grow"

@@ -42,8 +42,7 @@ impl AtlasCommand for CrewSpawnArgs {
     async fn run(self) -> Result<()> {
         use atlas_host::crew::spawn::{exec, provision, server};
 
-        // SAFETY: plain getter.
-        if unsafe { libc::geteuid() } != 0 {
+        if atlas_core::sys::euid() != 0 {
             // i18n-ignore: output of a systemd unit, read in the journal by an administrator
             bail!(
                 "atlas crew-spawn runs as root (it is started by systemd: atlas-crew-spawn.service)"
@@ -156,8 +155,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn it_refuses_to_run_as_anyone_but_root() {
-        // SAFETY: plain getter.
-        if unsafe { libc::geteuid() } == 0 {
+        if atlas_core::sys::euid() == 0 {
             return;
         }
         let e = CrewSpawnArgs {

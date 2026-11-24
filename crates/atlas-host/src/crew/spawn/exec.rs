@@ -177,7 +177,7 @@ fn private_tmp(home: &str, ids: Ids) -> Option<String> {
     unsafe {
         if libc::mkdir(c.as_ptr(), 0o700) == 0 {
             // Only root can give it away; anyone else made it their own, which is who they will be.
-            if libc::geteuid() == 0 && libc::lchown(c.as_ptr(), ids.uid, ids.gid) != 0 {
+            if atlas_core::sys::euid() == 0 && libc::lchown(c.as_ptr(), ids.uid, ids.gid) != 0 {
                 return None;
             }
         } else if io::Error::last_os_error().kind() != io::ErrorKind::AlreadyExists {
@@ -189,8 +189,7 @@ fn private_tmp(home: &str, ids: Ids) -> Option<String> {
 
 /// The identity change a process of this helper needs to become `want`.
 pub(super) fn identity_for(want: Ids) -> io::Result<Identity> {
-    // SAFETY: plain getters.
-    let (euid, egid) = unsafe { (libc::geteuid(), libc::getegid()) };
+    let (euid, egid) = (atlas_core::sys::euid(), atlas_core::sys::egid());
     drop_for(
         Ids {
             uid: euid,
@@ -284,7 +283,7 @@ pub(super) fn spawn_becoming(cmd: &mut Command, b: Becoming<'_>) -> io::Result<C
             }
             // What a crewmate process creates is for its owner and its group (hostd's way in), never for another
             // crewmate: agents write straight to `/tmp/x`, which every crewmate shares. Cannot fail.
-            libc::umask(0o007);
+            atlas_core::sys::set_umask(0o007);
             if libc::chdir(cwd.as_ptr()) != 0 {
                 return Err(failed(STEP_CHDIR));
             }
@@ -548,11 +547,9 @@ mod tests {
         use std::os::unix::fs::MetadataExt;
         let f = fixture();
         // The helper's own umask is the permissive one the incident had.
-        // SAFETY: plain umask; this test's process is the helper here.
-        let before = unsafe { libc::umask(0o022) };
+        let before = atlas_core::sys::set_umask(0o022);
         let out = run(&f, Mode::Pipe);
-        // SAFETY: restores the value read above.
-        unsafe { libc::umask(before) };
+        atlas_core::sys::set_umask(before);
         assert!(out.contains("got=hello"), "{out}");
         let mode = |name: &str| {
             std::fs::metadata(format!("{}/{name}", f.work))
@@ -595,10 +592,9 @@ mod tests {
     }
 
     fn me() -> Ids {
-        // SAFETY: plain getters.
         Ids {
-            uid: unsafe { libc::geteuid() },
-            gid: unsafe { libc::getegid() },
+            uid: atlas_core::sys::euid(),
+            gid: atlas_core::sys::egid(),
         }
     }
 
@@ -789,8 +785,7 @@ mod tests {
     #[ignore = "needs root on Linux: creates a system user and changes uid (see docs/contributing.md)"]
     fn a_real_spawn_runs_as_the_crewmates_user_and_hostd_cannot_touch_it() {
         use std::process::Command as C;
-        // SAFETY: plain getter.
-        assert_eq!(unsafe { libc::geteuid() }, 0, "this test must run as root");
+        assert_eq!(atlas_core::sys::euid(), 0, "this test must run as root");
         let f = fixture();
         let user = "atlas-cm-ffffffffffff";
         let sh = |cmd: &str| C::new("sh").args(["-c", cmd]).status().unwrap().success();
@@ -867,8 +862,7 @@ mod tests {
      {
         use crate::crew::spawn::testing::{PROBE, probe_fds, systemd_listener};
         use std::process::Command as C;
-        // SAFETY: plain getter.
-        assert_eq!(unsafe { libc::geteuid() }, 0, "this test must run as root");
+        assert_eq!(atlas_core::sys::euid(), 0, "this test must run as root");
         let f = fixture();
         let user = "atlas-cm-cccccccccccc";
         let sh = |cmd: &str| C::new("sh").args(["-c", cmd]).status().unwrap().success();

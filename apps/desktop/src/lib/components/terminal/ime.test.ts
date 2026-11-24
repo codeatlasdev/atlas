@@ -1,3 +1,4 @@
+// @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
 import { SINK_REST, sinkBox } from "./ime.ts";
 
@@ -15,7 +16,10 @@ test("the sink goes on the cursor's cell, inset by the terminal padding", () => 
 });
 
 test("the first cell is the padding itself", () => {
-	expect(sinkBox({ cell_w: 8, cell_h: 17, cursor: { col: 0, row: 0 } }, pad)).toMatchObject({ left: 10, top: 6 });
+	expect(sinkBox({ cell_w: 8, cell_h: 17, cursor: { col: 0, row: 0 } }, pad)).toMatchObject({
+		left: 10,
+		top: 6,
+	});
 });
 
 // Before the first frame the renderer has measured no cell (the stats say 0): placing the sink at NaN or at the

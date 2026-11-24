@@ -220,7 +220,10 @@
 	 */
 	async function oncompositionstart() {
 		if (!input) return;
-		const s = (await invoke<Record<string, CursorStats>>("term_stats").catch(() => ({})))[tab];
+		const stats = await invoke<Record<string, CursorStats>>("term_stats").catch(
+			() => ({}) as Record<string, CursorStats>,
+		);
+		const s = stats[tab];
 		const box = sinkBox(s, prefs.value.terminal);
 		if (box) placeSink(box);
 	}

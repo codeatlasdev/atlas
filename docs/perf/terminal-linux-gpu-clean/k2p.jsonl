@@ -1,0 +1,6 @@
+{"mode":"gpu","run":1,"n":100,"missed":0,"p50":13.28,"p95":28.05,"max":29.42,"min":12.16,"loadBefore":1.37,"loadAfter":0.69,"valid":true}
+{"mode":"xterm","run":1,"n":100,"missed":0,"p50":22.12,"p95":31.06,"max":34.75,"min":15.19,"loadBefore":1.46,"loadAfter":0.80,"valid":true}
+{"mode":"gpu","run":2,"n":100,"missed":0,"p50":13.33,"p95":28.48,"max":29.67,"min":11.40,"loadBefore":1.58,"loadAfter":0.97,"valid":true}
+{"mode":"xterm","run":2,"n":100,"missed":0,"p50":22.15,"p95":30.06,"max":31.23,"min":16.00,"loadBefore":1.23,"loadAfter":0.62,"valid":true}
+{"mode":"gpu","run":3,"n":100,"missed":0,"p50":13.41,"p95":29.04,"max":29.84,"min":11.58,"loadBefore":1.13,"loadAfter":0.60,"valid":true}
+{"mode":"xterm","run":3,"n":100,"missed":0,"p50":22.16,"p95":30.33,"max":35.74,"min":15.61,"loadBefore":0.94,"loadAfter":0.45,"valid":true}

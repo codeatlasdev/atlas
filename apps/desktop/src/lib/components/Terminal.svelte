@@ -22,6 +22,7 @@
 	import { ptyStream } from "#lib/ptyStream.ts";
 	import { hostEvents } from "#lib/hostEventsApp.ts";
 	import { m } from "#lib/i18n/m.ts";
+	import { clock } from "#lib/clock.svelte.ts";
 
 	let {
 		pty,
@@ -167,9 +168,15 @@
 		t.unicode.activeVersion = "11";
 		t.loadAddon(new WebLinksAddon((ev, url) => onLink(url, primaryKey(ev))));
 		if (visible) loadWebgl(t);
+		const offs: (() => void)[] = [];
 		t.open(el);
 		// `el` is laid out: fit now, not after the attach answers (that painted the first frames at 80x24, then reflowed).
 		if (el.offsetWidth && el.offsetHeight) addon.fit();
+		// A resting page (hidden, or blurred past the clock's grace) keeps parsing but draws nothing: xterm pauses its renderer
+		// while its screen is not intersecting the viewport (`display: none` is not), and redraws once on the way back.
+		const gate = (resting: boolean) => t.element?.style.setProperty("display", resting ? "none" : "");
+		gate(clock.resting);
+		offs.push(clock.onRest(gate));
 		const firstRender = t.onRender(() => {
 			firstRender.dispose();
 			drawn = true;
@@ -208,7 +215,6 @@
 			}
 			return true;
 		});
-		const offs: (() => void)[] = [];
 		let alive = true;
 		// A webfont still loading was measured on its fallback: redo the list (and the cell) once they are ready.
 		void document.fonts?.ready.then(() => {

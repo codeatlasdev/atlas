@@ -1,0 +1,9 @@
+{"module":"unset","gpu":1,"field":"a","layout":"intl","mode":"layout","expected":"ação é ç ã ê à 'x'","got":"aćão é ć ã ê à 'x","pass":false}
+{"module":"unset","gpu":1,"field":"b","layout":"intl","mode":"layout","expected":"ação é ç ã ê à 'x","got":"aćão é ć ã ê à 'x","pass":false}
+{"module":"unset","gpu":1,"field":"c","layout":"intl","mode":"layout","expected":"ação é ç ã ê à 'x","got":"aćão é ć ã ê à 'x","pass":false}
+{"module":"unset","gpu":1,"field":"d","layout":"intl","mode":"layout","expected":"ação é ç ã ê à 'x","got":"aćão é ć ã ê à 'x","pass":false}
+{"module":"unset","gpu":1,"field":"a","layout":"intl","mode":"fcitx-kbd","expected":"ação é ç ã ê à 'x'","got":"a~c\"ao ẽ ~c \"a ë 'a ~x'\"","pass":false}
+{"module":"unset","gpu":1,"field":"b","layout":"intl","mode":"fcitx-kbd","expected":"ação é ç ã ê à 'x","got":"a~c\"ao ẽ ~c \"a ë 'a ~x","pass":false}
+{"module":"unset","gpu":1,"field":"c","layout":"intl","mode":"fcitx-kbd","expected":"ação é ç ã ê à 'x","got":"a~c\"ao ẽ ~c \"a ë 'a ~x","pass":false}
+{"module":"unset","gpu":1,"field":"d","layout":"intl","mode":"fcitx-kbd","expected":"ação é ç ã ê à 'x","got":"a~c\"ao ẽ ~c \"a ë 'a ~x","pass":false}
+{"module":"unset","gpu":1,"field":"a","layout":"pinyin","mode":"pinyin","expected":"你好","got":"你好","pass":true}

@@ -1,0 +1,1 @@
+linux graphics: session=wayland display=wayland nvidia=none im=wayland (yours) env=[GDK_BACKEND=wayland]

@@ -1,0 +1,1 @@
+linux graphics: session=wayland display=wayland nvidia=none im=wayland (set by Atlas: Wayland session with an input method) env=[GDK_BACKEND=wayland]

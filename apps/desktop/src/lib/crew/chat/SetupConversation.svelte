@@ -40,8 +40,9 @@
 </script>
 
 {#snippet bubbleText(parts: { text: string; bold?: true }[] | undefined, text: string)}
-	{#if parts}{#each parts as p, pi (pi)}{#if p.bold}<strong>{p.text}</strong
-				>{:else}{p.text}{/if}{/each}{:else}{text}{/if}
+	{#if parts}{#each parts as p, pi (pi)}{#if p.bold}<strong>
+					{p.text}
+				</strong>{:else}{p.text}{/if}{/each}{:else}{text}{/if}
 {/snippet}
 
 <div
@@ -95,9 +96,9 @@
 				{#if q.nameChips?.length}
 					<div class="name-chips">
 						{#each q.nameChips as chip (chip)}
-							<button class="name-chip" onclick={() => void answer(undefined, chip)} disabled={setup.saving}
-								>{chip}</button
-							>
+							<button class="name-chip" onclick={() => void answer(undefined, chip)} disabled={setup.saving}>
+								{chip}
+							</button>
 						{/each}
 					</div>
 				{/if}

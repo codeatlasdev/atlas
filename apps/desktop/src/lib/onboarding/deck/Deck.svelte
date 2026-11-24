@@ -143,14 +143,14 @@
 		{/each}
 	</nav>
 	{#if i > 0 && w.phase === "welcome"}
-		<button class="back" onclick={() => go(i - 1)} aria-label={m.common_action_back()}
-			><ArrowLeft size={15} /></button
-		>
+		<button class="back" onclick={() => go(i - 1)} aria-label={m.common_action_back()}>
+			<ArrowLeft size={15} />
+		</button>
 	{/if}
 	{#if w.phase !== "up"}
-		<button class="skip" data-testid={ACTIONS.skip} onclick={onskip}
-			>{m.onboarding_hero_skip_for_now()}</button
-		>
+		<button class="skip" data-testid={ACTIONS.skip} onclick={onskip}>
+			{m.onboarding_hero_skip_for_now()}
+		</button>
 	{/if}
 </div>
 

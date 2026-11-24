@@ -37,9 +37,9 @@
 	{#snippet actions()}
 		<Button variant="ghost" onclick={postponeHost}>{m.workbench_host_prompt_later()}</Button>
 		<Button variant="destructive" onclick={restartHost}>{m.workbench_host_prompt_restart_now()}</Button>
-		<Button variant="filled" onclick={restartHostWhenIdle}
-			>{m.workbench_host_prompt_restart_when_idle()}</Button
-		>
+		<Button variant="filled" onclick={restartHostWhenIdle}>
+			{m.workbench_host_prompt_restart_when_idle()}
+		</Button>
 	{/snippet}
 </Dialog>
 

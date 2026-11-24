@@ -55,8 +55,10 @@
 				class="rangex"
 				title={m.logs_range_chip_clear_time_range()}
 				aria-label={m.logs_range_chip_clear_time_range()}
-				onclick={() => pick(ALL_TIME)}><X size={11} /></button
+				onclick={() => pick(ALL_TIME)}
 			>
+				<X size={11} />
+			</button>
 		{/if}
 	</div>
 	{#if open}
@@ -65,17 +67,19 @@
 				<button
 					class="opt"
 					class:sel={range.kind === "last" && range.minutes === minutes}
-					onclick={() => pick({ kind: "last", minutes })}>{rangeLabel({ kind: "last", minutes })}</button
+					onclick={() => pick({ kind: "last", minutes })}
 				>
+					{rangeLabel({ kind: "last", minutes })}
+				</button>
 			{/each}
-			<button class="opt" class:sel={range.kind === "restart"} onclick={() => pick({ kind: "restart" })}
-				>{only
+			<button class="opt" class:sel={range.kind === "restart"} onclick={() => pick({ kind: "restart" })}>
+				{only
 					? m.logs_range_chip_since_service_restarted({ name: only })
-					: m.logs_range_chip_since_last_restart()}</button
-			>
-			<button class="opt" class:sel={range.kind === "start"} onclick={() => pick({ kind: "start" })}
-				>{rangeLabel({ kind: "start" })}</button
-			>
+					: m.logs_range_chip_since_last_restart()}
+			</button>
+			<button class="opt" class:sel={range.kind === "start"} onclick={() => pick({ kind: "start" })}>
+				{rangeLabel({ kind: "start" })}
+			</button>
 			<div class="custom">
 				<input
 					bind:value={customText}

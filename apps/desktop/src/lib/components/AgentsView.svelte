@@ -107,17 +107,17 @@
 		>
 			{#snippet actions()}
 				{#if filtered}
-					<button class="start" onclick={() => ((repo = "all"), (stateFilter = "all"))}
-						>{m.workbench_agents_clear_filters()}</button
-					>
+					<button class="start" onclick={() => ((repo = "all"), (stateFilter = "all"))}>
+						{m.workbench_agents_clear_filters()}
+					</button>
 				{:else if !store.projects.length}
-					<button class="start" onclick={() => runCommand("atlas::AddProject")}
-						>{m.workbench_agents_add_project()}</button
-					>
+					<button class="start" onclick={() => runCommand("atlas::AddProject")}>
+						{m.workbench_agents_add_project()}
+					</button>
 				{:else if !ws.selected}
-					<button class="start" onclick={() => (ws.view = "worktree")}
-						>{m.workbench_agents_choose_worktree()}</button
-					>
+					<button class="start" onclick={() => (ws.view = "worktree")}>
+						{m.workbench_agents_choose_worktree()}
+					</button>
 				{:else}
 					<button class="start" onclick={() => runCommand("atlas::NewAgentSession")}>
 						{m.workbench_agents_new_session()} <kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
@@ -141,9 +141,9 @@
 						<button class="card" onclick={() => focus(p.tab.id)}>
 							<Card padding="sm">
 								<div class="row">
-									<AgentGlyph state={p.st?.state ?? "idle"} /><AgentLogo agent={p.tab.agent} size={12} /><b
-										>{p.tab.agent}</b
-									><span class="dim">{where(p.tab.worktreeId)}</span>
+									<AgentGlyph state={p.st?.state ?? "idle"} /><AgentLogo agent={p.tab.agent} size={12} /><b>
+										{p.tab.agent}
+									</b><span class="dim">{where(p.tab.worktreeId)}</span>
 								</div>
 								{#if p.st?.prompt}<p class="prompt">{p.st.prompt}</p>{/if}
 								{#if p.st?.last_message}<p class="msg">{p.st.last_message}</p>{/if}
@@ -170,9 +170,9 @@
 	<div class="feed">
 		{#each running as p (p.tab.id)}
 			<button class="line pinned" onclick={() => focus(p.tab.id)}>
-				<AgentGlyph state="working" /><AgentLogo agent={p.tab.agent} size={12} /><b>{p.tab.agent}</b><span
-					>{where(p.tab.worktreeId)}</span
-				>
+				<AgentGlyph state="working" /><AgentLogo agent={p.tab.agent} size={12} /><b>{p.tab.agent}</b><span>
+					{where(p.tab.worktreeId)}
+				</span>
 				<span class="dim">{p.st?.prompt ?? ""}</span>
 			</button>
 		{/each}

@@ -61,9 +61,9 @@
 	{#if showGlobalEmpty}
 		<div class="board-empty">
 			{m.crew_workspace_board_no_tasks_match_these_filters()}
-			<button class="empty-clear" onclick={() => filters.clear()}
-				>{m.crew_workspace_board_clear_filters()}</button
-			>
+			<button class="empty-clear" onclick={() => filters.clear()}>
+				{m.crew_workspace_board_clear_filters()}
+			</button>
 		</div>
 	{/if}
 	<div class="board" aria-label={m.crew_workspace_board_crew_board()}>
@@ -75,8 +75,9 @@
 						<span
 							class="col-count"
 							aria-label={m.crew_workspace_board_column_task_count({ count: col.cards.length })}
-							>{col.cards.length}</span
 						>
+							{col.cards.length}
+						</span>
 					{/if}
 				</div>
 

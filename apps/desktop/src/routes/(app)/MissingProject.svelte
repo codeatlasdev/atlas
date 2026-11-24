@@ -45,12 +45,13 @@
 	>
 		{#snippet actions()}
 			<Button onclick={() => locateProject(p.id)}>{m.shell_home_missing_project_locate()}</Button>
-			<Button variant="ghost" onclick={() => refreshProjects()}
-				><RefreshCw size={13} /> {m.shell_home_missing_project_check_again()}</Button
-			>
-			<Button variant="ghost" onclick={() => removeProject(p.id)}
-				>{m.shell_home_missing_project_remove_from_atlas()}</Button
-			>
+			<Button variant="ghost" onclick={() => refreshProjects()}>
+				<RefreshCw size={13} />
+				{m.shell_home_missing_project_check_again()}
+			</Button>
+			<Button variant="ghost" onclick={() => removeProject(p.id)}>
+				{m.shell_home_missing_project_remove_from_atlas()}
+			</Button>
 		{/snippet}
 	</EmptyState>
 	<p class="path mono ca-selectable" title={m.shell_home_missing_project_last_known_path()}>
@@ -71,9 +72,9 @@
 					{#if suggestion.branch}· {suggestion.branch}{/if}
 				</small>
 			</div>
-			<Button size="sm" onclick={() => suggestion && relinkProject(p.id, suggestion.path)}
-				>{m.shell_home_missing_project_relink()}</Button
-			>
+			<Button size="sm" onclick={() => suggestion && relinkProject(p.id, suggestion.path)}>
+				{m.shell_home_missing_project_relink()}
+			</Button>
 		</div>
 	{/if}
 

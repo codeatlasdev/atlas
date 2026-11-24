@@ -65,9 +65,9 @@
 		</button>
 		<span class="nav-crewmate-name">{crewmate.name}</span>
 		{#if agentLabel}
-			<span class="nav-crewmate-sub" title={serverName}
-				>{agentLabel}{serverName ? ` · ${crewServerLabel(serverName)}` : ""}</span
-			>
+			<span class="nav-crewmate-sub" title={serverName}>
+				{agentLabel}{serverName ? ` · ${crewServerLabel(serverName)}` : ""}
+			</span>
 		{/if}
 	</div>
 
@@ -80,8 +80,10 @@
 					aria-current={active === s.id ? "page" : undefined}
 					bind:this={itemEls[i]}
 					onclick={() => (active = s.id)}
-					onkeydown={(e) => keydown(e, i)}>{s.label}</button
+					onkeydown={(e) => keydown(e, i)}
 				>
+					{s.label}
+				</button>
 			</li>
 		{/each}
 	</ul>

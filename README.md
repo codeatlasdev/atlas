@@ -264,7 +264,7 @@ site/          the website (Astro + Svelte); renders docs/ as the docs section
 docs/  skills/  scripts/
 ```
 
-Rust 1.99 (pinned in `rust-toolchain.toml`). CI runs on GitHub Actions for pull requests and `main`; releases are built by GitHub Actions from version tags.
+Rust 1.100 (pinned in `rust-toolchain.toml`). CI runs on GitHub Actions for pull requests and `main`; releases are built by GitHub Actions from version tags.
 
 ## contributing, security, license
 

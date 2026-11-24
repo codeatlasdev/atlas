@@ -85,18 +85,19 @@
 				<TriangleAlert size={14} />
 				{m.viewers_files_tree_view_cannot_parse({ format: fileTypeLabel(ft), error: parsed.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
-					>{m.viewers_devops_open_as_source()}</button
-				>
+				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}>
+					{m.viewers_devops_open_as_source()}
+				</button>
 			</div>
 		</div>
 	{:else}
 		<div class="bar">
-			<span class="rv-ver"
-				>{m.viewers_files_tree_view_visible({ format: fileTypeLabel(ft), count: flat.rows.length })}</span
-			>
-			{#if q}<span class="rv-chip acc">{m.viewers_files_tree_view_matches({ count: flat.matches })}</span
-				>{/if}
+			<span class="rv-ver">
+				{m.viewers_files_tree_view_visible({ format: fileTypeLabel(ft), count: flat.rows.length })}
+			</span>
+			{#if q}<span class="rv-chip acc">
+					{m.viewers_files_tree_view_matches({ count: flat.matches })}
+				</span>{/if}
 			<span class="sp"></span>
 			<label class="rv-search">
 				<Search size={12} />
@@ -110,14 +111,18 @@
 				class="rv-btn icon"
 				title={m.viewers_files_tree_view_expand_all()}
 				aria-label={m.viewers_files_tree_view_expand_all()}
-				onclick={() => expandAll(true)}><ChevronsUpDown size={13} /></button
+				onclick={() => expandAll(true)}
 			>
+				<ChevronsUpDown size={13} />
+			</button>
 			<button
 				class="rv-btn icon"
 				title={m.viewers_files_tree_view_collapse_all()}
 				aria-label={m.viewers_files_tree_view_collapse_all()}
-				onclick={() => expandAll(false)}><ChevronsDownUp size={13} /></button
+				onclick={() => expandAll(false)}
 			>
+				<ChevronsDownUp size={13} />
+			</button>
 		</div>
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<div
@@ -147,13 +152,13 @@
 								if (r.expandable) toggle(r.id);
 							}}
 						>
-							<span class="tw" class:rot={r.expanded} class:none={!r.expandable}
-								><ChevronRight size={12} /></span
-							>
+							<span class="tw" class:rot={r.expanded} class:none={!r.expandable}>
+								<ChevronRight size={12} />
+							</span>
 							<span class="k">{r.key}</span>
-							<span class="v t-{r.type}" class:c={r.expandable}
-								>{r.type === "string" ? JSON.stringify(r.preview) : r.preview}</span
-							>
+							<span class="v t-{r.type}" class:c={r.expandable}>
+								{r.type === "string" ? JSON.stringify(r.preview) : r.preview}
+							</span>
 							<span class="ty">{r.type}</span>
 							<span class="act">
 								{#if r.path}<Copy text={r.path} label={m.viewers_files_tree_view_copy_path()} />{/if}

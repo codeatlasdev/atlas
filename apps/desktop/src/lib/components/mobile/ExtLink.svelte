@@ -12,8 +12,10 @@
 	onclick={(e) => {
 		e.preventDefault();
 		api.openUrl(href).catch((err) => toast.error(errText(err)));
-	}}>{@render children()}</a
+	}}
 >
+	{@render children()}
+</a>
 
 <style>
 	a {

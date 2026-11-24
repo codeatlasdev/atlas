@@ -474,9 +474,9 @@
 				{/each}
 				<path d="M 0 -20 L -3 -12 L 0 -14 L 3 -12 Z" fill="rgba(255,255,255,0.48)" />
 				<circle r="2.5" fill="rgba(255,255,255,0.38)" />
-				<text y="-24" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="7" font-family="inherit"
-					><!-- i18n-ignore: the letter N on a compass, the same in every language -->N</text
-				>
+				<text y="-24" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="7" font-family="inherit">
+					<!-- i18n-ignore: the letter N on a compass, the same in every language -->N
+				</text>
 			</g>
 
 			<!-- Seagulls -->

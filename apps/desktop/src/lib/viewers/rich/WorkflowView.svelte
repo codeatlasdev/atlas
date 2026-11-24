@@ -29,9 +29,9 @@
 				<TriangleAlert size={14} />
 				{m.viewers_devops_cannot_parse({ error: parsed.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
-					>{m.viewers_devops_open_as_source()}</button
-				>
+				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}>
+					{m.viewers_devops_open_as_source()}
+				</button>
 			</div>
 		{:else if w}
 			<header class="rv-head">
@@ -42,9 +42,10 @@
 				</div>
 				<div class="rv-facts">
 					{#each w.triggers as t (t.event)}
-						<span class="rv-chip info" title={t.detail}
-							><Zap size={10} /> {t.event}{t.detail ? ` · ${t.detail}` : ""}</span
-						>
+						<span class="rv-chip info" title={t.detail}>
+							<Zap size={10} />
+							{t.event}{t.detail ? ` · ${t.detail}` : ""}
+						</span>
 					{/each}
 				</div>
 			</header>
@@ -75,9 +76,9 @@
 										: m.viewers_devops_workflow_view_starts_immediately()}
 								>
 									<b>{j.name}</b>
-									{#if j.needs.length}<span class="rv-note"
-											>{m.viewers_devops_workflow_view_after({ needs: j.needs.join(", ") })}</span
-										>{/if}
+									{#if j.needs.length}<span class="rv-note">
+											{m.viewers_devops_workflow_view_after({ needs: j.needs.join(", ") })}
+										</span>{/if}
 								</div>
 							{/each}
 						</div>
@@ -102,26 +103,28 @@
 								<span class="rv-chip mono"><Cpu size={10} /> {j.runsOn || "?"}</span>
 								{#each Object.entries(j.matrix) as [k, v] (k)}<span
 										class="rv-chip info mono"
-										title={v.join(", ")}>{k} × {v.length}</span
-									>{/each}
-								{#if j.timeout}<span class="rv-chip"
-										><Timer size={10} />
-										{m.viewers_devops_workflow_view_timeout({ timeout: j.timeout })}</span
-									>{/if}
+										title={v.join(", ")}
+									>
+										{k} × {v.length}
+									</span>{/each}
+								{#if j.timeout}<span class="rv-chip">
+										<Timer size={10} />
+										{m.viewers_devops_workflow_view_timeout({ timeout: j.timeout })}
+									</span>{/if}
 								{#if j.cond}<span class="rv-chip warn mono" title={j.cond}><!-- i18n-ignore -->if</span>{/if}
 								<span class="rv-v"></span>
-								<span class="rv-note"
-									>{m.viewers_devops_workflow_view_steps_count({ count: j.steps.length })}</span
-								>
+								<span class="rv-note">
+									{m.viewers_devops_workflow_view_steps_count({ count: j.steps.length })}
+								</span>
 							</button>
 							{#if open[j.id]}
 								<ol class="steps">
 									{#each j.steps as s, i (i)}
 										<li>
 											<div class="sh">
-												{#if s.uses}<span class="rv-chip mono" class:warn={unpinned(j.id, s.uses)}
-														>{short(s.uses)}</span
-													>
+												{#if s.uses}<span class="rv-chip mono" class:warn={unpinned(j.id, s.uses)}>
+														{short(s.uses)}
+													</span>
 												{:else}<Terminal size={12} />{/if}
 												<span class="sn">{s.name}</span>
 												{#if s.cond}<span class="rv-chip mono" title={s.cond}>{`if ${s.cond}`}</span>{/if}
@@ -129,9 +132,10 @@
 											{#if s.run && s.run.trim() !== s.name}<Code code={s.run.trim()} lang="shell" />{/if}
 											{#if Object.keys(s.with).length}
 												<div class="with">
-													{#each Object.entries(s.with) as [k, v] (k)}<span class="rv-chip mono"
-															><b>{k}</b> {v.length > 40 ? v.slice(0, 40) + "…" : v}</span
-														>{/each}
+													{#each Object.entries(s.with) as [k, v] (k)}<span class="rv-chip mono">
+															<b>{k}</b>
+															{v.length > 40 ? v.slice(0, 40) + "…" : v}
+														</span>{/each}
 												</div>
 											{/if}
 										</li>

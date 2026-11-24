@@ -104,11 +104,11 @@
 
 		<!-- Prompt (all kinds) -->
 		<div class="prompt-section">
-			<label class="field-label" for="auto-prompt"
-				>{crewmateName
+			<label class="field-label" for="auto-prompt">
+				{crewmateName
 					? m.crew_automation_dialog_prompt_label({ crewmate: crewmateName })
-					: m.crew_automation_dialog_prompt_label_default()}</label
-			>
+					: m.crew_automation_dialog_prompt_label_default()}
+			</label>
 			<textarea
 				id="auto-prompt"
 				class="prompt-area"

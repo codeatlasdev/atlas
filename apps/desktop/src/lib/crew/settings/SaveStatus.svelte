@@ -11,8 +11,9 @@
 	class:saving={field.status === "saving"}
 	class:saved={field.status === "saved"}
 	class:error={field.status === "error"}
-	>{#if field.status === "saving"}{m.common_state_saving()}{:else if field.status === "saved"}{m.crew_settings_save_status_saved()}{:else if field.status === "error"}{field.error}{/if}</span
 >
+	{#if field.status === "saving"}{m.common_state_saving()}{:else if field.status === "saved"}{m.crew_settings_save_status_saved()}{:else if field.status === "error"}{field.error}{/if}
+</span>
 
 <style>
 	.save-status {

@@ -85,22 +85,23 @@
 					<Ellipsis size={14} />
 				</button>
 			{/snippet}
-			<DropdownMenuItem onclick={() => oncopy("json")}>{m.settings_theme_tab_copy_as_json()}</DropdownMenuItem
-			>
-			<DropdownMenuItem onclick={() => oncopy("ghostty")}
-				>{m.settings_theme_tab_copy_as_ghostty_config()}</DropdownMenuItem
-			>
-			<DropdownMenuItem onclick={() => onsave("json")}
-				>{m.settings_theme_card_save_as_json()}</DropdownMenuItem
-			>
-			<DropdownMenuItem onclick={() => onsave("ghostty")}
-				>{m.settings_theme_card_save_as_ghostty_config()}</DropdownMenuItem
-			>
+			<DropdownMenuItem onclick={() => oncopy("json")}>
+				{m.settings_theme_tab_copy_as_json()}
+			</DropdownMenuItem>
+			<DropdownMenuItem onclick={() => oncopy("ghostty")}>
+				{m.settings_theme_tab_copy_as_ghostty_config()}
+			</DropdownMenuItem>
+			<DropdownMenuItem onclick={() => onsave("json")}>
+				{m.settings_theme_card_save_as_json()}
+			</DropdownMenuItem>
+			<DropdownMenuItem onclick={() => onsave("ghostty")}>
+				{m.settings_theme_card_save_as_ghostty_config()}
+			</DropdownMenuItem>
 			{#if theme.source === "user"}
 				<DropdownMenuSeparator />
-				<DropdownMenuItem variant="destructive" onclick={onremove}
-					>{m.common_action_delete()}</DropdownMenuItem
-				>
+				<DropdownMenuItem variant="destructive" onclick={onremove}>
+					{m.common_action_delete()}
+				</DropdownMenuItem>
 			{/if}
 		</DropdownMenu>
 	</div>

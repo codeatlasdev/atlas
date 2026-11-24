@@ -105,9 +105,9 @@
 						<Plug2 size={13} aria-hidden="true" />
 						<span>{m.crew_workspace_integrations_catalog_integrations()}</span>
 						{#if connectedCount > 0}
-							<span class="integration-status integration-status--on"
-								>{m.crew_workspace_integrations_connected_count({ count: connectedCount })}</span
-							>
+							<span class="integration-status integration-status--on">
+								{m.crew_workspace_integrations_connected_count({ count: connectedCount })}
+							</span>
 						{:else}
 							<span class="integration-status">{m.crew_workspace_sidebar_footer_manage()}</span>
 						{/if}

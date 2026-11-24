@@ -117,9 +117,9 @@
 						<p class="body-text" style:--stagger={2}>
 							{ob.meta.body}
 							<!-- One small docs link per step, in the header: the page of the docs that explains this step. -->
-							<button class="docs-link" onclick={() => api.openUrl(stepDocs(ob.step))}
-								>{m.crew_onboarding_docs()}</button
-							>
+							<button class="docs-link" onclick={() => api.openUrl(stepDocs(ob.step))}>
+								{m.crew_onboarding_docs()}
+							</button>
 						</p>
 
 						<!-- Bullet points (info steps only) -->

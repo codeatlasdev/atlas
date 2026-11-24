@@ -208,8 +208,9 @@
 			variant="ghost"
 			aria-label={m.settings_capture_key_clear_aria({ action: label })}
 			onclick={() => prefs && save({ ...prefs, keys: { ...prefs.keys, [field]: "" } })}
-			>{m.settings_capture_key_clear()}</Button
 		>
+			{m.settings_capture_key_clear()}
+		</Button>
 	{/if}
 {/snippet}
 
@@ -240,9 +241,9 @@
 			{#if !granted}
 				<Button size="sm" variant="filled" onclick={grant}>{m.settings_capture_permission_grant()}</Button>
 			{/if}
-			<Button size="sm" variant="outlined" onclick={() => run(() => invoke("shots_open_settings"))}
-				>{m.settings_capture_permission_open_settings()}</Button
-			>
+			<Button size="sm" variant="outlined" onclick={() => run(() => invoke("shots_open_settings"))}>
+				{m.settings_capture_permission_open_settings()}
+			</Button>
 		</Row>
 		<Row
 			id="capture-enabled"
@@ -265,9 +266,9 @@
 			</span>
 			<Button size="sm" variant="outlined" onclick={pickFolder}>{m.settings_capture_folder_choose()}</Button>
 			{#if prefs.folder}
-				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, folder: "" })}
-					>{m.settings_capture_folder_reset()}</Button
-				>
+				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, folder: "" })}>
+					{m.settings_capture_folder_reset()}
+				</Button>
 			{/if}
 		</Row>
 	{/if}
@@ -314,11 +315,13 @@
 							variant="filled"
 							disabled={!pickedAvailable}
 							title={pickedAvailable ? undefined : m.settings_capture_preset_apply_blocked()}
-							onclick={applyPicked}>{m.settings_capture_preset_apply()}</Button
+							onclick={applyPicked}
 						>
-						<Button size="sm" variant="ghost" onclick={() => (picked = null)}
-							>{m.common_action_cancel()}</Button
-						>
+							{m.settings_capture_preset_apply()}
+						</Button>
+						<Button size="sm" variant="ghost" onclick={() => (picked = null)}>
+							{m.common_action_cancel()}
+						</Button>
 					</div>
 				{/if}
 			{/snippet}
@@ -329,9 +332,9 @@
 			description={m.settings_capture_system_keys_description(systemKeyArgs())}
 			stack
 		>
-			<Button size="sm" variant="outlined" onclick={() => run(() => invoke("shots_open_shortcuts_settings"))}
-				>{m.settings_capture_system_keys_open()}</Button
-			>
+			<Button size="sm" variant="outlined" onclick={() => run(() => invoke("shots_open_shortcuts_settings"))}>
+				{m.settings_capture_system_keys_open()}
+			</Button>
 			<label class="inline">
 				<Switch
 					aria-label={m.settings_capture_system_keys_off_aria()}
@@ -675,19 +678,20 @@
 										<span class="sub">{l.detail} · {dateTime(e.at)}</span>
 									</span>
 									<span class="btns">
-										<Button size="sm" variant="ghost" onclick={() => run(() => history.open(e.path))}
-											>{m.common_action_open()}</Button
-										>
-										<Button size="sm" variant="ghost" onclick={() => run(() => history.reveal(e.path))}
-											>{revealLabel()}</Button
-										>
+										<Button size="sm" variant="ghost" onclick={() => run(() => history.open(e.path))}>
+											{m.common_action_open()}
+										</Button>
+										<Button size="sm" variant="ghost" onclick={() => run(() => history.reveal(e.path))}>
+											{revealLabel()}
+										</Button>
 										<Button
 											size="sm"
 											variant="ghost"
 											title={m.settings_capture_recent_forget()}
 											onclick={() => run(async () => (await history.remove(e.path), await refreshHistory()))}
-											>{m.settings_capture_recent_remove()}</Button
 										>
+											{m.settings_capture_recent_remove()}
+										</Button>
 									</span>
 								</li>
 							{/each}

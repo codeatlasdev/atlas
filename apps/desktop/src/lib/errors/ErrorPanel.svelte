@@ -153,9 +153,9 @@
 <div class="wrap {variant}" role="alert" aria-labelledby="ep-title">
 	<div class="card">
 		<div class="top">
-			<span class="icon" aria-hidden="true"
-				><OctagonAlert size={variant === "fullscreen" ? 22 : 18} strokeWidth={1.75} /></span
-			>
+			<span class="icon" aria-hidden="true">
+				<OctagonAlert size={variant === "fullscreen" ? 22 : 18} strokeWidth={1.75} />
+			</span>
 			<div class="head">
 				<h2 id="ep-title">{heading}</h2>
 				{#if hint}<p class="hint">{hint}</p>{/if}
@@ -223,9 +223,9 @@
 							<b>{a.label}</b>
 							<span>{a.hint}</span>
 						</span>
-						<span class="ai-tick"
-							>{#if copied === a.id}<Check size={13} />{:else}<Copy size={12} />{/if}</span
-						>
+						<span class="ai-tick">
+							{#if copied === a.id}<Check size={13} />{:else}<Copy size={12} />{/if}
+						</span>
 					</button>
 				{/each}
 				<button class="ai-row" onclick={() => copyText("md", markdownReport(filed))}>
@@ -234,9 +234,9 @@
 						<b>{m.errors_panel_copy_markdown()}</b>
 						<span>{m.errors_panel_copy_markdown_hint()}</span>
 					</span>
-					<span class="ai-tick"
-						>{#if copied === "md"}<Check size={13} />{:else}<Copy size={12} />{/if}</span
-					>
+					<span class="ai-tick">
+						{#if copied === "md"}<Check size={13} />{:else}<Copy size={12} />{/if}
+					</span>
 				</button>
 			</div>
 		{/if}

@@ -30,8 +30,10 @@
 								style:color={p.color}
 								style:background={i === SELECTED_LINE && j === 1 ? model.selection : undefined}
 								style:font-style={p.italic ? "italic" : undefined}
-								style:font-weight={p.bold ? 700 : undefined}>{tok.text}</span
+								style:font-weight={p.bold ? 700 : undefined}
 							>
+								{tok.text}
+							</span>
 						{/each}
 					</span>
 				</div>
@@ -57,9 +59,9 @@
 		></span>
 		<span class="chip" style:background={model.editorBg} style:box-shadow="inset 0 0 0 1px {model.border}"
 		></span>
-		<span class="label" style:color={model.muted}
-			><!-- i18n-ignore: a type specimen (capital and small a), not a word -->Aa</span
-		>
+		<span class="label" style:color={model.muted}>
+			<!-- i18n-ignore: a type specimen (capital and small a), not a word -->Aa
+		</span>
 	</div>
 </div>
 

@@ -36,9 +36,9 @@
 					{#each g.rows as r (r.id)}
 						<div class="row">
 							<span class="label">{r.label}</span>
-							<span class="keys"
-								>{#each r.keys as k (k)}<Kbd>{k}</Kbd>{/each}</span
-							>
+							<span class="keys">
+								{#each r.keys as k (k)}<Kbd>{k}</Kbd>{/each}
+							</span>
 						</div>
 					{/each}
 				</section>

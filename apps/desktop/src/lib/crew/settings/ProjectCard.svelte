@@ -47,20 +47,20 @@
 		<div class="row-text auto-text">
 			<span class="row-label">{m.crew_settings_project_card_project()}</span>
 			{#if crewmate.project}
-				<span class="row-hint auto-prompt" title={crewmate.project.url ?? crewmate.project.path}
-					>{(crewmate.project.url ?? crewmate.project.path ?? crewmate.project.name ?? "").replace(
+				<span class="row-hint auto-prompt" title={crewmate.project.url ?? crewmate.project.path}>
+					{(crewmate.project.url ?? crewmate.project.path ?? crewmate.project.name ?? "").replace(
 						/^https:\/\/github\.com\/|\.git$/g,
 						"",
-					)}{crewmate.project.branch ? ` · ${crewmate.project.branch}` : ""}</span
-				>
+					)}{crewmate.project.branch ? ` · ${crewmate.project.branch}` : ""}
+				</span>
 			{:else}
 				<span class="row-hint">{m.crew_settings_project_card_not_linked_pick_one_of()}</span>
 			{/if}
 		</div>
 		{#if crewmate.project}
-			<Button size="sm" variant="ghost" onclick={() => void unlinkProject()}
-				>{m.crew_settings_project_card_unlink()}</Button
-			>
+			<Button size="sm" variant="ghost" onclick={() => void unlinkProject()}>
+				{m.crew_settings_project_card_unlink()}
+			</Button>
 		{/if}
 	</div>
 	{#if !crewmate.project}

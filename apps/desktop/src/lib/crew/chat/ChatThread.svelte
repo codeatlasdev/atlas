@@ -71,9 +71,10 @@
 
 {#if chat.jumpVisible}
 	<div class="jump-present" role="status">
-		<button class="jump-btn" onclick={() => chat.jumpToBottom()}
-			>{m.crew_chat_thread_jump_to_present()} <ArrowDown size={12} aria-hidden="true" /></button
-		>
+		<button class="jump-btn" onclick={() => chat.jumpToBottom()}>
+			{m.crew_chat_thread_jump_to_present()}
+			<ArrowDown size={12} aria-hidden="true" />
+		</button>
 	</div>
 {/if}
 

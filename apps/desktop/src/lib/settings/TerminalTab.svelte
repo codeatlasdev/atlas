@@ -67,9 +67,9 @@
 				{#if gpu.terminal && gpu.hostTooOld}
 					<div class="notice">
 						<span>{m.settings_terminal_tab_the_running_terminal_host_is()}</span>
-						<Button size="sm" variant="outlined" onclick={restart}
-							>{m.settings_terminal_tab_restart_terminal_host()}</Button
-						>
+						<Button size="sm" variant="outlined" onclick={restart}>
+							{m.settings_terminal_tab_restart_terminal_host()}
+						</Button>
 					</div>
 				{/if}
 				{#if gpu.restartNeeded}
@@ -85,9 +85,9 @@
 		label={m.settings_host_name()}
 		description={m.settings_terminal_tab_the_background_process_that_keeps()}
 	>
-		<Button size="sm" variant="outlined" onclick={restart}
-			>{m.settings_terminal_tab_restart_terminal_host()}</Button
-		>
+		<Button size="sm" variant="outlined" onclick={restart}>
+			{m.settings_terminal_tab_restart_terminal_host()}
+		</Button>
 	</Row>
 </Group>
 

@@ -39,9 +39,9 @@
 
 	{#if p.error}
 		<div class="banner">
-			<Alert severity="error" title={m.shell_space_view_config_problems()}
-				><pre class="mono ca-selectable">{p.error}</pre></Alert
-			>
+			<Alert severity="error" title={m.shell_space_view_config_problems()}>
+				<pre class="mono ca-selectable">{p.error}</pre>
+			</Alert>
 		</div>
 	{/if}
 
@@ -52,12 +52,12 @@
 	{#if offer && space.current}
 		{@const o = offer}
 		{#snippet act()}
-			<Button size="sm" onclick={() => agents.enableIntegration(o.id)}
-				>{m.shell_space_view_integration_enable()}</Button
-			>
-			<Button size="sm" variant="ghost" onclick={() => dismiss(o.id)}
-				>{m.shell_space_view_integration_not_now()}</Button
-			>
+			<Button size="sm" onclick={() => agents.enableIntegration(o.id)}>
+				{m.shell_space_view_integration_enable()}
+			</Button>
+			<Button size="sm" variant="ghost" onclick={() => dismiss(o.id)}>
+				{m.shell_space_view_integration_not_now()}
+			</Button>
 		{/snippet}
 		<CornerNotice
 			id="integration:{o.id}"

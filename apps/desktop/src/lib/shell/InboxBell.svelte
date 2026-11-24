@@ -43,9 +43,9 @@
 				? m.shell_chrome_inbox_bell_unread({ count: unread })
 				: m.shell_chrome_notifications()}
 		>
-			<Badge count={unread || undefined} color="error"
-				><Bell size={18} stroke-width={1.8} aria-hidden="true" /></Badge
-			>
+			<Badge count={unread || undefined} color="error">
+				<Bell size={18} stroke-width={1.8} aria-hidden="true" />
+			</Badge>
 		</button>
 	{/snippet}
 	{#snippet children({ close })}
@@ -53,11 +53,12 @@
 			<div class="head">
 				<b>{m.shell_chrome_notifications()}</b>
 				<span class="acts">
-					{#if unread > 0}<button class="act" onclick={onReadAll}
-							>{m.shell_chrome_inbox_bell_mark_all_read()}</button
-						>{/if}
-					{#if items.length}<button class="act" onclick={onClear}>{m.shell_chrome_inbox_bell_clear()}</button
-						>{/if}
+					{#if unread > 0}<button class="act" onclick={onReadAll}>
+							{m.shell_chrome_inbox_bell_mark_all_read()}
+						</button>{/if}
+					{#if items.length}<button class="act" onclick={onClear}>
+							{m.shell_chrome_inbox_bell_clear()}
+						</button>{/if}
 				</span>
 			</div>
 			{#if items.length === 0}
@@ -71,8 +72,10 @@
 						onclick={() => {
 							close();
 							onSettings();
-						}}>{m.shell_chrome_inbox_bell_notification_settings()}</button
+						}}
 					>
+						{m.shell_chrome_inbox_bell_notification_settings()}
+					</button>
 				</div>
 			{:else}
 				<ul>

@@ -77,9 +77,9 @@
 						: m.settings_capture_key_not_set()}
 			</Button>
 			{#if prefs.summon && recording !== "summon"}
-				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, summon: "" })}
-					>{m.settings_capture_key_clear()}</Button
-				>
+				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, summon: "" })}>
+					{m.settings_capture_key_clear()}
+				</Button>
 			{/if}
 		</Row>
 		<Row
@@ -99,9 +99,9 @@
 						: m.settings_capture_key_not_set()}
 			</Button>
 			{#if prefs.toggle && recording !== "toggle"}
-				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, toggle: "" })}
-					>{m.settings_capture_key_clear()}</Button
-				>
+				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, toggle: "" })}>
+					{m.settings_capture_key_clear()}
+				</Button>
 			{/if}
 		</Row>
 	{/if}

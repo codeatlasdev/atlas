@@ -38,15 +38,17 @@
 		<h1>{project.parent ? (space.worktree?.name ?? project.name) : project.name}</h1>
 	</div>
 	<div class="facts">
-		{#if project.running}<span title={m.panel_header_time_since_the_stack_came()}>{upLabel(uptime)}</span
-			>{/if}
-		{#if project.running && live?.mode}<span>{modeLabel}{live.version ? ` · v${live.version}` : ""}</span
-			>{/if}
-		{#if project.branch}<span class="mono"
-				>{project.branch}{project.port_offset
+		{#if project.running}<span title={m.panel_header_time_since_the_stack_came()}>
+				{upLabel(uptime)}
+			</span>{/if}
+		{#if project.running && live?.mode}<span>
+				{modeLabel}{live.version ? ` · v${live.version}` : ""}
+			</span>{/if}
+		{#if project.branch}<span class="mono">
+				{project.branch}{project.port_offset
 					? ` · ${m.panel_header_ports_offset({ offset: project.port_offset })}`
-					: ""}</span
-			>{/if}
+					: ""}
+			</span>{/if}
 		{#if ports}
 			<span class="mono" title={m.panel_header_ports_of_the_services()}>{ports}</span>
 		{/if}
@@ -76,11 +78,11 @@
 			<div class="op">
 				<Network size={13} />
 				{m.panel_header_tunnel_state({ state: stateLabel(live.tunnel.state) })}
-				<span class="mono detail"
-					>:{live.tunnel.local_port} → {live.tunnel.ssh_host}{live.tunnel.remote
+				<span class="mono detail">
+					:{live.tunnel.local_port} → {live.tunnel.ssh_host}{live.tunnel.remote
 						? `:${live.tunnel.remote}`
-						: ""}</span
-				>
+						: ""}
+				</span>
 			</div>
 		{/if}
 	</div>

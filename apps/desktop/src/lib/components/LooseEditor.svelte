@@ -136,12 +136,12 @@
 	{#if session.conflict}
 		<div class="banner" role="alert">
 			<span>{m.workbench_loose_editor_this_file_changed_on_disk()}</span>
-			<button onclick={() => void session.resolve("reload")}
-				>{m.workbench_loose_editor_load_from_disk()}</button
-			>
-			<button onclick={() => void session.resolve("keep")}
-				>{m.workbench_loose_editor_keep_my_version()}</button
-			>
+			<button onclick={() => void session.resolve("reload")}>
+				{m.workbench_loose_editor_load_from_disk()}
+			</button>
+			<button onclick={() => void session.resolve("keep")}>
+				{m.workbench_loose_editor_keep_my_version()}
+			</button>
 		</div>
 	{:else if session.deleted}
 		<div class="banner" role="alert">
@@ -169,14 +169,12 @@
 		<footer>
 			<span class="mono path" title={abs}>{abs}</span>
 			<span class="grow"></span>
-			<span
-				>{session.dirty
-					? m.workbench_loose_editor_state_edited()
-					: m.workbench_loose_editor_state_saved()}</span
-			>
-			<span class="mono"
-				>{m.workbench_loose_editor_ln_line_col_col({ line: cursor.line, col: cursor.col })}</span
-			>
+			<span>
+				{session.dirty ? m.workbench_loose_editor_state_edited() : m.workbench_loose_editor_state_saved()}
+			</span>
+			<span class="mono">
+				{m.workbench_loose_editor_ln_line_col_col({ line: cursor.line, col: cursor.col })}
+			</span>
 		</footer>
 	{/if}
 </div>

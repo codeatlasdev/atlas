@@ -91,18 +91,18 @@
 				<span class="n">2</span>
 				<div>
 					<strong>{m.mobile_pair_card_step_open()}</strong>
-					<span class="hint"
-						><Rich parts={m.mobile_pair_card_step_open_hint.parts()} tags={{ em: "em" }} /></span
-					>
+					<span class="hint">
+						<Rich parts={m.mobile_pair_card_step_open_hint.parts()} tags={{ em: "em" }} />
+					</span>
 				</div>
 			</li>
 			<li>
 				<span class="n">3</span>
 				<div>
 					<strong>{m.mobile_pair_card_step_scan()}</strong>
-					<span class="hint"
-						><Rich parts={m.mobile_pair_card_step_scan_hint.parts()} tags={{ em: "em" }} /></span
-					>
+					<span class="hint">
+						<Rich parts={m.mobile_pair_card_step_scan_hint.parts()} tags={{ em: "em" }} />
+					</span>
 				</div>
 			</li>
 		</ol>
@@ -110,9 +110,9 @@
 		{#if state === "live" && pairing}
 			<div class="live">
 				<div class="codeline">
-					<span class="code ca-selectable" aria-label={m.mobile_pair_card_one_time_code()}
-						>{groupCode(pairing.p.code)}</span
-					>
+					<span class="code ca-selectable" aria-label={m.mobile_pair_card_one_time_code()}>
+						{groupCode(pairing.p.code)}
+					</span>
 					<span class="left" role="timer">{m.mobile_pair_card_expires_in({ time: clock(left) })}</span>
 				</div>
 				<Progress
@@ -123,9 +123,9 @@
 				/>
 				<div class="waiting"><Spinner size={11} /> {m.mobile_pair_card_waiting()}</div>
 				<div class="actions">
-					<Button size="sm" variant="outlined" onclick={onstart} loading={busy}
-						>{m.mobile_pair_card_new_code()}</Button
-					>
+					<Button size="sm" variant="outlined" onclick={onstart} loading={busy}>
+						{m.mobile_pair_card_new_code()}
+					</Button>
 					<CopyButton
 						size="sm"
 						variant="ghost"
@@ -141,9 +141,9 @@
 					{m.mobile_pair_card_error_body({ error })}
 				</Alert>
 			{:else if paired && state === "idle"}
-				<Alert severity="success" title={m.mobile_pair_card_paired_title({ paired })}
-					>{m.mobile_pair_card_paired_body()}</Alert
-				>
+				<Alert severity="success" title={m.mobile_pair_card_paired_title({ paired })}>
+					{m.mobile_pair_card_paired_body()}
+				</Alert>
 			{/if}
 			<div class="actions">
 				<Button onclick={onstart} loading={busy}>

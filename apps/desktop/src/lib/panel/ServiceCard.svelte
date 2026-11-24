@@ -89,8 +89,10 @@
 				onclick={(e) => {
 					e.stopPropagation();
 					onlogs();
-				}}>{m.panel_service_card_view_logs()}</button
+				}}
 			>
+				{m.panel_service_card_view_logs()}
+			</button>
 		</div>
 		{#if up && service.memory_leak}
 			<div class="memnote" title={service.memory_leak}>{service.memory_leak}</div>

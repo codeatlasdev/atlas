@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # The one place the tauri-cli version is pinned.
-TAURI_CLI_VERSION=2.11.4
+TAURI_CLI_VERSION=2.12.6
 [[ "${1:-}" == "--tauri-version" ]] && { echo "$TAURI_CLI_VERSION"; exit 0; }
 
 quiet=0

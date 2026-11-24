@@ -180,15 +180,15 @@
 	</div>
 {:else if active && found.length}
 	<div class="bar">
-		<span class="count" role="status"
-			>{m.settings_theme_import_package_selected({ selected: chosen.length, total: found.length })}</span
-		>
-		<Button size="sm" variant="ghost" onclick={() => selectAll(true)}
-			>{m.settings_theme_import_package_select_all()}</Button
-		>
-		<Button size="sm" variant="ghost" onclick={() => selectAll(false)}
-			>{m.settings_theme_import_package_select_none()}</Button
-		>
+		<span class="count" role="status">
+			{m.settings_theme_import_package_selected({ selected: chosen.length, total: found.length })}
+		</span>
+		<Button size="sm" variant="ghost" onclick={() => selectAll(true)}>
+			{m.settings_theme_import_package_select_all()}
+		</Button>
+		<Button size="sm" variant="ghost" onclick={() => selectAll(false)}>
+			{m.settings_theme_import_package_select_none()}
+		</Button>
 	</div>
 	<div class="list">
 		<ul class="rows" aria-label={m.settings_theme_import_package_themes_found()}>
@@ -211,9 +211,9 @@
 						<span class="appearance">{appearanceLabel(t.appearance)}</span>
 						<span class="chips">
 							<span class="chip">{FORMAT_LABEL[t.format]}</span>
-							{#if t.sources.length > 1}<span class="chip"
-									>{m.settings_theme_import_package_files({ count: t.sources.length })}</span
-								>{/if}
+							{#if t.sources.length > 1}<span class="chip">
+									{m.settings_theme_import_package_files({ count: t.sources.length })}
+								</span>{/if}
 						</span>
 						<span class="strip" aria-hidden="true">
 							{#each t.swatches as c, i (i)}<span style:background={c}></span>{/each}

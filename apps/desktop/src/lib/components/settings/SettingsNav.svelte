@@ -73,9 +73,9 @@
 		</div>
 	{/each}
 	<div class="navfoot mono">
-		{m.settings_general_nav_version({ version: u.info?.app.version ?? "" })}{#if u.dev}<span class="devchip"
-				>{m.settings_general_nav_dev()}</span
-			>{/if}
+		{m.settings_general_nav_version({ version: u.info?.app.version ?? "" })}{#if u.dev}<span class="devchip">
+				{m.settings_general_nav_dev()}
+			</span>{/if}
 	</div>
 </nav>
 

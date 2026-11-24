@@ -84,9 +84,10 @@
 		<Tooltip content={m.settings_updates_channel_tooltip()} side="top">
 			<Info size={13} aria-label={m.settings_updates_channel_about_aria()} />
 		</Tooltip>
-		{#if u.channelsLoading}<span class="busy"
-				><Spinner size={11} /> {m.crew_settings_browsers_row_checking()}</span
-			>{/if}
+		{#if u.channelsLoading}<span class="busy">
+				<Spinner size={11} />
+				{m.crew_settings_browsers_row_checking()}
+			</span>{/if}
 	</div>
 
 	{#if stage}<p class="stage">{stage}</p>{/if}
@@ -134,8 +135,9 @@
 				{#if shownCard}
 					<p class="promise" id="chan-desc">
 						<span class="tag tone-{shownCard.tone}">{channelCopy(shownCard.view, "risk_label")}</span>
-						{#if shownCard.installed}<span class="tag plain">{m.settings_updates_channel_installed()}</span
-							>{/if}
+						{#if shownCard.installed}<span class="tag plain">
+								{m.settings_updates_channel_installed()}
+							</span>{/if}
 						{channelCopy(shownCard.view, "promise")}
 					</p>
 					<p
@@ -172,9 +174,9 @@
 				</Alert>
 			{/if}
 			<div class="actions">
-				<Button variant="ghost" size="sm" disabled={saving} onclick={() => (pending = null)}
-					>{m.common_action_cancel()}</Button
-				>
+				<Button variant="ghost" size="sm" disabled={saving} onclick={() => (pending = null)}>
+					{m.common_action_cancel()}
+				</Button>
 				{#if confirm.downgrade}
 					<Button variant="glass" size="sm" disabled={saving || !!u.running} onclick={downgrade}>
 						{#snippet leading()}<TriangleAlert size={13} />{/snippet}

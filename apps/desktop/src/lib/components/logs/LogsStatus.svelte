@@ -32,21 +32,24 @@
 			})}
 		{/if}
 	</span>
-	{#if errors}<span class="e">{m.logs_status_errors({ count: errors, amount: formatNumber(errors) })}</span
-		>{/if}
-	{#if warns}<span class="w">{m.logs_status_warnings({ count: warns, amount: formatNumber(warns) })}</span
-		>{/if}
-	{#if filtering}<span class="busy"
-			><Spinner size={11} label={m.logs_status_working()} /> {m.logs_status_filtering()}</span
-		>{/if}
-	<span class="hint"
-		><Kbd>{kbd("cmd-f")}</Kbd>
+	{#if errors}<span class="e">
+			{m.logs_status_errors({ count: errors, amount: formatNumber(errors) })}
+		</span>{/if}
+	{#if warns}<span class="w">
+			{m.logs_status_warnings({ count: warns, amount: formatNumber(warns) })}
+		</span>{/if}
+	{#if filtering}<span class="busy">
+			<Spinner size={11} label={m.logs_status_working()} />
+			{m.logs_status_filtering()}
+		</span>{/if}
+	<span class="hint">
+		<Kbd>{kbd("cmd-f")}</Kbd>
 		{m.logs_status_hint_find()} · <Kbd>{kbd("e")}</Kbd>
 		<Kbd>{kbd("w")}</Kbd>
 		{m.logs_status_hint_jump()} · {m.logs_status_hint_links({ key: modClick() })} ·
 		<Kbd>{kbd("cmd-l")}</Kbd>
-		{m.logs_status_hint_logs()}</span
-	>
+		{m.logs_status_hint_logs()}
+	</span>
 </div>
 
 <style>

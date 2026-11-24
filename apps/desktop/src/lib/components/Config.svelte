@@ -195,9 +195,9 @@
 			<div class="row">
 				{m.settings_general_config_your_edits_are_unsaved()}
 				<Button size="sm" variant="glass" onclick={load}>{m.settings_general_config_reload()}</Button>
-				<Button size="sm" variant="ghost" onclick={() => (externalChange = false)}
-					>{m.settings_general_config_keep_mine()}</Button
-				>
+				<Button size="sm" variant="ghost" onclick={() => (externalChange = false)}>
+					{m.settings_general_config_keep_mine()}
+				</Button>
 			</div>
 		</Alert>
 	</div>
@@ -207,9 +207,9 @@
 		<Alert severity="info" closable onclose={() => (savedOnce = false)}>
 			<div class="row">
 				{m.settings_general_config_the_running_stack_still_uses()}
-				<Button size="sm" variant="glass" disabled={store.busy[`stack:${project.id}`]} onclick={restart}
-					>{m.settings_general_config_restart_stack_to_apply()}</Button
-				>
+				<Button size="sm" variant="glass" disabled={store.busy[`stack:${project.id}`]} onclick={restart}>
+					{m.settings_general_config_restart_stack_to_apply()}
+				</Button>
 			</div>
 		</Alert>
 	</div>

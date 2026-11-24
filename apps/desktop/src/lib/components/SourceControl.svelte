@@ -291,15 +291,15 @@
 			{#if st?.vs_base}<span class="dim">↑{st.vs_base.ahead} ↓{st.vs_base.behind}</span>{/if}
 			<DropdownMenu align="end">
 				{#snippet trigger()}<span class="more"><Ellipsis size={13} /></span>{/snippet}
-				<DropdownMenuItem onclick={() => commit(true)}
-					>{m.git_source_control_amend_last_commit()}</DropdownMenuItem
-				>
-				<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}
-					>{m.git_source_control_pull_rebase()}</DropdownMenuItem
-				>
-				<DropdownMenuItem onclick={() => run("push", ["push"])}
-					>{m.git_source_control_push()}</DropdownMenuItem
-				>
+				<DropdownMenuItem onclick={() => commit(true)}>
+					{m.git_source_control_amend_last_commit()}
+				</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}>
+					{m.git_source_control_pull_rebase()}
+				</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => run("push", ["push"])}>
+					{m.git_source_control_push()}
+				</DropdownMenuItem>
 				<DropdownMenuItem
 					variant="destructive"
 					onclick={async () =>
@@ -311,9 +311,9 @@
 				>
 					{m.git_source_control_force_push_with_lease()}
 				</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => openDiff(worktreeId)}
-					>{m.git_source_control_open_changes()}</DropdownMenuItem
-				>
+				<DropdownMenuItem onclick={() => openDiff(worktreeId)}>
+					{m.git_source_control_open_changes()}
+				</DropdownMenuItem>
 			</DropdownMenu>
 		</div>
 
@@ -332,9 +332,9 @@
 					>
 						{m.git_source_control_resolve_with_ai()}
 					</Button>
-					<Button size="sm" variant="ghost" onclick={() => run("abort", [st!.operation!, "--abort"])}
-						>{m.git_source_control_abort()}</Button
-					>
+					<Button size="sm" variant="ghost" onclick={() => run("abort", [st!.operation!, "--abort"])}>
+						{m.git_source_control_abort()}
+					</Button>
 				</div>
 			</div>
 		{/if}
@@ -346,9 +346,9 @@
 				rows={3}
 			/>
 			{#if gen.phase === "running"}
-				<span class="dim"
-					>{gen.agent ? m.git_commit_writing_with({ agent: gen.agent }) : m.git_commit_writing()}</span
-				>
+				<span class="dim">
+					{gen.agent ? m.git_commit_writing_with({ agent: gen.agent }) : m.git_commit_writing()}
+				</span>
 			{:else if gen.error}
 				<span class="err">{commitErrorText(gen.error)}</span>
 			{:else if commitNotice(gen)}
@@ -365,9 +365,9 @@
 							e.key === "Enter" && (e.preventDefault(), commitMessages.generate(worktreeId, instruction))}
 					/>
 				{:else}
-					<button class="link" onclick={() => (showInstruction = true)}
-						>{m.git_source_control_add_an_instruction()}</button
-					>
+					<button class="link" onclick={() => (showInstruction = true)}>
+						{m.git_source_control_add_an_instruction()}
+					</button>
 				{/if}
 			{/if}
 			<div class="row-btns">
@@ -470,8 +470,9 @@
 					size="sm"
 					variant="ghost"
 					onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}
-					>{m.git_source_control_fix_with_ai()}</Button
 				>
+					{m.git_source_control_fix_with_ai()}
+				</Button>
 			</div>
 		{/if}
 
@@ -483,13 +484,17 @@
 						{#if r.group === "staged"}
 							<button
 								title={m.git_source_control_unstage_all()}
-								onclick={() => unstage(r.list.map((e) => e.path))}><Minus size={12} /></button
+								onclick={() => unstage(r.list.map((e) => e.path))}
 							>
+								<Minus size={12} />
+							</button>
 						{:else if r.group !== "conflicts"}
 							<button
 								title={m.git_source_control_stage_all()}
-								onclick={() => stage(r.list.map((e) => e.path))}><Plus size={12} /></button
+								onclick={() => stage(r.list.map((e) => e.path))}
 							>
+								<Plus size={12} />
+							</button>
 						{/if}
 					</div>
 				{:else}
@@ -515,17 +520,23 @@
 						{#if r.group === "staged"}
 							<button
 								title={m.git_source_control_unstage()}
-								onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}><Minus size={12} /></button
+								onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
 							>
+								<Minus size={12} />
+							</button>
 						{:else if r.group !== "conflicts"}
 							<button
 								title={m.git_source_control_discard()}
-								onclick={(ev) => (ev.stopPropagation(), discard(e))}><Undo2 size={12} /></button
+								onclick={(ev) => (ev.stopPropagation(), discard(e))}
 							>
+								<Undo2 size={12} />
+							</button>
 							<button
 								title={m.git_source_control_stage()}
-								onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}><Plus size={12} /></button
+								onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}
 							>
+								<Plus size={12} />
+							</button>
 						{/if}
 					</div>
 				{/if}

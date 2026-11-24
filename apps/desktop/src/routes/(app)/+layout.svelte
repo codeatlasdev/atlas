@@ -118,9 +118,9 @@
 		<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>
 			<div class="sidebar-panel">{@render sidebar()}</div>
 		</div>
-		<EdgePeek edge="left" size={260} label={m.shell_layout_sidebar_label()} active={!docks.sidebar} {accent}
-			>{@render sidebar()}</EdgePeek
-		>
+		<EdgePeek edge="left" size={260} label={m.shell_layout_sidebar_label()} active={!docks.sidebar} {accent}>
+			{@render sidebar()}
+		</EdgePeek>
 		<main class="content" class:full={!docks.sidebar} use:swipe={historySwipe()}>
 			<div class="space-wash" aria-hidden="true" style:--space-tint={tint}></div>
 			<div class="space-edge" aria-hidden="true"></div>

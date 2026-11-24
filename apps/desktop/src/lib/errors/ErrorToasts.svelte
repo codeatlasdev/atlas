@@ -23,13 +23,13 @@
 	{#snippet act()}
 		{#if t.host}
 			<Button size="sm" onclick={() => errors.restartHost(t.id)}>{m.errors_toasts_restart_host()}</Button>
-			<Button size="sm" variant="glass" onclick={() => errors.showHost(t)}
-				>{m.errors_crash_card_report()}</Button
-			>
+			<Button size="sm" variant="glass" onclick={() => errors.showHost(t)}>
+				{m.errors_crash_card_report()}
+			</Button>
 		{:else}
-			<Button size="sm" variant="glass" onclick={() => errors.show(t.report, t.id)}
-				>{m.errors_panel_details()}</Button
-			>
+			<Button size="sm" variant="glass" onclick={() => errors.show(t.report, t.id)}>
+				{m.errors_panel_details()}
+			</Button>
 		{/if}
 	{/snippet}
 	<CornerNotice

@@ -149,9 +149,9 @@
 									? m.crew_onboarding_connect_step_creating()
 									: m.crew_onboarding_connect_step_create_one()}
 							</button>
-							<button class="text-link" onclick={() => ob.pickKeyFile()} disabled={locked}
-								>{m.crew_onboarding_connect_step_choose_a_file()}</button
-							>
+							<button class="text-link" onclick={() => ob.pickKeyFile()} disabled={locked}>
+								{m.crew_onboarding_connect_step_choose_a_file()}
+							</button>
 						</div>
 						<p class="field-hint">{m.crew_onboarding_connect_step_password_creates_key()}</p>
 					{/if}
@@ -225,9 +225,9 @@
 								{actionLabel(a)}
 							</button>
 						{/each}
-						<button class="text-link small fix" onclick={() => api.openUrl(fixDocs())}
-							>{m.crew_onboarding_connect_step_how_to_fix()}</button
-						>
+						<button class="text-link small fix" onclick={() => api.openUrl(fixDocs())}>
+							{m.crew_onboarding_connect_step_how_to_fix()}
+						</button>
 					</div>
 					{#if failure.detail}
 						<details class="failure-details">

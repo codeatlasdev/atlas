@@ -111,8 +111,10 @@
 				role="radio"
 				aria-checked={crewState === s}
 				class:on={crewState === s}
-				onclick={() => (crewState = s)}>{s}</button
+				onclick={() => (crewState = s)}
 			>
+				{s}
+			</button>
 		{/each}
 		<button class="build" aria-pressed={building} onclick={() => (building = !building)}>
 			{building

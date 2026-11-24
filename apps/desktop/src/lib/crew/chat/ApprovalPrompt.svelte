@@ -116,19 +116,22 @@
 				size="sm"
 				onclick={() => answer(true)}
 				title={m.crew_permission_allow_once_title({ key: kbd("cmd-enter") })}
-				>{m.crew_permission_allow_once()}</Button
 			>
+				{m.crew_permission_allow_once()}
+			</Button>
 			{#if canGrantForTask(pa)}
-				<Button size="sm" variant="ghost" onclick={() => answer(true, "task")}
-					>{m.crew_permission_allow_task()}</Button
-				>
+				<Button size="sm" variant="ghost" onclick={() => answer(true, "task")}>
+					{m.crew_permission_allow_task()}
+				</Button>
 			{/if}
 			<Button
 				size="sm"
 				variant="ghost"
 				onclick={() => answer(false)}
-				title={m.crew_permission_deny_title({ key: kbd("escape") })}>{m.crew_permission_deny()}</Button
+				title={m.crew_permission_deny_title({ key: kbd("escape") })}
 			>
+				{m.crew_permission_deny()}
+			</Button>
 		</div>
 	</div>
 {/if}

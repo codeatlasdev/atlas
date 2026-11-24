@@ -99,38 +99,38 @@
 					oninput={(e) => (custom = e.currentTarget.value)}
 					disabled={busy}
 				/>
-				<Button variant="outlined" size="sm" type="submit" disabled={busy || !custom.trim()}
-					>{m.settings_terminal_shell_use_this_shell()}</Button
-				>
+				<Button variant="outlined" size="sm" type="submit" disabled={busy || !custom.trim()}>
+					{m.settings_terminal_shell_use_this_shell()}
+				</Button>
 			</form>
 		</Row>
 		<div class="status">
 			{#if info.probe?.error}
-				<span class="st bad"
-					><X size={13} />
+				<span class="st bad">
+					<X size={13} />
 					<Rich
 						parts={m.settings_terminal_shell_status_failed.parts({ shell: info.probe.shell })}
 						tags={{ mono }}
-					/></span
-				>
+					/>
+				</span>
 			{:else if info.probe}
-				<span class="st ok"
-					><Check size={13} />
+				<span class="st ok">
+					<Check size={13} />
 					<Rich
 						parts={m.settings_terminal_shell_status_using.parts({ shell: info.probe.shell })}
 						tags={{ mono }}
-					/></span
-				>
-				<span class="muted"
-					><Rich
+					/>
+				</span>
+				<span class="muted">
+					<Rich
 						parts={m.settings_terminal_shell_status_detail.parts({
 							source: sourceText(info.probe.source),
 							flags: info.probe.flags ?? "",
 							ms: info.probe.took_ms,
 						})}
 						tags={{ mono }}
-					/></span
-				>
+					/>
+				</span>
 			{/if}
 		</div>
 	</Group>
@@ -145,20 +145,20 @@
 	<Group>
 		<div class="ghead">
 			<span>{m.settings_terminal_shell_tools_your_projects_can_find()}</span>
-			<span class="muted"
-				>{m.settings_terminal_shell_found_of_length_found_on({ found, length: info.tools.length })}</span
-			>
+			<span class="muted">
+				{m.settings_terminal_shell_found_of_length_found_on({ found, length: info.tools.length })}
+			</span>
 		</div>
 		<div class="tools">
 			{#each info.tools as [tool, path] (tool)}
 				<div class="tool" class:miss={!path}>
-					<span class="tic"
-						>{#if path}<Check size={12} />{:else}<X size={12} />{/if}</span
-					>
+					<span class="tic">
+						{#if path}<Check size={12} />{:else}<X size={12} />{/if}
+					</span>
 					<span class="tname">{tool}</span>
-					<span class="tpath mono" title={path ?? ""}
-						>{path ? tilde(path) : m.settings_terminal_shell_not_found()}</span
-					>
+					<span class="tpath mono" title={path ?? ""}>
+						{path ? tilde(path) : m.settings_terminal_shell_not_found()}
+					</span>
 				</div>
 			{/each}
 		</div>

@@ -266,9 +266,10 @@
 		{/if}
 	</nav>
 	{#if hasArchived}
-		<label class="archived"
-			><input type="checkbox" bind:checked={sidebar.showArchived} /> {m.sidebar_show_archived()}</label
-		>
+		<label class="archived">
+			<input type="checkbox" bind:checked={sidebar.showArchived} />
+			{m.sidebar_show_archived()}
+		</label>
 	{/if}
 	<SidebarFooter onDiscover={showDiscover} />
 </aside>

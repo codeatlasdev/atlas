@@ -88,29 +88,37 @@
 		title={m.logs_tools_timestamps_tip({ key: kbd("t") })}
 		aria-label={m.logs_tools_timestamps()}
 		aria-pressed={showTime}
-		onclick={() => (showTime = !showTime)}><Clock size={14} /></button
+		onclick={() => (showTime = !showTime)}
 	>
+		<Clock size={14} />
+	</button>
 	<button
 		class="icon"
 		class:on={wrap}
 		title={m.logs_tools_wrap_long_lines()}
 		aria-label={m.logs_tools_wrap_long_lines()}
 		aria-pressed={wrap}
-		onclick={() => (wrap = !wrap)}><WrapText size={14} /></button
+		onclick={() => (wrap = !wrap)}
 	>
+		<WrapText size={14} />
+	</button>
 	<Switch label={m.logs_tools_follow()} bind:checked={follow} onchange={() => follow && onfollow()} />
 	<button
 		class="icon"
 		onclick={oncopy}
 		title={m.logs_tools_copy_filtered_lines()}
-		aria-label={m.logs_tools_copy_filtered_lines()}><Copy size={14} /></button
+		aria-label={m.logs_tools_copy_filtered_lines()}
 	>
+		<Copy size={14} />
+	</button>
 	<button
 		class="icon"
 		onclick={oncopyai}
 		title={m.logs_tools_copy_last_lines_for_ai({ lines: aiLines })}
-		aria-label={m.logs_tools_copy_for_ai()}><Sparkles size={14} /></button
+		aria-label={m.logs_tools_copy_for_ai()}
 	>
+		<Sparkles size={14} />
+	</button>
 </div>
 
 <style>

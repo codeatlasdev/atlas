@@ -147,19 +147,19 @@
 		<span class="grow"></span>
 		<Tip label={m.viewers_files_zoom_out()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label={m.viewers_files_zoom_out()} onclick={() => setScale(scale / 1.25)}
-					><ZoomOut size={13} /></button
-				>
+				<button {...props} aria-label={m.viewers_files_zoom_out()} onclick={() => setScale(scale / 1.25)}>
+					<ZoomOut size={13} />
+				</button>
 			{/snippet}
 		</Tip>
-		<button class="pct mono" onclick={() => setScale(1)} title={m.viewers_files_image_viewer_actual_size()}
-			>{Math.round(scale * 100)}%</button
-		>
+		<button class="pct mono" onclick={() => setScale(1)} title={m.viewers_files_image_viewer_actual_size()}>
+			{Math.round(scale * 100)}%
+		</button>
 		<Tip label={m.viewers_files_zoom_in()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label={m.viewers_files_zoom_in()} onclick={() => setScale(scale * 1.25)}
-					><ZoomIn size={13} /></button
-				>
+				<button {...props} aria-label={m.viewers_files_zoom_in()} onclick={() => setScale(scale * 1.25)}>
+					<ZoomIn size={13} />
+				</button>
 			{/snippet}
 		</Tip>
 		<Tip label={m.viewers_files_image_viewer_fit_to_view()} side="top">
@@ -168,15 +168,17 @@
 					{...props}
 					aria-label={m.viewers_files_image_viewer_fit_to_view()}
 					class:on={manual === null}
-					onclick={reset}><Maximize size={13} /></button
+					onclick={reset}
 				>
+					<Maximize size={13} />
+				</button>
 			{/snippet}
 		</Tip>
 		<Tip label={m.viewers_files_image_viewer_copy_image()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label={m.viewers_files_image_viewer_copy_image()} onclick={copyImage}
-					><Copy size={13} /></button
-				>
+				<button {...props} aria-label={m.viewers_files_image_viewer_copy_image()} onclick={copyImage}>
+					<Copy size={13} />
+				</button>
 			{/snippet}
 		</Tip>
 	</div>

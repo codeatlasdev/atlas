@@ -11,9 +11,9 @@
 	}: { on: boolean; label: string; title?: string; onclick: () => void; children: Snippet } = $props();
 </script>
 
-<button class="toggle" class:on {title} aria-label={label} aria-pressed={on} {onclick}
-	>{@render children()}</button
->
+<button class="toggle" class:on {title} aria-label={label} aria-pressed={on} {onclick}>
+	{@render children()}
+</button>
 
 <style>
 	.toggle {

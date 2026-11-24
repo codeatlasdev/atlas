@@ -93,9 +93,9 @@ if (answer !== 42) throw new Error("not yet");</pre>
 		label={m.settings_editor_code_tab_manage_language_servers()}
 		description={m.settings_editor_code_tab_install_update_or_replace_the()}
 	>
-		<button class="link" onclick={() => updates.show("editor/languages")}
-			>{m.settings_editor_code_tab_open_languages()}</button
-		>
+		<button class="link" onclick={() => updates.show("editor/languages")}>
+			{m.settings_editor_code_tab_open_languages()}
+		</button>
 	</Row>
 </Group>
 

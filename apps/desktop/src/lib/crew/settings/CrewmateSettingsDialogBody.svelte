@@ -146,9 +146,9 @@
 		<div class="settings-content" class:closing={!open} role="region" aria-label={activeLabel}>
 			<header class="pane-head">
 				<h3>{activeLabel}</h3>
-				<button class="pane-close" aria-label={m.common_action_close()} onclick={() => (open = false)}
-					><X size={16} /></button
-				>
+				<button class="pane-close" aria-label={m.common_action_close()} onclick={() => (open = false)}>
+					<X size={16} />
+				</button>
 			</header>
 			<div class="settings-pane">
 				{#if activeSection === "general"}

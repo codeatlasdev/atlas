@@ -97,18 +97,18 @@
 <header data-tauri-drag-region class:inset={!docks.sidebar}>
 	<Crumbs />
 	{#if folder}
-		<span class="detected" title={m.shell_project_header_a_plain_folder_atlas_shows()}
-			>{m.shell_project_header_folder()}</span
-		>
+		<span class="detected" title={m.shell_project_header_a_plain_folder_atlas_shows()}>
+			{m.shell_project_header_folder()}
+		</span>
 	{:else}
 		<span class="pill t-{health.tone}" title={health.label}>
 			<span class="dot" class:pulse={health.tone === "ok"}></span>{health.label}
 		</span>
 	{/if}
 	{#if !folder && p.config_source === "detected"}
-		<span class="detected" title={m.shell_project_header_no_atlas_yaml_in_this()}
-			>{m.shell_project_header_auto_detected()}</span
-		>
+		<span class="detected" title={m.shell_project_header_no_atlas_yaml_in_this()}>
+			{m.shell_project_header_auto_detected()}
+		</span>
 		<Button
 			variant="ghost"
 			size="sm"
@@ -160,9 +160,9 @@
 		{/if}
 		<DropdownMenu align="end">
 			{#snippet triggerChild(props)}
-				<button type="button" {...props} class="more" aria-label={m.shell_project_header_project_menu()}
-					><Ellipsis size={16} /></button
-				>
+				<button type="button" {...props} class="more" aria-label={m.shell_project_header_project_menu()}>
+					<Ellipsis size={16} />
+				</button>
 			{/snippet}
 			<DropdownMenuItem onclick={() => store.run("ed", () => api.openEditor(p.id))}>
 				<Code size={14} />
@@ -216,8 +216,10 @@
 								type="button"
 								{...props}
 								class="split-arrow"
-								aria-label={m.shell_project_header_start_with_profile()}><ChevronDown size={13} /></button
+								aria-label={m.shell_project_header_start_with_profile()}
 							>
+								<ChevronDown size={13} />
+							</button>
 						{/snippet}
 						<DropdownMenuLabel>{m.shell_project_header_start_with_profile()}</DropdownMenuLabel>
 						{#each p.profiles as prof (prof)}

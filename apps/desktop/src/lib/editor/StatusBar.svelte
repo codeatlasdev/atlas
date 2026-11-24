@@ -36,8 +36,10 @@
 			tone={it.kind === "warning" || it.kind === "error" ? it.kind : undefined}
 			data-rank={statusRank(it.id)}
 			title={it.title}
-			onclick={(e) => onaction(it.id, e.currentTarget)}>{it.text}</StatusItem
+			onclick={(e) => onaction(it.id, e.currentTarget)}
 		>
+			{it.text}
+		</StatusItem>
 	{/if}
 {/snippet}
 

@@ -76,13 +76,13 @@
 				key: shortcutFor("command_palette::Toggle") ?? kbd("cmd-shift-p"),
 			})}
 			<span aria-hidden="true">·</span>
-			<button class="link" onclick={() => runCommand("atlas::Help")}
-				>{m.onboarding_welcome_shortcuts()}</button
-			>
+			<button class="link" onclick={() => runCommand("atlas::Help")}>
+				{m.onboarding_welcome_shortcuts()}
+			</button>
 			<span aria-hidden="true">·</span>
-			<button class="link" onclick={() => runCommand("atlas::TakeTour")}
-				>{m.onboarding_welcome_take_the_tour()}</button
-			>
+			<button class="link" onclick={() => runCommand("atlas::TakeTour")}>
+				{m.onboarding_welcome_take_the_tour()}
+			</button>
 		</p>
 	</div>
 </div>

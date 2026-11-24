@@ -96,53 +96,55 @@
 				<TriangleAlert size={14} />
 				{m.viewers_devops_cannot_parse({ error: parsed.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
-					>{m.viewers_devops_open_as_source()}</button
-				>
+				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}>
+					{m.viewers_devops_open_as_source()}
+				</button>
 			</div>
 		{:else if model}
 			<header class="rv-head">
 				<div class="rv-title">
 					<Zap size={18} />
 					<h1>{model.name ?? (isLocal ? m.viewers_devops_atlas_view_local_overrides() : "atlas.yaml")}</h1>
-					<span class="rv-ver"
-						>{m.viewers_devops_services_count({ count: model.services.length })} · {m.viewers_devops_atlas_view_actions_count(
+					<span class="rv-ver">
+						{m.viewers_devops_services_count({ count: model.services.length })} · {m.viewers_devops_atlas_view_actions_count(
 							{
 								count: model.actions.length,
 							},
-						)}</span
-					>
+						)}
+					</span>
 				</div>
 				<div class="rv-facts">
-					{#if isLocal}<span class="rv-chip info">{m.viewers_devops_atlas_view_local_not_committed()}</span
-						>{/if}
+					{#if isLocal}<span class="rv-chip info">
+							{m.viewers_devops_atlas_view_local_not_committed()}
+						</span>{/if}
 					{#if project}
-						<span class="rv-chip" class:ok={running}
-							><StatusDot tone={running ? "ok" : "off"} />
+						<span class="rv-chip" class:ok={running}>
+							<StatusDot tone={running ? "ok" : "off"} />
 							{running
 								? m.viewers_devops_atlas_view_stack_running()
-								: m.viewers_devops_atlas_view_stack_stopped()}</span
-						>
+								: m.viewers_devops_atlas_view_stack_stopped()}
+						</span>
 					{/if}
 					{#if validating}
-						<span class="rv-chip"
-							><Loader size={10} class="spin" /> {m.viewers_devops_atlas_view_validating()}</span
-						>
+						<span class="rv-chip">
+							<Loader size={10} class="spin" />
+							{m.viewers_devops_atlas_view_validating()}
+						</span>
 					{:else if !isLocal && project}
 						{#if problems.length}
-							<span class="rv-chip bad"
-								><TriangleAlert size={10} />
-								{m.viewers_devops_atlas_view_problems_count({ count: problems.length })}</span
-							>
+							<span class="rv-chip bad">
+								<TriangleAlert size={10} />
+								{m.viewers_devops_atlas_view_problems_count({ count: problems.length })}
+							</span>
 						{:else}
 							<span class="rv-chip ok"><CircleCheck size={10} /> {m.viewers_devops_atlas_view_valid()}</span>
 						{/if}
 					{/if}
 					{#if model.preCommand}
 						<!-- i18n-ignore: the atlas.yaml key name, shown as a tooltip -->
-						<span class="rv-chip mono" title="pre_command"
-							>{m.viewers_devops_atlas_view_pre_command({ preCommand: model.preCommand })}</span
-						>
+						<span class="rv-chip mono" title="pre_command">
+							{m.viewers_devops_atlas_view_pre_command({ preCommand: model.preCommand })}
+						</span>
 					{/if}
 				</div>
 			</header>
@@ -159,9 +161,9 @@
 							<div class="rv-row bad">
 								{#if p.path}<span class="rv-k">{p.path}</span>{/if}
 								<span class="rv-v wrap">{p.message}</span>
-								{#if line}<button class="rv-btn" onclick={() => ctx.toSource(line)}
-										>{m.viewers_devops_line({ line })}</button
-									>{/if}
+								{#if line}<button class="rv-btn" onclick={() => ctx.toSource(line)}>
+										{m.viewers_devops_line({ line })}
+									</button>{/if}
 							</div>
 						{/each}
 					</div>
@@ -201,59 +203,69 @@
 									<StatusDot tone={running ? tone(st?.state) : "off"} pulse={st?.state === "starting"} />
 									<span class="rv-k">{s.name}</span>
 									{#if s.port}<span class="rv-chip info mono">:{s.port}</span>{/if}
-									{#if s.critical}<span class="rv-chip warn">{m.viewers_devops_atlas_view_critical()}</span
-										>{/if}
+									{#if s.critical}<span class="rv-chip warn">
+											{m.viewers_devops_atlas_view_critical()}
+										</span>{/if}
 									{#if !s.enabled}<span class="rv-chip">{m.viewers_devops_atlas_view_disabled()}</span>{/if}
 									{#if s.hideLogs}<span class="rv-chip">{m.viewers_devops_atlas_view_no_log_tab()}</span>{/if}
-									{#if st && running}<span class="rv-note"
-											>{st.state}{st.restarts
+									{#if st && running}<span class="rv-note">
+											{st.state}{st.restarts
 												? ` · ${m.viewers_devops_atlas_view_restarts({ count: st.restarts })}`
-												: ""}</span
-										>{/if}
-									<span class="rv-v" title={s.command ?? ""}
-										>{s.command ?? m.viewers_devops_atlas_view_container_external()}</span
-									>
+												: ""}
+										</span>{/if}
+									<span class="rv-v" title={s.command ?? ""}>
+										{s.command ?? m.viewers_devops_atlas_view_container_external()}
+									</span>
 									{#if running}
 										<button
 											class="rv-btn run"
 											disabled={busy(s.name) || st?.state === "running"}
 											title={m.viewers_devops_atlas_view_start_name({ name: s.name })}
 											onclick={() => act("start_service", s.name)}
-											><Play size={11} /> {m.viewers_devops_atlas_view_start()}</button
 										>
+											<Play size={11} />
+											{m.viewers_devops_atlas_view_start()}
+										</button>
 										<button
 											class="rv-btn"
 											disabled={busy(s.name)}
 											title={m.viewers_devops_atlas_view_restart_name({ name: s.name })}
 											onclick={() => act("restart_service", s.name)}
-											><RotateCw size={11} /> {m.viewers_devops_atlas_view_restart()}</button
 										>
+											<RotateCw size={11} />
+											{m.viewers_devops_atlas_view_restart()}
+										</button>
 										<button
 											class="rv-btn icon"
 											disabled={busy(s.name) || st?.state === "stopped"}
 											title={m.viewers_devops_atlas_view_stop_name({ name: s.name })}
 											aria-label={m.viewers_devops_atlas_view_stop_name({ name: s.name })}
-											onclick={() => act("stop_service", s.name)}><Square size={11} /></button
+											onclick={() => act("stop_service", s.name)}
 										>
+											<Square size={11} />
+										</button>
 									{/if}
 								</div>
 								<div class="meta">
-									{#if s.dir}<span class="rv-chip mono"
-											>{m.viewers_devops_atlas_view_dir({ dir: s.dir })}</span
-										>{/if}
-									{#if s.health}<span class="rv-chip ok mono" title={m.viewers_devops_atlas_view_health_url()}
-											>{m.viewers_devops_atlas_view_health({ health: s.health })}</span
-										>{/if}
-									{#each s.dependsOn as d (d.name)}
-										<span class="rv-chip" class:warn={model.unknownDeps.some((u) => u.dep === d.name)}
-											>{m.viewers_devops_atlas_view_waits_for({ name: d.name })}{d.condition
-												? ` · ${d.condition}`
-												: ""}</span
+									{#if s.dir}<span class="rv-chip mono">
+											{m.viewers_devops_atlas_view_dir({ dir: s.dir })}
+										</span>{/if}
+									{#if s.health}<span
+											class="rv-chip ok mono"
+											title={m.viewers_devops_atlas_view_health_url()}
 										>
+											{m.viewers_devops_atlas_view_health({ health: s.health })}
+										</span>{/if}
+									{#each s.dependsOn as d (d.name)}
+										<span class="rv-chip" class:warn={model.unknownDeps.some((u) => u.dep === d.name)}>
+											{m.viewers_devops_atlas_view_waits_for({ name: d.name })}{d.condition
+												? ` · ${d.condition}`
+												: ""}
+										</span>
 									{/each}
-									{#if s.env.length}<span class="rv-chip mono" title={s.env.join(", ")}
-											>{m.viewers_devops_atlas_view_env_count({ count: s.env.length })}</span
-										>{/if}
+									{#if s.env.length}<span class="rv-chip mono" title={s.env.join(", ")}>
+											{m.viewers_devops_atlas_view_env_count({ count: s.env.length })}
+										</span>{/if}
 								</div>
 								{#each probs as p (p.path + p.message)}
 									{@const line = lineOfKey(ctx.text, p.path)}
@@ -261,9 +273,9 @@
 										<TriangleAlert size={11} />
 										<span class="pk">{p.path.split(".").slice(2).join(".") || p.path}</span>
 										{p.message}
-										{#if line}<button class="rv-btn" onclick={() => ctx.toSource(line)}
-												>{m.viewers_devops_line({ line })}</button
-											>{/if}
+										{#if line}<button class="rv-btn" onclick={() => ctx.toSource(line)}>
+												{m.viewers_devops_line({ line })}
+											</button>{/if}
 									</div>
 								{/each}
 							</div>
@@ -281,9 +293,9 @@
 								<kbd>{a.key}</kbd>
 								<span class="rv-k">{a.label}</span>
 								{#if a.group}<span class="rv-chip">{a.group}</span>{/if}
-								{#if a.confirm}<span class="rv-chip warn" title={a.confirm}
-										>{m.viewers_devops_atlas_view_asks_first()}</span
-									>{/if}
+								{#if a.confirm}<span class="rv-chip warn" title={a.confirm}>
+										{m.viewers_devops_atlas_view_asks_first()}
+									</span>{/if}
 								{#if a.session}<span class="rv-chip info">{m.viewers_devops_atlas_view_session()}</span>{/if}
 								<span class="rv-v" title={a.command}>{a.command}</span>
 								<Copy text={a.command} label={m.viewers_devops_copy_command()} />
@@ -298,22 +310,22 @@
 					<h2><Cable size={13} /> {m.viewers_devops_atlas_view_tunnel()}</h2>
 					<div class="rv-list">
 						<div class="rv-row">
-							<span class="rv-chip" class:ok={model.tunnel.enabled}
-								>{model.tunnel.enabled
+							<span class="rv-chip" class:ok={model.tunnel.enabled}>
+								{model.tunnel.enabled
 									? m.viewers_devops_atlas_view_enabled()
-									: m.viewers_devops_atlas_view_disabled()}</span
-							>
+									: m.viewers_devops_atlas_view_disabled()}
+							</span>
 							<span class="rv-k">{`localhost:${model.tunnel.local}`}</span>
 							<ArrowRight size={11} />
-							<span class="rv-v"
-								>{m.viewers_devops_atlas_view_tunnel_route({
+							<span class="rv-v">
+								{m.viewers_devops_atlas_view_tunnel_route({
 									remote: model.tunnel.remote,
 									ssh: model.tunnel.ssh,
-								})}</span
-							>
-							{#if live?.tunnel}<span class="rv-chip" class:ok={live.tunnel.state === "up"}
-									>{live.tunnel.state}</span
-								>{/if}
+								})}
+							</span>
+							{#if live?.tunnel}<span class="rv-chip" class:ok={live.tunnel.state === "up"}>
+									{live.tunnel.state}
+								</span>{/if}
 						</div>
 					</div>
 				</section>
@@ -323,15 +335,15 @@
 				<section class="rv-sec">
 					<h2>{m.viewers_devops_atlas_view_also_configured()}</h2>
 					<div class="rv-facts">
-						{#each model.infra as name (name)}<span class="rv-chip mono"
-								>{m.viewers_devops_atlas_view_infra({ name })}</span
-							>{/each}
-						{#each model.envFiles as file (file)}<span class="rv-chip acc mono"
-								>{m.viewers_devops_atlas_view_env_file({ file })}</span
-							>{/each}
-						{#each model.deployHosts as host (host)}<span class="rv-chip info mono"
-								>{m.viewers_devops_atlas_view_deploy_host({ host })}</span
-							>{/each}
+						{#each model.infra as name (name)}<span class="rv-chip mono">
+								{m.viewers_devops_atlas_view_infra({ name })}
+							</span>{/each}
+						{#each model.envFiles as file (file)}<span class="rv-chip acc mono">
+								{m.viewers_devops_atlas_view_env_file({ file })}
+							</span>{/each}
+						{#each model.deployHosts as host (host)}<span class="rv-chip info mono">
+								{m.viewers_devops_atlas_view_deploy_host({ host })}
+							</span>{/each}
 					</div>
 				</section>
 			{/if}

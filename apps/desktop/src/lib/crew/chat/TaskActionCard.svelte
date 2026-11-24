@@ -79,12 +79,12 @@
 			<GithubDeviceFlow {flow} {polling} oncancel={() => githubCrew.stopPolling(hostKey)} />
 		{:else}
 			<div class="action-btns">
-				<Button size="sm" onclick={() => void githubCrew.startLogin(hostKey)}
-					>{m.crew_chat_task_action_card_connect()}</Button
-				>
-				<Button variant="ghost" size="sm" onclick={cancel}
-					>{m.crew_chat_task_action_card_cancel_task()}</Button
-				>
+				<Button size="sm" onclick={() => void githubCrew.startLogin(hostKey)}>
+					{m.crew_chat_task_action_card_connect()}
+				</Button>
+				<Button variant="ghost" size="sm" onclick={cancel}>
+					{m.crew_chat_task_action_card_cancel_task()}
+				</Button>
 			</div>
 		{/if}
 	{:else if action.kind === "provide_secret"}
@@ -150,9 +150,9 @@
 		{/if}
 		<div class="action-btns">
 			<Button size="sm" disabled={submitting} onclick={() => answer("add")}>{m.common_action_add()}</Button>
-			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("skip")}
-				>{m.crew_chat_task_action_card_not_now()}</Button
-			>
+			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("skip")}>
+				{m.crew_chat_task_action_card_not_now()}
+			</Button>
 		</div>
 	{:else if action.kind === "refused" || action.kind === "prove_ui"}
 		<div class="action-title">
@@ -176,12 +176,12 @@
 			onremove={(i) => chat.removeActionImage(taskId, i)}
 		/>
 		<div class="action-btns">
-			<Button size="sm" disabled={submitting} onclick={() => answer("retry")}
-				>{m.crew_chat_task_action_card_retry_with_these_reasons()}</Button
-			>
-			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("override")}
-				>{m.crew_chat_task_action_card_override()}</Button
-			>
+			<Button size="sm" disabled={submitting} onclick={() => answer("retry")}>
+				{m.crew_chat_task_action_card_retry_with_these_reasons()}
+			</Button>
+			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("override")}>
+				{m.crew_chat_task_action_card_override()}
+			</Button>
 		</div>
 	{:else}
 		<div class="action-title">

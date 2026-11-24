@@ -43,8 +43,10 @@
 						class="rm"
 						aria-label={m.crew_chat_composer_remove_image({ name: im.name })}
 						{disabled}
-						onclick={() => onremove(i)}>×</button
+						onclick={() => onremove(i)}
 					>
+						×
+					</button>
 				</li>
 			{/each}
 		</ul>
@@ -57,9 +59,9 @@
 		hidden
 		onchange={picked}
 	/>
-	<Button variant="ghost" size="sm" {disabled} onclick={() => picker?.click()}
-		>{m.crew_chat_action_images_add_a_screenshot()}</Button
-	>
+	<Button variant="ghost" size="sm" {disabled} onclick={() => picker?.click()}>
+		{m.crew_chat_action_images_add_a_screenshot()}
+	</Button>
 </div>
 
 <style>

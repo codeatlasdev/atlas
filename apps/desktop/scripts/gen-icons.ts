@@ -39,7 +39,7 @@ await writeFile(
 await copyFile(join(pkg, "LICENSE"), join(out, "LICENSE"));
 
 // Lucide icon nodes by name, for the project icon picker (search + render by stored name).
-// The @lucide/svelte components inline `const iconData = {...}`; read that literal.
+// The @lucide/svelte components export `const __iconData = {...}`; read that literal.
 const lucideDir = join(
 	dirname(Bun.resolveSync("@lucide/svelte/package.json", import.meta.dir)),
 	"dist/icons",
@@ -47,8 +47,8 @@ const lucideDir = join(
 const lucide: Record<string, unknown> = {};
 for (const f of (await readdir(lucideDir)).filter((f) => f.endsWith(".svelte")).sort()) {
 	const src = await readFile(join(lucideDir, f), "utf8");
-	const m = src.match(/const iconData = (\{.*\});/);
-	if (!m) throw new Error(`@lucide/svelte: no iconData in ${f}`);
+	const m = src.match(/export const __iconData = (\{.*\});/);
+	if (!m) throw new Error(`@lucide/svelte: no __iconData in ${f}`);
 	const { name, node } = JSON.parse(m[1]);
 	lucide[name] = node;
 }

@@ -67,12 +67,12 @@
 <aside class="rail" bind:this={rail} aria-label={m.viewers_files_pdf_rail_pages()}>
 	{#if outline.length}
 		<div class="tabs">
-			<button class:on={sideTab === "thumbs"} onclick={() => (sideTab = "thumbs")}
-				>{m.viewers_files_pdf_rail_pages()}</button
-			>
-			<button class:on={sideTab === "outline"} onclick={() => (sideTab = "outline")}
-				>{m.viewers_files_pdf_rail_outline()}</button
-			>
+			<button class:on={sideTab === "thumbs"} onclick={() => (sideTab = "thumbs")}>
+				{m.viewers_files_pdf_rail_pages()}
+			</button>
+			<button class:on={sideTab === "outline"} onclick={() => (sideTab = "outline")}>
+				{m.viewers_files_pdf_rail_outline()}
+			</button>
 		</div>
 	{/if}
 	{#if sideTab === "outline" && outline.length}

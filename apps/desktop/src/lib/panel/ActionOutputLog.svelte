@@ -95,8 +95,10 @@
 						title={s.link.kind === "file"
 							? m.panel_action_output_log_open_file()
 							: m.panel_action_output_log_open_link({ key: m.common_keys_shift() })}
-						onclick={(e) => openLink(e, s)}>{s.text}</a
-					>{:else}<span style={s.css}>{s.text}</span>{/if}{/each}
+						onclick={(e) => openLink(e, s)}
+					>
+						{s.text}
+					</a>{:else}<span style={s.css}>{s.text}</span>{/if}{/each}
 		</div>
 	{/snippet}
 </VirtualList>

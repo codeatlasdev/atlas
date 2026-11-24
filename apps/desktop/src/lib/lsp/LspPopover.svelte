@@ -26,9 +26,9 @@
 		<ul class="ptys" aria-label={m.workbench_host_prompt_running_terminals()}>
 			{#each ui.ptys.slice(0, 6) as p}
 				<li>
-					<span class="t">{p.title || m.crew_chat_header_terminal()}</span><span class="cwd mono" dir="rtl"
-						><bdi dir="ltr">{p.cwd}</bdi></span
-					>
+					<span class="t">{p.title || m.crew_chat_header_terminal()}</span><span class="cwd mono" dir="rtl">
+						<bdi dir="ltr">{p.cwd}</bdi>
+					</span>
 				</li>
 			{/each}
 			{#if ui.ptys.length > 6}<li class="more">

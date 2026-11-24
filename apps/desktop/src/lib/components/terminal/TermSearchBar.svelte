@@ -98,16 +98,20 @@
 		onclick={() => {
 			matchCase = !matchCase;
 			void find(true);
-		}}><!-- i18n-ignore -->Aa</ToggleChip
+		}}
 	>
+		<!-- i18n-ignore -->Aa
+	</ToggleChip>
 	<ToggleChip
 		on={useRegex}
 		label={m.logs_search_bar_regular_expression()}
 		onclick={() => {
 			useRegex = !useRegex;
 			void find(true);
-		}}>.*</ToggleChip
+		}}
 	>
+		.*
+	</ToggleChip>
 	<span class="count" aria-live="polite">
 		{#if error}{m.logs_search_bar_invalid()}{:else if stat && query}{stat.total
 				? `${stat.index}/${stat.total}`

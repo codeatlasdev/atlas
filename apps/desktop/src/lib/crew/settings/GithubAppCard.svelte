@@ -70,8 +70,10 @@
 				class="app-link"
 				href={`https://github.com/apps/${encodeURIComponent(app.slug)}`}
 				target="_blank"
-				rel="noreferrer">{app.name}<ExternalLink size={11} aria-hidden="true" /></a
+				rel="noreferrer"
 			>
+				{app.name}<ExternalLink size={11} aria-hidden="true" />
+			</a>
 		</Row>
 		<Row label={m.crew_github_app_app_owner()}><span class="value">{app.owner}</span></Row>
 		<Row label={m.crew_github_app_app_identity()}><span class="value mono">{app.identity}</span></Row>
@@ -80,13 +82,13 @@
 				{#each permissions as p (p.name)}
 					<li class="chip" class:write={p.level === "write"}>
 						{permissionLabel(p.name)}
-						<span class="level"
-							>{p.level === "write"
+						<span class="level">
+							{p.level === "write"
 								? m.crew_github_app_level_write()
 								: p.level === "read"
 									? m.crew_github_app_level_read()
-									: p.level}</span
-						>
+									: p.level}
+						</span>
 					</li>
 				{/each}
 			</ul>
@@ -97,11 +99,11 @@
 					{#each app.installations as i (i.id)}
 						<li>
 							<span class="value">{i.account}</span>
-							<span class="level"
-								>{i.repositorySelection === "all"
+							<span class="level">
+								{i.repositorySelection === "all"
 									? m.crew_github_app_selection_all()
-									: m.crew_github_app_selection_selected()}</span
-							>
+									: m.crew_github_app_selection_selected()}
+							</span>
 						</li>
 					{/each}
 				</ul>
@@ -159,8 +161,10 @@
 					size="sm"
 					variant="ghost"
 					disabled={flow.savingUrl || flow.publicUrl.trim() === (app.webhook.url ?? "")}
-					onclick={() => void flow.savePublicUrl()}>{m.common_action_save()}</Button
+					onclick={() => void flow.savePublicUrl()}
 				>
+					{m.common_action_save()}
+				</Button>
 			</div>
 			<p class="muted" class:warn={state === "failing"} role="status">
 				{state === "off"
@@ -188,8 +192,9 @@
 					<p class="deadline" aria-live="off">{m.crew_github_app_deadline({ time: clock(left) })}</p>
 					<p class="muted">{m.crew_github_app_deadline_note()}</p>
 					<div class="actions">
-						<Button size="sm" variant="ghost" onclick={() => flow.cancel()}>{m.common_action_cancel()}</Button
-						>
+						<Button size="sm" variant="ghost" onclick={() => flow.cancel()}>
+							{m.common_action_cancel()}
+						</Button>
 					</div>
 				</div>
 			{:else if flow.phase === "converting"}

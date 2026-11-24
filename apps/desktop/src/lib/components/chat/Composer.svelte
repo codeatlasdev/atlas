@@ -72,9 +72,9 @@
 	{#if slash.length || atHits.length}
 		<div class="suggest">
 			{#each slash as c (c.name)}
-				<button onclick={() => (draft = `/${c.name} `)}
-					><b>/{c.name}</b> <span class="dim">{c.description}</span></button
-				>
+				<button onclick={() => (draft = `/${c.name} `)}>
+					<b>/{c.name}</b> <span class="dim">{c.description}</span>
+				</button>
 			{/each}
 			{#each atHits as f (f)}
 				<button onclick={() => (draft = completeAt(draft, f))}>@{f}</button>
@@ -84,12 +84,14 @@
 	{#if images.length}
 		<div class="imgs">
 			{#each images as im, i (i)}
-				<span class="chip"
-					>{im.name}<button
+				<span class="chip">
+					{im.name}<button
 						aria-label={m.crew_chat_composer_remove_image({ name: im.name })}
-						onclick={() => images.splice(i, 1)}><X size={10} /></button
-					></span
-				>
+						onclick={() => images.splice(i, 1)}
+					>
+						<X size={10} />
+					</button>
+				</span>
 			{/each}
 		</div>
 	{/if}
@@ -114,9 +116,9 @@
 				? m.workbench_chat_composer_busy_placeholder({ key: kbd("escape") })
 				: m.workbench_chat_composer_placeholder()}></textarea>
 		{#if busy}
-			<button class="stop" title={m.workbench_chat_stop({ key: kbd("escape") })} onclick={onabort}
-				><Square size={12} fill="currentColor" /></button
-			>
+			<button class="stop" title={m.workbench_chat_stop({ key: kbd("escape") })} onclick={onabort}>
+				<Square size={12} fill="currentColor" />
+			</button>
 		{/if}
 	</div>
 </div>

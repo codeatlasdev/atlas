@@ -46,8 +46,10 @@
 					s.query = "";
 					change();
 					input?.focus();
-				}}><X size={12} /></button
+				}}
 			>
+				<X size={12} />
+			</button>
 		{/if}
 		<Tip label={m.search_form_match_case()} side="bottom">
 			{#snippet child(props)}
@@ -57,8 +59,10 @@
 					class:on={s.caseSensitive}
 					aria-pressed={s.caseSensitive}
 					aria-label={m.search_form_match_case()}
-					onclick={() => ((s.caseSensitive = !s.caseSensitive), change())}><CaseSensitive size={14} /></button
+					onclick={() => ((s.caseSensitive = !s.caseSensitive), change())}
 				>
+					<CaseSensitive size={14} />
+				</button>
 			{/snippet}
 		</Tip>
 		<Tip label={m.search_form_whole_word()} side="bottom">
@@ -69,8 +73,10 @@
 					class:on={s.wholeWord}
 					aria-pressed={s.wholeWord}
 					aria-label={m.search_form_whole_word()}
-					onclick={() => ((s.wholeWord = !s.wholeWord), change())}><WholeWord size={14} /></button
+					onclick={() => ((s.wholeWord = !s.wholeWord), change())}
 				>
+					<WholeWord size={14} />
+				</button>
 			{/snippet}
 		</Tip>
 		<Tip label={m.search_form_regular_expression()} side="bottom">
@@ -81,8 +87,10 @@
 					class:on={s.regex}
 					aria-pressed={s.regex}
 					aria-label={m.search_form_regular_expression()}
-					onclick={() => ((s.regex = !s.regex), change())}><Regex size={14} /></button
+					onclick={() => ((s.regex = !s.regex), change())}
 				>
+					<Regex size={14} />
+				</button>
 			{/snippet}
 		</Tip>
 	</div>
@@ -115,14 +123,14 @@
 	{#if s.phase === "running"}
 		<Spinner size="small" /> {m.search_form_searching()}
 	{:else if s.phase === "done"}
-		<span class="count"
-			>{m.search_form_status({
+		<span class="count">
+			{m.search_form_status({
 				matches: s.matches,
 				files: s.files.length,
 				matchesLabel: formatNumber(s.matches) + more,
 				filesLabel: formatNumber(s.files.length) + more,
-			})}</span
-		>
+			})}
+		</span>
 		{#if s.matches}<span class="took">{m.search_form_took({ ms: s.tookMs, tool: s.tool })}</span>{/if}
 	{:else if s.phase === "error"}
 		<span class="err">{s.error}</span>

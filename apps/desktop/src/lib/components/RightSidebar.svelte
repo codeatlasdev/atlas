@@ -233,19 +233,24 @@
 						{#if s.first_prompt}<p>{s.first_prompt}</p>{/if}
 						<div class="acts">
 							<button onclick={() => resume(s)}><Play size={12} /> {m.sidebar_right_resume()}</button>
-							{#if s.agent === "omp"}<button onclick={() => resume(s, true)}
-									><Play size={12} /> {m.sidebar_right_resume_in_native_chat()}</button
-								>{/if}
+							{#if s.agent === "omp"}<button onclick={() => resume(s, true)}>
+									<Play size={12} />
+									{m.sidebar_right_resume_in_native_chat()}
+								</button>{/if}
 							<button
 								onclick={() =>
 									navigator.clipboard.writeText(resumeCommandOf(s)).then(
 										() => toast.success(m.sidebar_right_copied()),
 										(e) => toast.error(errText(e)),
-									)}><Copy size={12} /> {m.sidebar_right_copy_command()}</button
+									)}
 							>
-							<button onclick={() => api.revealPath(s.file).catch((e) => toast.error(errText(e)))}
-								><FolderSearch size={12} /> {revealLabel()}</button
-							>
+								<Copy size={12} />
+								{m.sidebar_right_copy_command()}
+							</button>
+							<button onclick={() => api.revealPath(s.file).catch((e) => toast.error(errText(e)))}>
+								<FolderSearch size={12} />
+								{revealLabel()}
+							</button>
 						</div>
 					</div>
 				{/if}
@@ -293,8 +298,10 @@
 						class="ext"
 						aria-label={m.sidebar_right_open_port_external({ port: r.port })}
 						title={m.sidebar_right_open_external()}
-						onclick={() => openPort(r.port, true)}><ExternalLink size={12} /></button
+						onclick={() => openPort(r.port, true)}
 					>
+						<ExternalLink size={12} />
+					</button>
 				</div>
 			{:else}
 				<EmptyState

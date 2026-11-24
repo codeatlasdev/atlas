@@ -25,9 +25,9 @@
 		description={m.onboarding_help_settings_tour_description()}
 	>
 		{#snippet lead()}<Compass size={16} />{/snippet}
-		<Button variant="glass" size="sm" onclick={() => run(() => onboarding.startTour())}
-			>{m.onboarding_welcome_take_the_tour()}</Button
-		>
+		<Button variant="glass" size="sm" onclick={() => run(() => onboarding.startTour())}>
+			{m.onboarding_welcome_take_the_tour()}
+		</Button>
 	</Row>
 	<Row
 		id="help-keys"
@@ -49,12 +49,12 @@
 	>
 		{#snippet lead()}<ListChecks size={16} />{/snippet}
 		{#if onboarding.state.checklist.dismissed}
-			<Button variant="glass" size="sm" onclick={() => run(() => void onboarding.showChecklist())}
-				>{m.onboarding_help_settings_show_checklist()}</Button
-			>
+			<Button variant="glass" size="sm" onclick={() => run(() => void onboarding.showChecklist())}>
+				{m.onboarding_help_settings_show_checklist()}
+			</Button>
 		{/if}
-		<Button variant="ghost" size="sm" onclick={() => run(() => void onboarding.restart())}
-			>{m.onboarding_help_settings_start_over()}</Button
-		>
+		<Button variant="ghost" size="sm" onclick={() => run(() => void onboarding.restart())}>
+			{m.onboarding_help_settings_start_over()}
+		</Button>
 	</Row>
 </Group>

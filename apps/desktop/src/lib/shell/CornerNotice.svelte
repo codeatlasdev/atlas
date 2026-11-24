@@ -56,16 +56,16 @@
 		{#if Icon}<span class="icon" aria-hidden="true"><Icon size={15} strokeWidth={1.9} /></span>{/if}
 		<div class="text">
 			<b class="title">{title}</b>
-			{#if body}<span class="body">{body}</span>{:else if children}<span class="body"
-					>{@render children()}</span
-				>{/if}
+			{#if body}<span class="body">{body}</span>{:else if children}<span class="body">
+					{@render children()}
+				</span>{/if}
 			{#if actions}<div class="actions">{@render actions()}</div>{/if}
 		</div>
 		{#if count > 1}<span class="count" aria-hidden="true">×{count}</span>{/if}
 		{#if ondismiss}
-			<button class="x" type="button" aria-label={m.shell_chrome_corner_notice_dismiss()} onclick={ondismiss}
-				><X size={13} /></button
-			>
+			<button class="x" type="button" aria-label={m.shell_chrome_corner_notice_dismiss()} onclick={ondismiss}>
+				<X size={13} />
+			</button>
 		{/if}
 	</div>
 </CornerCard>

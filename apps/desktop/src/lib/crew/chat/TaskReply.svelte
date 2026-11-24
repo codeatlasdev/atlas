@@ -44,14 +44,14 @@
 {:else if !ask && !dismissed}
 	{#if t.summarized && !shownFull}
 		<div class="md-result ca-selectable">{@html html(raw)}</div>
-		<button class="show-more" onclick={() => chat.setExpanded(expandKey.full(t.id), true)}
-			>{m.crew_chat_task_reply_see_full_reply()}</button
-		>
+		<button class="show-more" onclick={() => chat.setExpanded(expandKey.full(t.id), true)}>
+			{m.crew_chat_task_reply_see_full_reply()}
+		</button>
 	{:else if t.summarized && shownFull}
 		<div class="md-result ca-selectable">{@html html(t.reply_full ?? raw)}</div>
-		<button class="show-more" onclick={() => chat.setExpanded(expandKey.full(t.id), false)}
-			>{m.crew_chat_task_reply_show_summary()}</button
-		>
+		<button class="show-more" onclick={() => chat.setExpanded(expandKey.full(t.id), false)}>
+			{m.crew_chat_task_reply_show_summary()}
+		</button>
 	{:else}
 		{@const parts = replyParts(raw)}
 		{#if parts.length > 1}
@@ -78,12 +78,12 @@
 {#if t.usage}
 	<div class="usage-footer">
 		{#if t.usage.input_tokens || t.usage.output_tokens}
-			<span
-				>{m.crew_chat_task_reply_usage_tokens({
+			<span>
+				{m.crew_chat_task_reply_usage_tokens({
 					input: fmtTokens(t.usage.input_tokens ?? 0),
 					output: fmtTokens(t.usage.output_tokens ?? 0),
-				})}</span
-			>
+				})}
+			</span>
 		{/if}
 		{#if t.usage.cost_usd}<span>${t.usage.cost_usd.toFixed(4)}</span>{/if}
 		{#if t.usage.duration_ms}<span>{fmtElapsed(t.usage.duration_ms)}</span>{/if}

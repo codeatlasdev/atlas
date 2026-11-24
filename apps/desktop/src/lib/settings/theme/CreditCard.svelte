@@ -32,9 +32,9 @@
 		</p>
 		<p class="note">{m.settings_theme_credit_card_license_note()}</p>
 	</div>
-	<Button variant="filled" size="sm" onclick={() => open(PRO)}
-		>{m.settings_theme_credit_card_get_pro()}</Button
-	>
+	<Button variant="filled" size="sm" onclick={() => open(PRO)}>
+		{m.settings_theme_credit_card_get_pro()}
+	</Button>
 </section>
 
 <style>

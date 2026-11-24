@@ -54,13 +54,13 @@
 					<span class="row-label">{describeTrigger(trig.kind, trig.tz)}</span>
 					{#if trig.prompt}<span class="row-hint auto-prompt">{trig.prompt}</span>{/if}
 					{#if trig.invalid}
-						<span class="row-hint auto-invalid"
-							>{m.settings_automation_invalid({ reason: trig.invalid })}</span
-						>
+						<span class="row-hint auto-invalid">
+							{m.settings_automation_invalid({ reason: trig.invalid })}
+						</span>
 					{:else if trig.next_fire && trig.enabled}
-						<span class="row-hint"
-							>{m.crew_settings_automations_section_next({ when: describeNext(trig.next_fire, now) })}</span
-						>
+						<span class="row-hint">
+							{m.crew_settings_automations_section_next({ when: describeNext(trig.next_fire, now) })}
+						</span>
 					{/if}
 				</div>
 				<!-- A switch, not a checkbox: on/off is the one thing to do from the row. -->
@@ -87,9 +87,9 @@
 	</section>
 {/if}
 <div class="pane-actions">
-	<Button size="sm" variant="outlined" onclick={() => openDialog(null)}
-		>{m.crew_settings_automations_section_add_automation()}</Button
-	>
+	<Button size="sm" variant="outlined" onclick={() => openDialog(null)}>
+		{m.crew_settings_automations_section_add_automation()}
+	</Button>
 </div>
 
 <!-- A chunk of its own: the dialog and its fields carry their messages, which must not grow the startup bundle. -->

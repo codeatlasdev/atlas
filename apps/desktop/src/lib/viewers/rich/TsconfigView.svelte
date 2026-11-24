@@ -79,27 +79,27 @@
 								{#if i > 0}<ArrowDown size={12} class="dn" />{/if}
 								<div class="rv-row" class:warn={l.missing}>
 									{#if l.missing}
-										<TriangleAlert size={13} /><span class="rv-k">{l.path}</span><span class="rv-note"
-											>{m.viewers_files_tsconfig_view_not_found()}</span
-										>
+										<TriangleAlert size={13} /><span class="rv-k">{l.path}</span><span class="rv-note">
+											{m.viewers_files_tsconfig_view_not_found()}
+										</span>
 									{:else if local(l.path) && l.path !== ctx.path}
-										<button class="rv-link rv-k" onclick={() => openFile(ctx.worktreeId, l.path)}
-											>{l.path}</button
-										>
-										<span class="rv-note"
-											>{m.viewers_files_tsconfig_view_layer_options({
+										<button class="rv-link rv-k" onclick={() => openFile(ctx.worktreeId, l.path)}>
+											{l.path}
+										</button>
+										<span class="rv-note">
+											{m.viewers_files_tsconfig_view_layer_options({
 												count: Object.keys(l.options).length,
-											})}</span
-										>
+											})}
+										</span>
 									{:else}
 										<span class="rv-k">{l.path}</span>
-										<span class="rv-note"
-											>{l.path === ctx.path
+										<span class="rv-note">
+											{l.path === ctx.path
 												? m.viewers_files_tsconfig_view_this_file()
 												: m.viewers_files_tsconfig_view_layer_options({
 														count: Object.keys(l.options).length,
-													})}</span
-										>
+													})}
+										</span>
 									{/if}
 								</div>
 							</div>
@@ -126,14 +126,14 @@
 						<div class="rv-row opt">
 							<div class="kv">
 								<span class="rv-k">{o.key}</span>
-								<span class="rv-chip mono" class:ok={o.value === true} class:bad={o.value === false}
-									>{fmt(o.value)}</span
-								>
-								{#if o.from !== ctx.path}<span class="rv-note"
-										>{m.viewers_files_tsconfig_view_from({
+								<span class="rv-chip mono" class:ok={o.value === true} class:bad={o.value === false}>
+									{fmt(o.value)}
+								</span>
+								{#if o.from !== ctx.path}<span class="rv-note">
+										{m.viewers_files_tsconfig_view_from({
 											path: o.from.split("/").slice(-2).join("/"),
-										})}</span
-									>{/if}
+										})}
+									</span>{/if}
 							</div>
 							{#if tsDoc(o.key)}<div class="rv-note">{tsDoc(o.key)}</div>{/if}
 						</div>

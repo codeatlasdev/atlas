@@ -86,36 +86,37 @@
 			{@const keys = bindingLabels(c.id)}
 			<div class="row" class:rec={recording === c.id} data-setting={c === rows[0] ? "keymap" : undefined}>
 				<div class="what">
-					<span class="name"
-						>{#each highlight(query.trim(), c.label) as r, k (k)}{#if r.hit}<mark>{r.text}</mark
-								>{:else}{r.text}{/if}{/each}</span
-					>
+					<span class="name">
+						{#each highlight(query.trim(), c.label) as r, k (k)}{#if r.hit}<mark>
+									{r.text}
+								</mark>{:else}{r.text}{/if}{/each}
+					</span>
 				</div>
 				<div class="keys">
 					{#if recording === c.id}
-						<span class="prompt"
-							>{m.settings_general_shortcut_press_the_new_shortcut()}
+						<span class="prompt">
+							{m.settings_general_shortcut_press_the_new_shortcut()}
 							<Kbd>{kbd("escape")}</Kbd>
-							{m.settings_general_shortcut_to_cancel()}</span
-						>
+							{m.settings_general_shortcut_to_cancel()}
+						</span>
 					{:else}
 						<button
 							class="keybtn"
 							title={m.settings_general_shortcut_click_then_press_the_new()}
 							onclick={() => (recording = c.id)}
 						>
-							{#if keys.length}{#each keys as k (k)}<Kbd>{k}</Kbd>{/each}{:else}<span class="none"
-									>{isDefault(c.id)
-										? m.settings_general_shortcut_none()
-										: m.settings_general_shortcut_add()}</span
-								>{/if}
+							{#if keys.length}{#each keys as k (k)}<Kbd>{k}</Kbd>{/each}{:else}<span class="none">
+									{isDefault(c.id) ? m.settings_general_shortcut_none() : m.settings_general_shortcut_add()}
+								</span>{/if}
 						</button>
 						{#if keys.length}
 							<button
 								class="x"
 								aria-label={m.settings_general_shortcut_remove_this_shortcut()}
-								onclick={() => clear(c.id)}><X size={12} /></button
+								onclick={() => clear(c.id)}
 							>
+								<X size={12} />
+							</button>
 						{/if}
 					{/if}
 				</div>

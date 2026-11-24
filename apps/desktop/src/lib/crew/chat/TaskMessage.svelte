@@ -181,9 +181,9 @@
 			</button>
 		{/if}
 		{#if t.state === "running" && crewmate.running_task?.pane}
-			<button class="tb-btn" title={m.crew_chat_task_message_open_terminal()} onclick={onterminal}
-				><Terminal size={14} /></button
-			>
+			<button class="tb-btn" title={m.crew_chat_task_message_open_terminal()} onclick={onterminal}>
+				<Terminal size={14} />
+			</button>
 		{/if}
 	</div>
 </div>

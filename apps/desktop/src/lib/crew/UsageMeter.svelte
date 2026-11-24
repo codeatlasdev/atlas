@@ -40,8 +40,9 @@
 				<span class="meter-cost">{formatNumber(todayCost, { style: "currency", currency: "USD" })}</span>
 			{/if}
 			{#if resetsAt}
-				<span class="meter-reset">{m.crew_workspace_usage_meter_resets({ time: fmtResetsAt(resetsAt) })}</span
-				>
+				<span class="meter-reset">
+					{m.crew_workspace_usage_meter_resets({ time: fmtResetsAt(resetsAt) })}
+				</span>
 			{/if}
 		</div>
 		{#if limitPct !== null}

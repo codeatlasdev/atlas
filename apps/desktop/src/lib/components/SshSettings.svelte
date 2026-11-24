@@ -97,9 +97,9 @@
 		<Row label={h} description={tests[h] ?? undefined}>
 			<StatusChip status={view.tone} label={view.label} />
 			{#if status[h] === "connecting"}<Spinner size={11} />{/if}
-			<Button size="sm" variant="outlined" onclick={() => test(h)}
-				>{m.crew_settings_engine_section_test_connection()}</Button
-			>
+			<Button size="sm" variant="outlined" onclick={() => test(h)}>
+				{m.crew_settings_engine_section_test_connection()}
+			</Button>
 			<Button size="sm" variant="ghost" onclick={() => remove(h)}>{m.common_action_remove()}</Button>
 			{#snippet below()}
 				{#if view.detail}<div class="err ca-selectable">
@@ -170,9 +170,9 @@
 			label={m.settings_agents_ssh_add_project_label()}
 			description={m.settings_agents_ssh_add_project_description()}
 		>
-			<Button size="sm" disabled={adding || !addPath.trim()} onclick={addProject}
-				>{m.settings_agents_ssh_add_project()}</Button
-			>
+			<Button size="sm" disabled={adding || !addPath.trim()} onclick={addProject}>
+				{m.settings_agents_ssh_add_project()}
+			</Button>
 		</Row>
 	</Group>
 {/if}

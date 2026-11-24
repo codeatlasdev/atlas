@@ -28,7 +28,12 @@ const { copy, crashReport, parseCard } = await import("./crashCard.ts");
 const { headline } = await import("./report.ts");
 
 // The real producer value: `serde_json::to_value(crash_card::Card)` (pinned by `crash_card::tests::the_card_serializes_the_keys_the_page_reads`).
-const REAL = { atMs: 1_800_000_000_000, kind: "crash", summary: "atlas 1.5.0: boom (src/main.rs:1:1)" };
+const REAL = {
+	atMs: 1_800_000_000_000,
+	kind: "crash",
+	summary: "atlas 1.5.0: boom (src/main.rs:1:1)",
+	fingerprint: "0123456789abcdef",
+};
 
 beforeEach(() => {
 	calls.length = 0;
@@ -38,7 +43,11 @@ beforeEach(() => {
 
 test("the card the backend serializes is read, and anything else is no card", () => {
 	expect(parseCard(REAL)).toEqual(REAL);
-	expect(parseCard({ ...REAL, kind: "hostd-exited" })?.kind).toBe("hostd-exited");
+	expect(parseCard({ ...REAL, kind: "hostd-exited", fingerprint: null })?.kind).toBe("hostd-exited");
+	// A build that has no fingerprint (or a value that is not one) is a card without it, never no card.
+	const { fingerprint: _, ...old } = REAL;
+	expect(parseCard(old)?.fingerprint).toBeNull();
+	expect(parseCard({ ...REAL, fingerprint: "not-a-fingerprint" })?.fingerprint).toBeNull();
 	for (const bad of [
 		null,
 		undefined,
@@ -90,4 +99,11 @@ test("the report carries the summary with secrets and home paths removed, and th
 		"The terminal host closed unexpectedly",
 	);
 	expect(copy(REAL).body).toContain("Nothing was sent");
+});
+
+// #320: a crash report is filed under the fingerprint its file carries, not one recomputed from the card's text (the
+// summary is `atlas <version>: <message> (<location>)`, which no fingerprint was made of).
+test("the report keeps the fingerprint of the crash file, and a card without one gets the page's own", () => {
+	expect(crashReport(REAL).fingerprint).toBe("0123456789abcdef");
+	expect(crashReport({ ...REAL, fingerprint: null }).fingerprint).toBeUndefined();
 });

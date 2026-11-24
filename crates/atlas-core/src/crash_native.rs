@@ -733,6 +733,26 @@ mod tests {
         );
     }
 
+    /// #320: the same crash twice, in two processes the loader places at two addresses (ASLR), is one fingerprint
+    /// from the file alone (no symbols), and another crash is another.
+    #[cfg(unix)]
+    #[test]
+    fn a_native_crash_has_one_fingerprint_whatever_the_load_address() {
+        let of = |how: &str| {
+            let (_, dir) = crash_a_child(how);
+            let text = std::fs::read_to_string(reports(dir.path()).pop().unwrap()).unwrap();
+            (
+                crate::crash_fingerprint::of_report(&text, None),
+                field(&text, "load_bias"),
+            )
+        };
+        let (a, bias_a) = of("abort");
+        let (b, bias_b) = of("abort");
+        assert!(a.is_some(), "no fingerprint for a real abort");
+        assert_eq!(a, b, "biases {bias_a:?} {bias_b:?}");
+        assert_ne!(a, of("bus").0, "SIGBUS is not SIGABRT");
+    }
+
     #[cfg(unix)]
     #[test]
     fn an_abort_and_a_bus_error_leave_their_own_signal_in_the_report() {
@@ -877,6 +897,16 @@ mod tests {
         assert!(
             line.contains("crash_native.rs:"),
             "file and line are resolved: {line}"
+        );
+        // #320: with the symbols the fingerprint is of the crashing function and its file.
+        let text = std::fs::read_to_string(&report).unwrap();
+        assert_eq!(
+            crate::crash_fingerprint::of_report(&text, Some(&out)),
+            Some(crate::fingerprint::with_key(
+                "native crash: SIGABRT",
+                "atlas_crash_on_purpose|crates/atlas-core/src/crash_native.rs"
+            )),
+            "{out}"
         );
     }
 

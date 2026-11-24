@@ -121,13 +121,19 @@ mod tests {
         let mut b = Blink::new(t0);
         b.on = false;
         b.next = t0 + REST_AFTER;
-        assert!(b.tick(t0 + REST_AFTER), "the cursor coming back is a change");
+        assert!(
+            b.tick(t0 + REST_AFTER),
+            "the cursor coming back is a change"
+        );
         assert!(b.on());
         assert_eq!(b.deadline(true, false), None);
         // Already on at the rest time: nothing changed, no frame.
         let mut b = Blink::new(t0);
         b.next = t0 + REST_AFTER;
-        assert!(!b.tick(t0 + REST_AFTER), "no frame for a phase that did not change");
+        assert!(
+            !b.tick(t0 + REST_AFTER),
+            "no frame for a phase that did not change"
+        );
     }
 
     #[test]

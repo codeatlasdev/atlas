@@ -12,6 +12,7 @@
 //! links, search), `settings` (theme, prefs, font, focus, stats); `render_loop`, `mac` and
 //! `shared` are the machinery.
 
+mod blink;
 mod keys;
 mod lifecycle;
 #[cfg(target_os = "macos")]

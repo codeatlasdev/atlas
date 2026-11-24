@@ -51,7 +51,6 @@ pub(super) struct State {
     pub(super) rebuild_failures: u32,
 }
 
-pub(super) const BLINK: Duration = Duration::from_millis(530);
 pub(super) const BELL: Duration = Duration::from_millis(120);
 
 pub(super) struct Shared {

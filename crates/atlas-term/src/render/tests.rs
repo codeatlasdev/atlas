@@ -292,3 +292,89 @@ fn a_new_request_during_backoff_does_not_bypass_it() {
     assert!(!r.should_try(t0), "still backing off");
     assert!(r.should_try(t0 + Duration::from_secs(3)));
 }
+
+use super::gpu::unsupported_adapter;
+
+fn vulkan(device_type: wgpu::DeviceType, driver: &str) -> wgpu::AdapterInfo {
+    let mut i = wgpu::AdapterInfo::new(device_type, wgpu::Backend::Vulkan);
+    i.driver = driver.into();
+    i
+}
+
+// Phase 3 (docs/terminal-linux-design.md): the native terminal runs on RADV, ANV and NVK, and keeps xterm.js on
+// everything the design measured nothing on: NVIDIA's proprietary driver (its Wayland/Vulkan surface path and the DMA-BUF
+// stack WebKit shares with it are the known-bad combination) and software rasterizers (llvmpipe draws slower than the page).
+#[test]
+fn mesa_hardware_drivers_are_supported() {
+    for (ty, driver) in [
+        (wgpu::DeviceType::IntegratedGpu, "radv"),
+        (wgpu::DeviceType::DiscreteGpu, "radv"),
+        (
+            wgpu::DeviceType::IntegratedGpu,
+            "Intel open-source Mesa driver",
+        ),
+        (wgpu::DeviceType::DiscreteGpu, "NVK"),
+    ] {
+        assert_eq!(unsupported_adapter(&vulkan(ty, driver)), None, "{driver}");
+    }
+}
+
+#[test]
+fn the_proprietary_nvidia_driver_is_refused_in_any_case() {
+    for driver in ["NVIDIA", "nvidia"] {
+        let why = unsupported_adapter(&vulkan(wgpu::DeviceType::DiscreteGpu, driver));
+        assert!(why.is_some_and(|w| w.contains("NVIDIA")), "{driver}");
+    }
+}
+
+#[test]
+fn software_rasterizers_are_refused() {
+    let why = unsupported_adapter(&vulkan(wgpu::DeviceType::Cpu, "llvmpipe"));
+    assert!(why.is_some_and(|w| w.contains("software")));
+}
+
+#[test]
+fn a_non_vulkan_adapter_is_refused() {
+    let gl = wgpu::AdapterInfo::new(wgpu::DeviceType::IntegratedGpu, wgpu::Backend::Gl);
+    assert!(unsupported_adapter(&gl).is_some());
+}
+
+use super::gpu::pick_alpha;
+use wgpu::CompositeAlphaMode as Alpha;
+
+// Design 4.2: a surface under XWayland lists only PreMultiplied and Inherit; asking it for Opaque is a validation error.
+#[test]
+fn the_alpha_mode_is_opaque_when_listed_else_the_first_the_surface_offers() {
+    assert_eq!(
+        pick_alpha(&[Alpha::PreMultiplied, Alpha::Opaque]),
+        Alpha::Opaque
+    );
+    assert_eq!(
+        pick_alpha(&[Alpha::PreMultiplied, Alpha::Inherit]),
+        Alpha::PreMultiplied
+    );
+    assert_eq!(pick_alpha(&[]), Alpha::Auto);
+}
+
+use super::gpu::pick_format;
+use wgpu::TextureFormat as Fmt;
+
+// Found live on a pixman sway (#774, phase 3 fallback proof): the Vulkan surface listed no format, `caps.formats[0]` panicked
+// on the main thread and the terminal tab showed "index out of bounds" in a toast. It must be an error that says why.
+#[test]
+fn a_surface_that_lists_no_format_is_an_error_not_a_panic() {
+    let e = pick_format(&[]).unwrap_err();
+    assert!(e.contains("no color format"), "{e}");
+}
+
+#[test]
+fn the_format_is_non_srgb_bgra_when_listed_else_the_first_the_surface_offers() {
+    assert_eq!(
+        pick_format(&[Fmt::Bgra8UnormSrgb, Fmt::Bgra8Unorm]).unwrap(),
+        Fmt::Bgra8Unorm
+    );
+    assert_eq!(
+        pick_format(&[Fmt::Rgba8UnormSrgb, Fmt::Rgba8Unorm]).unwrap(),
+        Fmt::Rgba8UnormSrgb
+    );
+}

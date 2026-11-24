@@ -20,6 +20,7 @@
 	"workbench_term_clipboard_title": "Copy to clipboard?",
 	"workbench_term_font_fallback": "The font {font} isn't installed, so the GPU terminal uses {resolved}.",
 	"workbench_term_gpu_after_restart": "The GPU terminal turns on after the terminal host restarts (Settings → Terminal).",
+	"workbench_term_native_fell_back": "The fast terminal could not start ({reason}). Terminals use the classic renderer until you restart Atlas.",
 	"workbench_term_pane_ended": "Process ended ({code})",
 	"workbench_term_pane_gone": "Terminal is gone",
 	"workbench_term_pane_host_unreachable": "Terminal host not reachable",

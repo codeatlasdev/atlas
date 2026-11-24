@@ -44,6 +44,11 @@ pub(super) struct State {
     /// Rows (-1..1) the content is drawn below its row grid: the sub-row offset of a smooth scroll
     /// (`wheel::term_wheel`). The render thread asks the snapshot for overscan rows while it is not 0.
     pub(super) scroll_frac: f32,
+    /// Physical pixels per logical pixel the terminal is drawn at (its font and swapchain are sized by it). Linux: the
+    /// compositor's scale for the window, which changes when the window moves to another output.
+    pub(super) scale: f64,
+    /// Rebuilds that failed in a row (reset by one that worked): at `REBUILD_GIVE_UP` the page is told on Linux.
+    pub(super) rebuild_failures: u32,
 }
 
 pub(super) const BLINK: Duration = Duration::from_millis(530);
@@ -172,6 +177,12 @@ impl Placement {
     fn frame(&self) -> Option<(f64, f64, f64, f64)> {
         self.rect.filter(|_| self.shown && self.drawn)
     }
+
+    /// The rect the page last asked for, shown or not (a scale change re-fits the swapchain to it).
+    #[cfg(target_os = "linux")]
+    pub(super) fn rect(&self) -> Option<(f64, f64, f64, f64)> {
+        self.rect
+    }
 }
 
 #[cfg(test)]
@@ -212,6 +223,8 @@ impl Shared {
                 font_new: None,
                 font_spec: Default::default(),
                 scroll_frac: 0.0,
+                scale: 2.0,
+                rebuild_failures: 0,
             }),
             osc52: Mutex::new("ask".into()),
             wake: Condvar::new(),

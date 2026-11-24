@@ -86,6 +86,7 @@ pub(super) fn on_system_event(ev: SystemEvent, terms: &[Arc<Shared>]) -> usize {
 }
 
 /// Observe wake and display changes for the life of the process (macOS; main thread at setup).
+#[cfg(target_os = "macos")]
 pub fn install() {
     use block2::RcBlock;
     use objc2_app_kit::NSWorkspace;

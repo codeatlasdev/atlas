@@ -20,9 +20,10 @@ mod shell;
 mod sync;
 #[cfg(test)]
 mod tests;
+mod warm;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
@@ -146,6 +147,8 @@ pub struct Vt {
     scrollback: AtomicUsize,
     /// The byte budget that tightens it (`history::BYTE_BUDGET` until the user sets one).
     budget: AtomicUsize,
+    /// The grid's row ring holds no spare rows, so a scroll recycles the oldest history row (`warm`).
+    ring_exact: AtomicBool,
     on_event: OnEvent,
     win: SizeCell,
     pal: PalCell,
@@ -185,6 +188,7 @@ impl Vt {
             shell: Mutex::new(Shell::default()),
             scrollback,
             budget: AtomicUsize::new(history::BYTE_BUDGET),
+            ring_exact: AtomicBool::new(false),
             on_event,
             win,
             pal,
@@ -224,7 +228,7 @@ impl Vt {
         let had_history = t.grid().history_size() > 0;
         self.track_pixel(&mut sh, bytes);
         for (end, seq) in sh.scan.scan(bytes) {
-            p.advance(&mut *t, &bytes[at..end]);
+            self.advance(&mut p, &mut t, &bytes[at..end]);
             at = end;
             // Marks and images need the grid as of their stream position: end a pending
             // synchronized update first. Other OSCs (7 on every prompt) keep it atomic.
@@ -254,7 +258,7 @@ impl Vt {
                 }
             }
         }
-        p.advance(&mut *t, &bytes[at..]);
+        self.advance(&mut p, &mut t, &bytes[at..]);
         self.track_alt(&t, &mut sh);
         // ED3 / RIS emptied the history: free the rows alacritty keeps as spare.
         if had_history && t.grid().history_size() == 0 {
@@ -262,6 +266,37 @@ impl Vt {
         }
         if let Some(s) = sh.search.as_mut() {
             s.stale = true;
+        }
+    }
+
+    /// `Processor::advance`. When the bytes will recycle big history rows (a flood of text into a full scrollback)
+    /// they go in one line at a time, each after a fetch of the next rows it recycles (`warm`).
+    fn advance(&self, p: &mut Processor, t: &mut Term<Proxy>, bytes: &[u8]) {
+        let history = t.grid().history_size();
+        let cap = history::history_lines(
+            self.scrollback.load(Ordering::Relaxed),
+            t.columns(),
+            self.scrollback_bytes(),
+        );
+        // alacritty grows its row ring in batches of spare rows, and with spares the recycled row is not the
+        // oldest: the ring is made exact once, when the history first reaches its cap (`warm`'s test).
+        if history < cap {
+            self.ring_exact.store(false, Ordering::Relaxed);
+        } else if cap > 0 && !self.ring_exact.swap(true, Ordering::Relaxed) {
+            t.grid_mut().truncate();
+        }
+        let warm = self.ring_exact.load(Ordering::Relaxed)
+            && warm::plan(history, cap, t.columns(), bytes).is_some();
+        if !warm {
+            p.advance(t, bytes);
+            return;
+        }
+        for part in warm::slices(bytes) {
+            let history = t.grid().history_size();
+            if let Some(plan) = warm::plan(history, cap, t.columns(), part) {
+                warm::warm(t.grid(), history, &plan);
+            }
+            p.advance(t, part);
         }
     }
 

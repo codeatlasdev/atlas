@@ -55,6 +55,14 @@ pub fn unregister(kind: &str, tab: &str) {
     REGISTRY.lock().unregister(kind, tab);
 }
 
+/// Linux: a terminal's child surface has no input of its own (an empty input region), so there is no router to feed and
+/// nothing to register; the calls stay so the terminal's lifecycle reads the same on both platforms.
+#[cfg(target_os = "linux")]
+pub fn register(_kind: &str, _tab: &str, _view: usize, _interactive: bool) {}
+
+#[cfg(target_os = "linux")]
+pub fn unregister(_kind: &str, _tab: &str) {}
+
 /// Put a native view that just joined the window directly below the page. Main thread.
 #[cfg(target_os = "macos")]
 pub fn lower_below_page(view: usize) {

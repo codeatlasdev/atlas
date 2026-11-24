@@ -42,6 +42,13 @@ html.opaque-window,
 html.opaque-window body {
 	background: var(--ca-surface-sunken) !important;
 }
+/* Linux with the native terminal in use (`startGround` ran): the terminal is a Wayland subsurface BELOW the page, so the
+   root must not paint over its slot. The ground engine owns the backdrop (`.window-ground`, one hole per slot), as on
+   macOS; more specific than the rule above, so it wins. */
+html.ground-holes.opaque-window,
+html.ground-holes.opaque-window body {
+	background: transparent !important;
+}
 /* Windows and Linux: no traffic lights over the content, the peeking sidebar can use the full height. */
 html.opaque-window .peek-panel {
 	top: 8px;

@@ -19,11 +19,17 @@ raw-window-handle = "0.6"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "1.0"
 alacritty_terminal = "0.26"
+memchr = "2"
 parking_lot = { workspace = true }
 swash = "0.2"
 base64 = { workspace = true }
 flate2 = { workspace = true }
 png = "0.18"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Vulkan only (RADV, ANV, NVK): the Wayland native terminal. No GL backend: it would double the driver matrix for the
+# one session type that has a path today (docs/terminal-linux-design.md section 7, decision 3).
+wgpu = { version = "30", default-features = false, features = ["vulkan"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }

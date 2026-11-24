@@ -62,6 +62,7 @@
 	"settings_terminal_tab_restart_host_body": "Os terminais e agentes em execução terminam. As abas continuam; use Reiniciar em cada uma para reabri-las.",
 	"settings_terminal_tab_restart_host_title": "Reiniciar o host de terminais?",
 	"settings_terminal_tab_restart_terminal_host": "Reiniciar o host de terminais",
+	"settings_terminal_tab_restart_to_apply_fast_terminal": "Reinicie o Atlas para aplicar. A janela é preparada para o terminal rápido quando abre.",
 	"settings_terminal_tab_scrollback": "Scrollback",
 	"settings_terminal_tab_scrollback_memory": "Memória do scrollback",
 	"settings_terminal_tab_selecting_text_copies_it_to": "Selecionar texto o copia para a área de transferência assim que você solta o mouse.",

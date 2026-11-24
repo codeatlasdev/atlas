@@ -79,6 +79,24 @@ fn unknown_families_resolve_to_the_bundled_font() {
     assert!(resolve(&[]).family.is_none());
 }
 
+/// Linux keeps fonts in `/usr/share/fonts/<package>/…` (Arch: `TTF/`, `noto/`, `OTF/`): the scan must descend, to a bound.
+#[test]
+fn scanning_descends_into_subdirectories_up_to_the_depth_given() {
+    let root = std::env::temp_dir().join(format!("atlas-term-fonts-tree-{}", std::process::id()));
+    let deep = root.join("TTF/sub/deeper");
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(root.join("top.ttf"), JB_REGULAR).unwrap();
+    std::fs::write(root.join("TTF/one.ttf"), JB_REGULAR).unwrap();
+    std::fs::write(root.join("TTF/sub/two.ttf"), JB_REGULAR).unwrap();
+    std::fs::write(deep.join("three.ttf"), JB_REGULAR).unwrap();
+    let n = |depth| scan(std::slice::from_ref(&root), depth).len();
+    assert_eq!(n(0), 1, "depth 0 is the directory itself");
+    assert_eq!(n(1), 2);
+    assert_eq!(n(2), 3);
+    assert_eq!(n(3), 4);
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
 #[test]
 fn scanning_a_directory_finds_fonts_and_ignores_the_rest() {
     let dir = std::env::temp_dir().join(format!("atlas-term-fonts-{}", std::process::id()));
@@ -87,7 +105,7 @@ fn scanning_a_directory_finds_fonts_and_ignores_the_rest() {
     std::fs::write(dir.join("JB-Bold.ttf"), JB_BOLD).unwrap();
     std::fs::write(dir.join("broken.ttf"), b"not a font").unwrap();
     std::fs::write(dir.join("notes.txt"), b"hi").unwrap();
-    let es = scan(std::slice::from_ref(&dir));
+    let es = scan(std::slice::from_ref(&dir), 0);
     assert_eq!(es.len(), 2, "{es:?}");
     let fam = build_family(&es, "jetbrains MONO").expect("family");
     assert_eq!(fam.name, "JetBrains Mono");

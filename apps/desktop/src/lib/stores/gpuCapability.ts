@@ -47,3 +47,8 @@ export function fromCapability(c: Capability): GpuSwitches {
 export function withSetting(c: Capability, on: boolean): Capability {
 	return { ...c, setting: on };
 }
+
+/** Why the native terminal is not in use although the user asked for it (the machine cannot run it); null otherwise. */
+export function refusal(c: Capability): string | null {
+	return !c.available && c.setting ? (c.reason ?? "unavailable") : null;
+}

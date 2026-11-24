@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "@codeatlasdev/ui";
 import { IS_MAC } from "#lib/keys.ts";
+import { m } from "#lib/i18n/m.ts";
 import { gpu, GPU_KEY } from "./gpu.svelte.ts";
-import { fromCapability, withSetting, type Capability } from "./gpuCapability.ts";
+import { fromCapability, refusal, withSetting, type Capability } from "./gpuCapability.ts";
 
 /**
  * Asking Rust what the machine can do and saving the choice. Kept out of `gpu.svelte.ts` (the plain state every terminal
@@ -26,6 +28,9 @@ export async function detectGpu(): Promise<Capability | null> {
 	try {
 		const c = await invoke<Capability>("term_capability");
 		apply(c);
+		// Asked for and the machine cannot: every terminal is xterm.js, and the user is told why (once per launch).
+		const why = refusal(c);
+		if (why) toast.info(m.workbench_term_native_fell_back({ reason: why }));
 		return c;
 	} catch {
 		return null;

@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
-import { fromCapability, withSetting, type Capability } from "./gpuCapability.ts";
+import { fromCapability, refusal, withSetting, type Capability } from "./gpuCapability.ts";
 
 /** What Rust sends (`serde(rename_all = "camelCase")` of `Capability` in term/linux/capability.rs). */
 const reply = (over: Partial<Capability> = {}): Capability => ({
@@ -64,5 +64,21 @@ describe("fromCapability", () => {
 			'{"available":true,"reason":null,"adapter":"gpu","setting":true,"active":true}',
 		) as Capability;
 		expect(fromCapability(rust).supported).toBe(true);
+	});
+});
+
+// Phase 3 fallback proof (no-Vulkan session): the user turned the fast terminal on, the machine cannot run it, and every
+// terminal quietly stayed xterm.js. One toast must say why; a machine that was never asked says nothing.
+describe("refusal", () => {
+	test("asked for and refused: the reason, so the page can say why xterm.js is in use", () => {
+		expect(refusal(reply({ available: false, reason: "no usable GPU: llvmpipe", setting: true }))).toBe(
+			"no usable GPU: llvmpipe",
+		);
+	});
+
+	test("not asked, or capable: nothing to say", () => {
+		expect(refusal(reply({ available: false, reason: "not a Wayland session", setting: false }))).toBeNull();
+		expect(refusal(reply({ setting: true, active: true }))).toBeNull();
+		expect(refusal(reply({ setting: true, active: false }))).toBeNull();
 	});
 });

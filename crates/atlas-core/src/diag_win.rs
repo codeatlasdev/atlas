@@ -7,7 +7,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::*};
 use std::time::{Duration, Instant};
 
 fn sh(c: &str) -> String {
-    let o = std::process::Command::new("cmd").args(["/d", "/c", c]).output();
+    let o = std::process::Command::new("cmd")
+        .args(["/d", "/c", c])
+        .output();
     match o {
         Ok(o) => format!(
             "{}{}",

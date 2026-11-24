@@ -396,6 +396,7 @@ fn acquire_surface(
             sh.state.lock().rebuild_failures = 0;
             // The measurement of #254 ("rebuild on show"): debug-assertions builds (the agent instances) say it.
             if cfg!(debug_assertions) {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas-term: renderer rebuilt on show in {:.1} ms",
                     started.elapsed().as_secs_f64() * 1000.0

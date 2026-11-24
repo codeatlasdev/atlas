@@ -49,10 +49,12 @@ pub fn try_lock(file: &File) -> io::Result<bool> {
     imp::try_lock(file)
 }
 
-/// Replace `to` with `from` in one step, atomically for anyone opening the name `to` meanwhile: they get the old
-/// file or the new one, never "not found". `rename(2)` on Unix; on Windows `std::fs::rename` does not promise that
-/// (it can leave the name missing for an instant while a reader holds the old file), so the rename is done with POSIX
-/// semantics there. Not for directories. A refusal that outlasts [`RetryBudget::Full`] fails the replace.
+/// Replace `to` with `from` in one step: anyone opening the name `to` meanwhile gets the old file or the new one.
+/// `rename(2)` on Unix, where that is a guarantee. On Windows `std::fs::rename` does not promise it (it can leave the
+/// name missing for an instant while a reader holds the old file), so the rename is done with POSIX semantics there,
+/// which keeps the name for almost every open but is still not atomic against one: on Windows runners about 7 of 3.6
+/// million raw opens found it missing while the replace ran (`NotFound`), so a reader that must not fail reads with
+/// [`crate::fs::read_replaced`]. Not for directories. A refusal that outlasts [`RetryBudget::Full`] fails the replace.
 pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
     replace_file_with(from, to, RetryBudget::Full)
 }
@@ -701,8 +703,9 @@ mod imp {
         Some((info.dwVolumeSerialNumber as u64, index))
     }
 
-    /// Rename `from` over `to` with POSIX semantics (`FILE_RENAME_FLAG_POSIX_SEMANTICS`): one step in which the
-    /// name `to` goes from the old file to the new one, even while readers hold the old one open. `std::fs::rename`
+    /// Rename `from` over `to` with POSIX semantics (`FILE_RENAME_FLAG_POSIX_SEMANTICS`): one call in which the
+    /// name `to` goes from the old file to the new one, even while readers hold the old one open (an open of the name
+    /// can still land inside the call and find it missing, rarely: see [`super::replace_file`]). `std::fs::rename`
     /// is `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`, which Windows documents without that guarantee: a reader opening
     /// the name meanwhile can find it missing (`NotFound`) or, the old file being delete-pending, be refused (`Access
     /// is denied`) (#545). The retry loop and what follows a refusal are in [`super::replace_file_via`]. (`ReplaceFileW`
@@ -1276,26 +1279,39 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&from).unwrap(), "new");
     }
 
-    /// The normal path on Windows, the POSIX-semantics rename: a raw open of the name, as often as it can, never finds
-    /// it missing or refused while it is replaced 299 times (measured on a Windows runner, #744: 3684 opens, all ok;
-    /// `ReplaceFileW` got `NotFound` in 5000 of 13839 and a sharing violation in 954, so it is not used).
+    /// The normal path on Windows, the POSIX-semantics rename, with nothing around it (no retries): a reader that
+    /// reads with `read_replaced` never fails while the name is replaced 299 times. The guarantee is the reader's, not
+    /// the raw name's: a raw `File::open` in a loop found the name missing in about 7 of 3.6 million opens on Windows
+    /// runners (#744 measured 0 in 3684, too few to see it; `ReplaceFileW` got `NotFound` in 5000 of 13839 and a
+    /// sharing violation in 954, so it is not used), which is what `read_replaced`'s `NotFound` retry is for.
     #[cfg(windows)]
     #[test]
-    fn the_posix_rename_never_leaves_the_name_missing_for_a_raw_reader() {
+    fn a_read_replaced_reader_never_fails_while_the_posix_rename_replaces() {
+        use std::sync::atomic::{AtomicBool, Ordering};
         let dir = tempfile::tempdir().unwrap();
         let to = dir.path().join("status.json");
         std::fs::write(&to, "0").unwrap();
-        let watch = watch_name(&to);
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let reader = {
+            let (to, done) = (to.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut reads = 0u32;
+                while !done.load(Ordering::Relaxed) {
+                    let got = crate::fs::read_to_string_replaced(&to)
+                        .unwrap_or_else(|e| panic!("a read failed after {reads} reads: {e}"));
+                    assert!(got.parse::<u32>().is_ok(), "{got:?}");
+                    reads += 1;
+                }
+                reads
+            })
+        };
         for n in 1..300 {
             let from = dir.path().join(format!("status.json.tmp-{n}"));
             std::fs::write(&from, n.to_string()).unwrap();
             imp::posix_rename(&from, &to).unwrap();
         }
-        let missing = watch.stop();
-        assert_eq!(
-            missing, 0,
-            "the name was missing for a reader {missing} times"
-        );
+        done.store(true, Ordering::Relaxed);
+        assert!(reader.join().unwrap() > 0);
         assert_eq!(std::fs::read_to_string(&to).unwrap(), "299");
     }
 

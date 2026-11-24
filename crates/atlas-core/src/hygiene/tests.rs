@@ -24,6 +24,23 @@ fn idle_child() -> std::process::Child {
     }
 }
 
+/// A live process that does nothing for 30 s and has no children, ever: `sleep 30` itself, or `ping.exe` run directly
+/// on Windows (through `cmd.exe` it has a child that appears a moment after the spawn).
+fn leaf_child() -> std::process::Child {
+    if cfg!(windows) {
+        std::process::Command::new("ping")
+            .args(["-n", "31", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap()
+    } else {
+        std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap()
+    }
+}
+
 fn proc_row(pid: u32, ppid: u32, start: u64) -> Proc {
     Proc {
         pid,
@@ -1154,8 +1171,11 @@ fn a_cap_trim_never_removes_the_never_index_marker() {
 #[test]
 fn an_update_that_changes_nothing_does_not_rewrite_the_registry_file() {
     let (d, reg) = registry();
-    // A live root with no children: `track` records the root itself once, then has nothing new.
-    let mut child = idle_child();
+    // A live root with no children: `track` records the root itself once, then has nothing new. The root must be a
+    // process that spawns nothing: `idle_child` on Windows is `cmd.exe /c ping`, whose `ping.exe` child shows up
+    // 13-540 ms after the spawn (measured on a Windows runner, 6 of 20 tries were after the first `track`), and a
+    // `track` that records a new descendant rightly rewrites the file (#773).
+    let mut child = leaf_child();
     let start = procs::start_time(child.id()).unwrap();
     reg.add_root(root("s", Owner::current(), child.id(), start))
         .unwrap();

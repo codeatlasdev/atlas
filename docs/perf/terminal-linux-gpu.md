@@ -4,61 +4,29 @@ The Linux native terminal of [#247](https://github.com/codeatlasdev/atlas/issues
 
 ## Method and limits
 
-- Machine: Ryzen 7 7735HS (16 threads), Radeon 680M (RADV `REMBRANDT`, amdgpu), Mesa 26.2.5, WebKitGTK 2.54.1, sway 1.12, Linux 7.2.15, 5.5 GB RAM shared with other agents. **Load was not quiet on every run**: each row says its load. Rows with load above 2 are marked; do not read a 10 % difference out of them.
+- Machine: Ryzen 7 7735HS (16 threads), Radeon 680M (RADV `REMBRANDT`, amdgpu), Mesa 26.2.5, WebKitGTK 2.54.1, sway 1.12, Linux 7.2.15, 5.5 GB RAM shared with other agents. **Every number below was taken at 1-minute load under 2** (windows over it are discarded, not footnoted).
 - Build: release profile with `debug-assertions` on `atlas-desktop` only (the release app has no debug bridge; this one has it), bundled frontend (`tauri/custom-protocol`). Same binary for both columns; the setting is `ATLAS_GPU_TERMINAL=1` (native) or `0` (xterm.js).
 - Display: a private headless sway on the real GPU (`WLR_BACKENDS=headless WLR_RENDERER=gles2 WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128`), 1440x900 at scale 1, private D-Bus with `--config-file` and no servicedirs, a fresh `HOME` per run. `hyprctl clients -j` listed 1 window before and after every session (the user's own).
 - Scripts: [terminal-linux-gpu-tools/](terminal-linux-gpu-tools/) (`up.sh`/`cfg.sh`/`app.sh` start the private display and the instance, `mode.sh`/`ab.sh` the key and memory runs, `flood.sh` runs `scripts/linux-idle-bench.ts`, `gpumem.sh` reads DRM memory, `capture.sh` the screenshots, `k2p/` the key-to-photon tool). Paths inside are the ones used on this machine.
-- Raw data: [terminal-linux-gpu-flood-idle.jsonl](terminal-linux-gpu-flood-idle.jsonl) (one `linux-idle-bench` window per line), [terminal-linux-gpu-mem.jsonl](terminal-linux-gpu-mem.jsonl), [terminal-linux-gpu-k2p.jsonl](terminal-linux-gpu-k2p.jsonl) (every key).
+- Raw data: [terminal-linux-gpu-clean/](terminal-linux-gpu-clean/) (every window of the clean table, one JSON line each, discarded windows marked `"valid": false`). The first, noisier set (load above 2 in some windows) was replaced by it and removed.
 
-## Flood and idle CPU
+## Clean numbers (every window at 1-minute load < 2)
 
-`scripts/linux-idle-bench.ts` scenarios `terminal-output` (`yes <log line> | head -c 20M` in a loop, 30 s window after 10 s settle) and `terminal-idle` (an interactive `bash`, 30 s). Two alternated runs per column, total CPU of the app + web process + hostd (100 = one core).
+The first numbers of this document were taken with other agents loading the machine (some windows above 2). They are replaced by this table: **three runs per column, native and xterm.js alternated** (`terminal-linux-gpu-tools/suite.sh`, `runall` order gpu, xterm, gpu, xterm, gpu, xterm), a window starts only when the 1-minute load is under 2 (`lib.sh` `wait_load`), an idle or key window that ends over 2 and a key run with a missed key are **discarded and repeated** (the raw files list them as `"valid": false`; they are in no cell). The flood window raises the load itself (`yes | head` plus hostd), so only its load *before* is judged. Same release build as #774 (`debug-assertions` on `atlas-desktop` for the debug bridge, bundled frontend), same private headless sway on the Radeon 680M, 1440x900 at scale 1. Raw data: [terminal-linux-gpu-clean/](terminal-linux-gpu-clean/) (`cpu.jsonl`, `mem.jsonl`, `k2p.jsonl`).
 
-| | run | load before | 20 MB passes in 30 s | throughput | total CPU | app | web process | hostd | **CPU per MB** |
-|---|---|---|---|---|---|---|---|---|---|
-| native | 1 | 1.47 | 94 | 63 MB/s | 218.8 % | 105.2 | 1.0 | 112.4 | **34.9 ms** |
-| native | 2 | 1.96 | 105 | 70 MB/s | 229.1 % | 109.7 | 1.1 | 118.1 | **32.7 ms** |
-| xterm.js | 1 | 1.33 | 19 | 12.7 MB/s | 189.7 % | 59.7 | 105.5 | 24.5 | **149.8 ms** |
-| xterm.js | 2 | 2.05 | 18 | 12.0 MB/s | 193.8 % | 61.2 | 107.6 | 25.0 | **161.5 ms** |
+| | native, 3 runs | xterm.js, 3 runs |
+|---|---|---|
+| Flood CPU per MB (`terminal-output`, 30 s) | 33.1 / 35.2 / 33.1 ms | 149.1 / 149.7 / 150.6 ms |
+| Flood throughput | 105 / 93 / 105 passes of 20 MB (70 / 62 / 70 MB/s) | 19 / 19 / 19 passes (12.7 MB/s) |
+| Idle terminal, total CPU (30 s) | 1.6 / 1.6 / 1.6 % | 0.6 / 0.7 / 0.6 % |
+| Idle, app + web process + hostd | 0.7 + 0.6 + 0.3 | 0.1 + 0.2 + 0.3 (0.4 in run 2) |
+| Key to photon p50 (100 keys) | 13.28 / 13.33 / 13.41 ms | 22.12 / 22.15 / 22.16 ms |
+| Key to photon p95 | 28.05 / 28.48 / 29.04 ms | 31.06 / 30.06 / 30.33 ms |
+| VRAM, 0 terminals | 347.5 MB (3 runs) | 334.7 MB (3 runs) |
+| VRAM, 1 terminal | 367.1 / 368.1 / 369.1 MB | 349.2 / 349.1 / 349.1 MB |
+| VRAM, 4 terminals | 408.8 / 409.8 / 410.8 MB | 367.7 / 365.6 / 364.6 MB |
 
-CPU per MB = total CPU seconds in the window / MB the flood wrote (passes x 20). The flood is unthrottled, so each terminal runs at its own ceiling: the page's terminal is held to ~12 MB/s by its acknowledgement window and its single web-process core, the native one reads at 63-70 MB/s. **Per MB the native terminal costs about a fifth** (33-35 ms against 150-162 ms), and the web process, which is the one-core bottleneck of the xterm.js path, is at 1 % instead of 106 %. hostd is the new ceiling: 112-118 % of a core feeding the native reader (the same 18-19 ms per MB it spends feeding xterm.js, at five times the rate).
-
-| idle terminal, 30 s | load before | total CPU | app | web process | hostd | PSS (sum) |
-|---|---|---|---|---|---|---|
-| native, run 1 | 0.99 | 1.6 % | 0.7 | 0.6 | 0.3 | 347 MB |
-| native, run 2 | 1.53 | 1.7 % | 0.7 | 0.7 | 0.3 | 433 MB |
-| xterm.js, run 1 | 1.82 | 0.3 % | 0.1 | 0.1 | 0.1 | 370 MB |
-| xterm.js, run 2 | 1.54 | 0.7 % | 0.1 | 0.2 | 0.4 | 438 MB |
-| xterm.js, run 3 | 1.97 | 0.6 % | 0.1 | 0.2 | 0.3 | 366 MB |
-
-**An idle native terminal costs about 1 point of a core more than xterm.js** (1.6-1.7 % against 0.3-0.7 %): the app thread 0.7 % (the cursor blink draws a frame every 530 ms, and the 1 s scale/toplevel tick) and the web process 0.6-0.7 % (a transparent window the compositor blends). The design doc's acceptance for an idle terminal was 0.5 % of a core; this is not met by the whole-instance total and is the number to move before default-on. PSS differs by run more than by mode.
-
-## Key to photon
-
-`k2p/` types `a` and BackSpace alternately through the compositor's virtual keyboard (`zwp_virtual_keyboard_v1`, the same input path a keyboard takes), stamps `CLOCK_MONOTONIC` just before the request is flushed, and captures the output with `wlr-screencopy` `copy_with_damage`: every composited frame arrives with the compositor's own `CLOCK_MONOTONIC` commit timestamp. The latency of a key is the timestamp of the first frame whose pixels in the prompt region differ from the settled frame before the key, minus the key stamp. A control run with no keys saw 0 changes in 4 s, so a blinking cursor is not counted as an echo (the region excludes it by settling 350 ms and by the xterm.js cursor not blinking in this build; the native cursor is solid while the terminal has focus). The clock check printed a frame stamp 1.5-3.6 ms before it was read, so the clocks agree. The headless output refreshes at 60 Hz, so every value is quantised by 16.7 ms frames.
-
-n = 100 keys per run, 0 missed, one terminal at 1440x900.
-
-| | run | load | p50 | p95 | max | min |
-|---|---|---|---|---|---|---|
-| native | 1 | 0.46 | **13.4 ms** | 27.9 | 29.7 | 11.4 |
-| xterm.js | 1 | 0.72 | **22.1 ms** | 30.5 | 32.0 | 16.4 |
-| native | 2 (load > 2) | 3.66 | **14.1 ms** | 29.4 | 30.9 | 12.0 |
-| xterm.js | 2 (load > 2) | 4.10 | **22.8 ms** | 30.8 | 49.7 | 15.7 |
-
-The native terminal's median key lands one composited frame earlier than xterm.js (13-14 ms against 22-23 ms); the p95 is two frames for both (28-31 ms), i.e. in this method the tail is the compositor's frame phase, not the terminal. The in-process figure of the design doc (0.8 / 2.2 ms to the wgpu present call) plus the compositor's next frame is consistent with the native p50. Key-to-photon on the real display (Hyprland, a 60-165 Hz panel) is not measured here.
-
-## GPU memory per terminal
-
-From `/proc/<pid>/fdinfo` (`drm-total-vram`, `drm-total-gtt` of the amdgpu client, each client counted once) summed over the app, its WebKit web process and hostd, with 0, 1 and 4 terminal tabs open (all tabs mounted, one in front). Two runs per column; the first row of each pair is the run with the lower load.
-
-| terminals | native VRAM | native GTT | xterm.js VRAM | xterm.js GTT |
-|---|---|---|---|---|
-| 0 | 359.9 / 357.9 MB | 32.1 / 32.1 MB | 342.7 / 332.5 MB | 32.1 / 32.1 MB |
-| 1 | 377.9 / 379.0 MB | 42.0 / 35.8 MB | 357.5 / 347.3 MB | 48.5 / 46.4 MB |
-| 4 | 420.7 / 421.7 MB | 40.9 / 43.0 MB | 369.3 / 366.2 MB | 48.5 / 46.4 MB |
-
-(VRAM in MiB converted from KiB, rounded.) Per terminal: **native ~15 MB of VRAM each** (the app's client grows 227.6 → 240.0 → 277.1 MB: 12.4 MB per terminal, a glyph atlas, a colour atlas, buffers and a swapchain), **xterm.js ~7.5 MB** (the web process's client, 119.5 → 134.4 → 146.1 MB: +14.8 for the first, +3.9 for each next, its WebGL addon sharing one context). The native terminal uses about twice the GPU memory per terminal, and all of it stays allocated while a terminal is hidden: [#254](https://github.com/codeatlasdev/atlas/issues/254) (release the GPU of hidden terminals) is what brings that down.
+(Idle and flood windows judged at load before: native idle 0.40 / 1.63 / 0.49, xterm.js 1.85 / 1.48 / 0.55; two native and one xterm.js idle windows were discarded and repeated.) The clean runs agree with the first ones to the digit that matters: **per MB the native terminal costs a fifth** (33-35 ms against 149-151), **an idle native terminal costs about 1 point of a core more than xterm.js** (1.6 % against 0.6-0.7 %: the app thread 0.7, the web process 0.6), the median key lands a frame earlier (13.3 against 22.1 ms; the p95 is the compositor's frame phase, 28-29 against 30-31), and the native terminal holds **about 20 MB of VRAM for the first terminal and 20 MB per terminal for the next three** (xterm.js: 14.5 and 6 MB). Per terminal that is 3.6x xterm.js's marginal cost at 4: the number [#254](https://github.com/codeatlasdev/atlas/issues/254) exists to bring down.
 
 ## Not measured here
 
@@ -78,3 +46,14 @@ With the setting on (`ATLAS_GPU_TERMINAL=1`), a terminal tab running `echo hello
 | no Vulkan driver (`VK_ICD_FILENAMES=/nonexistent`) | `term_capability`: unavailable, "no usable GPU: No suitable graphics adapter found ... vulkan drivers/libraries could not be loaded"; the page toasts the reason once at launch (the toast lives a few seconds: caught by polling, `fallback-no-vulkan-toast.webp`) | xterm.js drew the text |
 
 Screenshots: `fallback-pixman-toast.webp`, `fallback-no-vulkan-toast.webp`. Tests: `pick_format` (no format is an `Err`), `refusal`, `useNativeTerminal` (every way out mounts xterm.js), `NativeView` with a failing `term_open` and a `term://unusable` event (one toast, `gpu.failed`), `capability::decide`/`incident` for each Rust-side reason.
+
+### Forced failures (a seam, not a missing driver)
+
+`ATLAS_TERM_FAULT` (debug-assertions builds only: `term/linux/fault.rs`) makes the renderer creation fail, so the two paths the missing-driver cases above do not reach are proved live on the GPU sway, with the setting on (`ATLAS_GPU_TERMINAL=1`) and a terminal running `echo hello-from-<case>`:
+
+| `ATLAS_TERM_FAULT` | what the code does | result |
+|---|---|---|
+| `open` | every `Renderer::new_raw` fails: `term_open` fails | xterm.js drew the text; toast "The fast terminal could not start (injected fault: renderer creation refused). Terminals use the classic renderer until you restart Atlas." ([screenshot](terminal-linux-gpu-shots/fallback-injected-open-failure.png)) |
+| `rebuild` | the first creation works (the terminal opens native), every later one fails; three "Reload terminal" in a row | the third failed rebuild sends `term://unusable`; the toast "The fast terminal could not start (injected fault: renderer rebuild refused). ..." showed, every terminal went back to xterm.js and the text was drawn ([screenshot](terminal-linux-gpu-shots/fallback-injected-rebuild-failure.png)) |
+
+A seam test (`fault::tests`) pins the spec: `open` fails every call, `rebuild` only the later ones, nothing else injects.

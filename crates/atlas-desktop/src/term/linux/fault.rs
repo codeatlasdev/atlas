@@ -21,7 +21,10 @@ mod tests {
     fn open_fails_every_creation_and_rebuild_only_the_later_ones() {
         assert!((0..3).all(|n| fault(Some("open"), n).is_some()));
         assert_eq!(fault(Some("rebuild"), 0), None, "the terminal opens");
-        assert!((1..4).all(|n| fault(Some("rebuild"), n).is_some()), "every rebuild fails");
+        assert!(
+            (1..4).all(|n| fault(Some("rebuild"), n).is_some()),
+            "every rebuild fails"
+        );
     }
 
     #[test]

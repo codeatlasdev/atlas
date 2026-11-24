@@ -25,6 +25,7 @@ swash = "0.2"
 base64 = { workspace = true }
 flate2 = { workspace = true }
 png = "0.18"
+unicode-width = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Vulkan only (RADV, ANV, NVK): the Wayland native terminal. No GL backend: it would double the driver matrix for the

@@ -6,6 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { appliedZoom } from "#lib/zoom.ts";
+import { IS_MAC } from "#lib/keys.ts";
 import { cellAt, cellFromStats, type Cell, type CellHit } from "./geometry.ts";
 import { mouseRoute } from "./mouseRoute.ts";
 import { wheelArgs } from "./wheel.ts";
@@ -27,6 +28,8 @@ interface Options {
 	isFile: (token: string) => boolean | Promise<boolean>;
 	/** The pointer is over a live link (⌘ held): the slot shows the pointer hand meanwhile, until it is not. */
 	onLinkMode?: (on: boolean) => void;
+	/** macOS has no PRIMARY selection (default: this platform); Linux pastes it on a middle click. */
+	mac?: boolean;
 }
 
 const quiet = () => {};
@@ -139,6 +142,11 @@ export class Pointer {
 			this.#lastRow = c.row;
 			this.#watchWindow();
 			this.#report(tab, "press", e.button, c, e);
+			return;
+		}
+		// Linux: a middle click the program did not take pastes the PRIMARY selection (the last thing selected, in any app).
+		if (e.button === 1 && !(this.#o.mac ?? IS_MAC) && !this.#o.readonly()) {
+			void invoke("term_paste_primary", { tab }).catch(quiet);
 			return;
 		}
 		if (e.button !== 0) return;

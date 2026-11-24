@@ -124,10 +124,80 @@ pub struct Frame {
     pub search_current_color: Rgba,
     pub hyperlinks: Vec<HyperlinkCell>,
     pub cursor: Option<CursorCell>,
+    /// The cursor's cell in this frame's rows (`over` included) whenever it is inside the viewport, whatever its shape,
+    /// phase or focus: where an input method's preedit text is drawn (`Frame::overlay_preedit`).
+    pub cursor_at: Option<(u16, u16)>,
     /// The app asked for a blinking cursor (the host drives `blink_on`).
     pub cursor_blinks: bool,
     /// Inline images overlapping the viewport, in draw order (z ascending).
     pub images: Vec<ImageDraw>,
+}
+
+impl Frame {
+    /// Draw an input method's preedit (the text being composed, not yet sent to the program) over the cells from the
+    /// cursor on: underlined, on a slightly lifted background, wide characters over two cells, clipped at the right
+    /// edge (a preedit never wraps and never moves the program's cursor). The block or bar cursor is dropped while
+    /// composing: the preedit is where the user is typing. Nothing happens when the cursor is out of the viewport.
+    pub fn overlay_preedit(&mut self, text: &str) {
+        use unicode_width::UnicodeWidthChar;
+        let Some((col, row)) = self.cursor_at else {
+            return;
+        };
+        let (cols, row_i) = (self.cols as usize, row as usize);
+        let bg = blend(self.clear, [255, 255, 255, 40]);
+        // Readable on whatever the theme's background is.
+        let lum = |c: Rgba| u32::from(c[0]) * 3 + u32::from(c[1]) * 6 + u32::from(c[2]);
+        let fg = if lum(self.clear) > 1280 {
+            [20, 20, 20, 255]
+        } else {
+            [235, 235, 235, 255]
+        };
+        let mut at = col as usize;
+        let mut cells = Vec::new();
+        for ch in text.chars() {
+            let w = ch.width().unwrap_or(0);
+            if w == 0 {
+                continue;
+            }
+            if at + w > cols {
+                break;
+            }
+            cells.push((at, ch, w));
+            at += w;
+        }
+        if cells.is_empty() {
+            return;
+        }
+        let (from, to) = (col as usize, at);
+        // Whatever the program drew under the preedit goes, including the half of a wide glyph that ends there.
+        self.glyphs.retain(|g| {
+            let (gc, gw) = (g.col as usize, if g.wide { 2 } else { 1 });
+            g.row != row || gc + gw <= from || gc >= to
+        });
+        self.decos
+            .retain(|d| d.row != row || (d.col as usize) < from || (d.col as usize) >= to);
+        for c in from..to {
+            self.bg[row_i * cols + c] = bg;
+            self.decos.push(DecoCell {
+                col: c as u16,
+                row,
+                kind: DecoKind::Underline,
+                color: fg,
+            });
+        }
+        for (c, ch, w) in cells {
+            self.glyphs.push(GlyphCell {
+                col: c as u16,
+                row,
+                ch,
+                style: 0,
+                fg,
+                extra: None,
+                wide: w == 2,
+            });
+        }
+        self.cursor = None;
+    }
 }
 
 /// One image placement in viewport cell coordinates (`row` may be negative:
@@ -208,6 +278,12 @@ impl Vt {
             s => Some(s),
         };
         let cursor_row = c.cursor.point.line.0 + offset;
+        f.cursor_at = (0..rows as i32).contains(&cursor_row).then(|| {
+            (
+                c.cursor.point.column.0 as u16,
+                (cursor_row + over as i32) as u16,
+            )
+        });
         f.cursor = shape
             .and_then(|s| match s {
                 CursorShape::Beam => Some(CursorBars::Beam),

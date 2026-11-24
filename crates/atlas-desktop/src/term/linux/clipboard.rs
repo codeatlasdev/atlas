@@ -56,13 +56,32 @@ pub fn read_clipboard() -> atlas_term::input::Clipboard {
 
 /// Text to the clipboard, on any thread.
 pub fn write_clipboard(text: &str) {
+    on_main(move |text| clipboard().set_text(text), text);
+}
+
+/// The PRIMARY selection (what was last selected in any app: a middle click pastes it). Main thread.
+pub fn read_primary() -> Option<String> {
+    primary().wait_for_text().map(|t| t.to_string())
+}
+
+/// Make `text` the PRIMARY selection, on any thread.
+pub fn write_primary(text: &str) {
+    on_main(move |text| primary().set_text(text), text);
+}
+
+fn primary() -> gtk::Clipboard {
+    gtk::Clipboard::get(&gtk::gdk::SELECTION_PRIMARY)
+}
+
+/// Run `f(text)` on the main thread (GTK clipboards are main-thread only), now when already there.
+fn on_main(f: impl FnOnce(&str) + Send + 'static, text: &str) {
     if gtk::is_initialized_main_thread() {
-        clipboard().set_text(text);
+        f(text);
         return;
     }
     let text = text.to_string();
     if let Some(app) = super::super::APP.get() {
-        let _ = app.run_on_main_thread(move || clipboard().set_text(&text));
+        let _ = app.run_on_main_thread(move || f(&text));
     }
 }
 

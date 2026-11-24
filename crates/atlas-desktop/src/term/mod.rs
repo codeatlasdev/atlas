@@ -33,7 +33,7 @@ mod system;
 mod watchdog;
 mod wheel;
 
-pub use native::{read_clipboard, write_clipboard};
+pub use native::{read_clipboard, read_primary, write_clipboard, write_primary};
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};

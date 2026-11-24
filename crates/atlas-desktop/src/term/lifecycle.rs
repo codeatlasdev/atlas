@@ -208,6 +208,7 @@ pub async fn term_open(
                 scroll_frac: 0.0,
                 scale,
                 rebuild_failures: 0,
+                preedit: String::new(),
             }),
             osc52: Mutex::new(prefs.osc52.clone()),
             wake: Condvar::new(),

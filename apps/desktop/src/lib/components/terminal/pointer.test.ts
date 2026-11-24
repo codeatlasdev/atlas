@@ -54,12 +54,14 @@ interface Seen {
 }
 let seen: Seen;
 let pointer: InstanceType<typeof Pointer>;
+let macSession = false;
 
 beforeEach(() => {
 	jest.useFakeTimers();
 	calls = [];
 	links = {};
 	captured = false;
+	macSession = false;
 	seen = { links: [], files: [], mode: [] };
 	pointer = new Pointer({
 		tab: () => "t1",
@@ -71,6 +73,7 @@ beforeEach(() => {
 		onFile: (token) => (seen.files.push(token), token.startsWith("src/")),
 		isFile: (token) => token.startsWith("src/"),
 		onLinkMode: (on) => seen.mode.push(on),
+		mac: macSession,
 	});
 });
 afterEach(() => {
@@ -141,6 +144,69 @@ test("a program that owns the mouse gets the click, and ⇧ takes it back for se
 	await down(2, 2, { shiftKey: true });
 	expect(names()).toContain("term_select_extend");
 	expect(names()).not.toContain("term_mouse");
+});
+
+// Linux (X11 and Wayland convention): a middle click pastes the PRIMARY selection, which a drag-select anywhere set.
+test("a middle click pastes the PRIMARY selection and starts no selection", async () => {
+	await down(3, 1, { button: 1 });
+	await up(3, 1, { button: 1 });
+	expect(of("term_paste_primary")).toEqual([{ tab: "t1" }]);
+	expect(names()).not.toContain("term_select_start");
+	expect(names()).not.toContain("term_mouse");
+});
+
+// A program that asked for the mouse (vim, tmux) gets the middle button; pasting would act twice on one click.
+test("a middle click on a program that owns the mouse is the program's, not a paste", async () => {
+	captured = true;
+	await down(3, 1, { button: 1 });
+	await up(3, 1, { button: 1 });
+	expect(of("term_mouse").map((a) => a.action)).toEqual(["press", "release"]);
+	expect(names()).not.toContain("term_paste_primary");
+});
+
+// ⇧ gives the pointer back to the terminal, as for selection: the paste happens even with a mouse-reporting program.
+test("⇧ middle click pastes PRIMARY even when the program owns the mouse", async () => {
+	captured = true;
+	await down(3, 1, { button: 1, shiftKey: true });
+	expect(of("term_paste_primary")).toHaveLength(1);
+	expect(names()).not.toContain("term_mouse");
+});
+
+// macOS has no PRIMARY selection: a middle click there is only ever the program's.
+test("a middle click on macOS pastes nothing", async () => {
+	macSession = true;
+	pointer.dispose();
+	pointer = new Pointer({
+		tab: () => "t1",
+		area: () => area,
+		focusInput: () => {},
+		readonly: () => false,
+		prefs: () => ({ click_to_move: false, copy_on_select: true, padding_x: 10, padding_y: 6 }),
+		onLink: () => {},
+		onFile: () => false,
+		isFile: () => false,
+		mac: true,
+	});
+	await down(3, 1, { button: 1 });
+	expect(names()).not.toContain("term_paste_primary");
+});
+
+// An ended terminal takes no input: a paste must not reach the pty either.
+test("a middle click on an ended terminal pastes nothing", async () => {
+	pointer.dispose();
+	pointer = new Pointer({
+		tab: () => "t1",
+		area: () => area,
+		focusInput: () => {},
+		readonly: () => true,
+		prefs: () => ({ click_to_move: false, copy_on_select: true, padding_x: 10, padding_y: 6 }),
+		onLink: () => {},
+		onFile: () => false,
+		isFile: () => false,
+		mac: false,
+	});
+	await down(3, 1, { button: 1 });
+	expect(names()).not.toContain("term_paste_primary");
 });
 
 // Incident: a release that is not over the slot (a drag that left the pane) never arrived, leaving the

@@ -18,7 +18,7 @@ use atlas_term::{FontResolution, FontSpec, Renderer};
 use tauri::AppHandle;
 
 pub use capability::{Capability, window_wanted};
-pub use clipboard::{read_clipboard, write_clipboard};
+pub use clipboard::{read_clipboard, read_primary, write_clipboard, write_primary};
 
 /// Nothing to hand over: the toplevel is found from the app when the surface is made.
 pub fn window(_app: &AppHandle) -> Result<usize, String> {

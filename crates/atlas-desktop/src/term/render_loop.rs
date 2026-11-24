@@ -292,10 +292,16 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
         frame.focused = focused;
         frame.blink_on = blink.on();
         // Smooth scrolling: the offset the wheel left, drawn with the row above and below the viewport.
-        let frac = sh.state.lock().scroll_frac;
+        let (frac, preedit) = {
+            let s = sh.state.lock();
+            (s.scroll_frac, s.preedit.clone())
+        };
         frame.over = u32::from(frac != 0.0);
         frame.scroll_frac = frac;
         sh.vt.snapshot(&pal, &mut frame);
+        if !preedit.is_empty() {
+            frame.overlay_preedit(&preedit);
+        }
         last_draw = Some(Instant::now());
         if bell {
             let tint = |c: [u8; 4]| {
@@ -363,6 +369,8 @@ mod tests {
         seen: Mutex<Vec<String>>,
         /// `(over, scroll_frac)` of each frame handed to the renderer.
         smooth: Mutex<Vec<(u32, f32)>>,
+        /// The characters of the glyphs of each frame handed to the renderer (preedit included).
+        drawn: Mutex<Vec<String>>,
         release: AtomicBool,
         /// While set, `rebuild` cannot make a new surface and gives the old renderer back.
         rebuild_fails: AtomicBool,
@@ -403,6 +411,10 @@ mod tests {
         fn render(&mut self, f: &Frame) -> Result<bool, String> {
             self.log.renders.fetch_add(1, Ordering::SeqCst);
             self.log.smooth.lock().push((f.over, f.scroll_frac));
+            self.log
+                .drawn
+                .lock()
+                .push(f.glyphs.iter().map(|g| g.ch).collect());
             self.log.seen.lock().push(self.sh.vt.text());
             match *self.mode.lock() {
                 Mode::Draw => {
@@ -822,5 +834,32 @@ mod tests {
         assert_eq!(pace_until(last, last + FRAME_INTERVAL), None);
         let soon = last + FRAME_INTERVAL / 4;
         assert_eq!(pace_until(last, soon), Some(last + FRAME_INTERVAL));
+    }
+
+    // IME on Linux: the page forwards the input method's preedit (`term_preedit`); it is drawn at the cursor on the next
+    // frame, never written to the grid, and gone with the next empty preedit.
+    #[test]
+    fn a_preedit_is_drawn_until_it_is_cleared_and_never_reaches_the_screen() {
+        let rig = Rig::start(Mode::Draw);
+        rig.show();
+        rig.sh.vt.feed(b"$ ");
+        rig.sh.redraw();
+        rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
+        rig.sh.update(|s| {
+            s.preedit = "ni".into();
+            s.dirty = true;
+        });
+        rig.until("a frame with the preedit", |l| {
+            l.drawn.lock().last().is_some_and(|d| d.ends_with("ni"))
+        });
+        assert_eq!(rig.sh.vt.text(), "$", "the preedit is not program output");
+        rig.sh.update(|s| {
+            s.preedit.clear();
+            s.dirty = true;
+        });
+        rig.until("a frame without it", |l| {
+            l.drawn.lock().last().is_some_and(|d| !d.contains('n'))
+        });
+        rig.stop();
     }
 }

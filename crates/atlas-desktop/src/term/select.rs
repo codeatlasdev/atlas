@@ -3,7 +3,7 @@
 use atlas_term::{SelectionType, Side};
 use tauri::Emitter;
 
-use super::{APP, with_term, write_clipboard};
+use super::{APP, with_term, write_clipboard, write_primary};
 
 /// Selected text → system clipboard (⌘C). Returns the text.
 #[tauri::command]
@@ -87,8 +87,12 @@ pub fn term_select_update(tab: String, col: u16, row: u16, frac: f32) -> Result<
 #[tauri::command]
 pub fn term_select_end(tab: String, copy: Option<bool>) -> Result<Option<String>, String> {
     let text = with_term(&tab)?.vt.end_selection();
-    if let (Some(t), true) = (&text, copy.unwrap_or(true)) {
-        write_clipboard(t);
+    if let Some(t) = &text {
+        // Linux: whatever is selected is the PRIMARY selection, whether or not it is also copied (`copy-on-select`).
+        write_primary(t);
+        if copy.unwrap_or(true) {
+            write_clipboard(t);
+        }
     }
     Ok(text)
 }

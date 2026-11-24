@@ -56,6 +56,7 @@ There are no bots: Actions minutes are kept for CI. Stale handling is done by ha
 - With no answer after those **14 days** it is closed as *not planned*, with a comment that it can be reopened with the missing information.
 - Confirmed bugs, accepted features and `help wanted` issues are **never** closed for inactivity.
 - `status: wontfix` and `status: duplicate` issues are closed at once, with the reason or the link to the other issue.
+- Every error report Atlas files carries a `Fingerprint:` line (16 hex characters of the normalized message and the first frame inside the app, the same for the same bug on any machine, version or line). To find duplicates, search open issues for it: `is:issue is:open in:body <fingerprint>`. "Report issue" in Atlas Desktop does that search itself and offers to add to the existing issue instead of opening a new one.
 
 A maintainer can list the candidates with:
 

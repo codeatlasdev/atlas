@@ -30,8 +30,12 @@
 		detailsText,
 		issueUrl,
 		markdownReport,
+		withFingerprint,
 		type ErrorReport,
 	} from "./report.ts";
+	import Lazy from "#lib/components/Lazy.svelte";
+	// Type only: the lookup and the "already reported" card load when "Report issue" is pressed (startup bundle budget).
+	import type { FoundIssue } from "./issueLookup.ts";
 	import { m } from "#lib/i18n/m.ts";
 
 	let {
@@ -61,6 +65,18 @@
 	let actions = $state<HTMLElement | null>(null);
 	let aiOpen = $state(false);
 	const hintCause = $derived(causeHint(report));
+	/** "Report issue" is looking for an issue with this error's fingerprint. */
+	let searching = $state(false);
+	/** The report with its fingerprint, which loads on first use (startup bundle budget): what every action files. */
+	let withFp = $state<ErrorReport | null>(null);
+	const filed = $derived(withFp ?? report);
+	$effect(() => {
+		const r = report;
+		withFp = null;
+		void withFingerprint(r).then((f) => r === report && (withFp = f));
+	});
+	/** An open issue already has it: offer to add to that one before a new one (#320). */
+	let existing = $state<FoundIssue | null>(null);
 
 	/** Each AI action: copy a ready prompt, or hand it straight to an agent when one can be launched. */
 	const ai = $derived([
@@ -69,21 +85,21 @@
 			icon: Wrench,
 			label: m.errors_panel_fix_it(),
 			hint: m.errors_panel_fix_it_hint(),
-			prompt: () => aiFixPrompt(report),
+			prompt: () => aiFixPrompt(filed),
 		},
 		{
 			id: "issue",
 			icon: Bug,
 			label: m.errors_panel_file_issue(),
 			hint: m.errors_panel_file_issue_hint(),
-			prompt: () => aiIssuePrompt(report),
+			prompt: () => aiIssuePrompt(filed),
 		},
 		{
 			id: "explain",
 			icon: MessageCircleQuestion,
 			label: m.errors_panel_explain(),
 			hint: m.errors_panel_explain_hint(),
-			prompt: () => aiDiagnosePrompt(report),
+			prompt: () => aiDiagnosePrompt(filed),
 		},
 	]);
 
@@ -97,6 +113,21 @@
 		await navigator.clipboard.writeText(text);
 		copied = id;
 		window.setTimeout(() => copied === id && (copied = null), 1600);
+	}
+
+	/** Look for an open issue with this fingerprint first; the new-issue form opens when there is none or the search fails. */
+	async function reportIssue() {
+		searching = true;
+		const found = await import("./issueLookup.ts").then((l) => l.findExisting(filed)).catch(() => null);
+		searching = false;
+		if (found?.kind === "found") existing = found;
+		else await api.openUrl(issueUrl(filed));
+	}
+
+	/** GitHub has no link that prefills a comment: copy the report, open the issue, the person pastes it. */
+	async function meToo(issue: FoundIssue) {
+		await copyText("meToo", markdownReport(filed));
+		await api.openUrl((await import("./issueLookup.ts")).meTooUrl(issue));
 	}
 
 	/** Open an agent terminal with the prompt when there is a worktree to run it in; always copy as well. */
@@ -150,17 +181,25 @@
 				{#snippet leading()}<Sparkles size={13} />{/snippet}
 				{m.errors_panel_ask_ai()}
 			</Button>
-			<Button size="sm" variant="ghost" onclick={() => copyText("details", detailsText(report))}>
+			<Button size="sm" variant="ghost" onclick={() => copyText("details", detailsText(filed))}>
 				{#snippet leading()}{#if copied === "details"}<Check size={13} />{:else}<Copy
 							size={13}
 						/>{/if}{/snippet}
 				{copied === "details" ? m.errors_panel_copied() : m.errors_panel_copy_details()}
 			</Button>
-			<Button size="sm" variant="ghost" onclick={() => api.openUrl(issueUrl(report))}>
+			<Button size="sm" variant="ghost" disabled={searching} onclick={reportIssue}>
 				{#snippet leading()}<Bug size={13} />{/snippet}
-				{m.errors_panel_report_issue()}
+				{searching ? m.errors_panel_searching() : m.errors_panel_report_issue()}
 			</Button>
 		</div>
+
+		{#if existing}
+			{@const issue = existing}
+			<Lazy
+				load={() => import("./ExistingIssue.svelte")}
+				props={{ issue, meToo: () => meToo(issue), reportNew: () => api.openUrl(issueUrl(filed)) }}
+			/>
+		{/if}
 
 		{#if hintCause}
 			<div class="cause" role="note">
@@ -189,7 +228,7 @@
 						>
 					</button>
 				{/each}
-				<button class="ai-row" onclick={() => copyText("md", markdownReport(report))}>
+				<button class="ai-row" onclick={() => copyText("md", markdownReport(filed))}>
 					<span class="ai-ico" aria-hidden="true"><FileText size={14} /></span>
 					<span class="ai-text">
 						<b>{m.errors_panel_copy_markdown()}</b>

@@ -4,13 +4,14 @@ import { m } from "#lib/i18n/m.ts";
 import {
 	detailsText,
 	fileNames,
-	fingerprint,
 	headline,
 	isBenign,
 	issueUrl,
+	markdownReport,
 	messageOf,
 	report,
 	scrub,
+	withFingerprint,
 } from "./report.ts";
 
 describe("isBenign", () => {
@@ -94,11 +95,40 @@ describe("report + issueUrl", () => {
 	});
 });
 
-describe("fingerprint", () => {
-	test("same message and top frame collide", () => {
-		const a = { message: "m", stack: "a\nb" };
-		expect(fingerprint(a)).toBe(fingerprint({ message: "m", stack: "a\nz" }));
-		expect(fingerprint(a)).not.toBe(fingerprint({ message: "n", stack: "a" }));
+describe("withFingerprint", () => {
+	test("the same error at another line, port or version is one fingerprint (it folds a toast burst, and names the bug in an issue)", async () => {
+		const a = {
+			message: "Port 24101 is in use (atlas 1.5.0-alpha.27)",
+			stack: "    at start (start.ts:12:3)",
+			where: "x",
+		};
+		const b = { ...a, message: "Port 3000 is in use (atlas 1.6.0)", stack: "    at start (start.ts:99:1)" };
+		const fp = async (r) => (await withFingerprint(r)).fingerprint;
+		expect(await fp(a)).toMatch(/^[0-9a-f]{16}$/);
+		expect(await fp(a)).toBe(await fp(b));
+		expect(await fp(a)).not.toBe(await fp({ ...a, message: "Something else" }));
+		expect(await fp(a)).not.toBe(await fp({ ...a, stack: "    at stop (stop.ts:1:1)" }));
+	});
+	test("a report that carries one (a crash file's) keeps it", async () => {
+		const r = { message: "m", stack: "", where: "x", fingerprint: "0123456789abcdef" };
+		expect(await withFingerprint(r)).toBe(r);
+	});
+});
+
+describe("the fingerprint in the report", () => {
+	const base = { message: "Port 24101 is in use", stack: "    at start (start.ts:12:3)", where: "Editor" };
+	test("every rendering says it, the smallest one included, so a search by it finds the issue", async () => {
+		const r = await withFingerprint(base);
+		const line = `Fingerprint: \`${r.fingerprint}\``;
+		expect(markdownReport(r)).toContain(line);
+		expect(markdownReport(r, 1)).toContain(line);
+		expect(new URL(issueUrl(r)).searchParams.get("logs")).toContain(line);
+	});
+	test("the one a report carries is the one it says; a report without one has no line, not a wrong one", () => {
+		expect(markdownReport({ ...base, fingerprint: "0123456789abcdef" })).toContain(
+			"Fingerprint: `0123456789abcdef`",
+		);
+		expect(markdownReport(base)).not.toContain("Fingerprint");
 	});
 });
 

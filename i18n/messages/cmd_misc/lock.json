@@ -5,6 +5,8 @@
     "cmd_misc_cache_totals": "a3552760cee7",
     "cmd_misc_config_ports": "cef438b52876",
     "cmd_misc_config_valid": "b3996426fb82",
+    "cmd_misc_crash_fingerprint_none": "afe4bd83babf",
+    "cmd_misc_crash_fingerprint_unreadable": "41ec247d77ae",
     "cmd_misc_dc_app_mismatch": "3c558f5e5fbf",
     "cmd_misc_dc_app_missing": "efc39d4e4811",
     "cmd_misc_dc_app_none": "1cbc78371077",

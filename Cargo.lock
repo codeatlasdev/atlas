@@ -619,6 +619,7 @@ dependencies = [
  "base64 0.23.1",
  "bytemuck",
  "flate2",
+ "memchr",
  "parking_lot 0.13.0",
  "png",
  "pollster",

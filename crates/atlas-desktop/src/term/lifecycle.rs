@@ -13,6 +13,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncReadExt;
 
 use super::native;
+use super::release;
 use super::render_loop::{Hooks, render_loop};
 use super::shared::{BELL, Placement, Shared, State};
 use super::watchdog::Why;
@@ -297,10 +298,13 @@ fn spawn_render(
     thread::Builder::new()
         .name("atlas-term-render".into())
         .spawn(move || {
+            let a_for_acquire = a.clone();
             let (resize_app, font_app, first_app, rebuild_app) =
                 (a.clone(), a.clone(), a.clone(), a);
-            let (font_tab, incident_tab, rebuild_tab) = (tab.clone(), tab.clone(), tab);
-            let (first_sh, rebuild_sh) = (sh.clone(), sh.clone());
+            let acquire_app = a_for_acquire;
+            let (font_tab, incident_tab, rebuild_tab, acquire_tab) =
+                (tab.clone(), tab.clone(), tab.clone(), tab);
+            let (first_sh, rebuild_sh, acquire_sh) = (sh.clone(), sh.clone(), sh.clone());
             render_loop(
                 renderer,
                 sh,
@@ -335,6 +339,10 @@ fn spawn_render(
                             pixels,
                         )
                     }),
+                    acquire: Box::new(move |pixels| {
+                        acquire_surface(&acquire_app, &acquire_sh, &acquire_tab, pixels)
+                    }),
+                    release_after: release::ENABLED.then_some(release::RELEASE_AFTER),
                     incident: Box::new(move |kind, detail| {
                         crate::diag::incident(kind, &format!("tab {incident_tab}: {detail}"))
                     }),
@@ -346,6 +354,61 @@ fn spawn_render(
 
 /// This many failed rebuilds in a row on Linux and the terminal is declared unusable (`term://unusable`).
 const REBUILD_GIVE_UP: u32 = 3;
+
+/// A surface could not be made again (a rebuild, or the renderer of a view shown after its release): record it, and
+/// on Linux tell the page after `REBUILD_GIVE_UP` in a row, since a blank pane is the alternative.
+fn surface_failed(app: &AppHandle, sh: &Arc<Shared>, tab: &str, kind: &str, e: &str) {
+    crate::diag::incident(kind, e);
+    let failures = {
+        let mut s = sh.state.lock();
+        s.rebuild_failures += 1;
+        s.rebuild_failures
+    };
+    // Linux: a surface that cannot be made again leaves a blank pane; tell the page once, so every terminal
+    // goes back to xterm.js (macOS keeps retrying on the watchdog's schedule, as it always did).
+    if cfg!(target_os = "linux") && failures == REBUILD_GIVE_UP {
+        let _ = app.emit("term://unusable", json!({"tab": tab, "error": e}));
+    }
+}
+
+/// A renderer on `tab`'s existing view, after the render thread released the old one while the view was hidden (#254).
+/// The font, scale and ligatures are the terminal's current ones. Runs on the render thread; the surface is made on the
+/// main thread like every other.
+fn acquire_surface(
+    app: &AppHandle,
+    sh: &Arc<Shared>,
+    tab: &str,
+    pixels: (u32, u32),
+) -> Result<Renderer, String> {
+    let (font_pt, spec, scale) = {
+        let s = sh.state.lock();
+        (s.font_cur, s.font_spec.clone(), s.scale)
+    };
+    let view = sh.view();
+    let started = Instant::now();
+    // SAFETY: the view outlives the renderer: `term_close` joins this thread before destroying it, and a rebuild drops
+    // the renderer before the view it replaces.
+    let made = on_main(app, move || unsafe {
+        native::renderer(view, pixels, font_pt, scale as f32, spec)
+    });
+    match made {
+        Ok((renderer, _)) => {
+            sh.state.lock().rebuild_failures = 0;
+            // The measurement of #254 ("rebuild on show"): debug-assertions builds (the agent instances) say it.
+            if cfg!(debug_assertions) {
+                eprintln!(
+                    "atlas-term: renderer rebuilt on show in {:.1} ms",
+                    started.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+            Ok(renderer)
+        }
+        Err(e) => {
+            surface_failed(app, sh, tab, "terminal-reacquire-failed", &e);
+            Err(e)
+        }
+    }
+}
 
 /// Replace `old`'s view and surface with new ones at `pixels` (the screen and scrollback live in
 /// the `Vt` and are untouched). Runs on the render thread; the AppKit work hops to the main thread.
@@ -371,17 +434,7 @@ fn rebuild_surface(
     let (view, mut renderer, _) = match made {
         Ok(v) => v,
         Err(e) => {
-            crate::diag::incident("terminal-rebuild-failed", &e);
-            let failures = {
-                let mut s = sh.state.lock();
-                s.rebuild_failures += 1;
-                s.rebuild_failures
-            };
-            // Linux: a surface that cannot be made again leaves a blank pane; tell the page once, so every terminal
-            // goes back to xterm.js (macOS keeps retrying on the watchdog's schedule, as it always did).
-            if cfg!(target_os = "linux") && failures == REBUILD_GIVE_UP {
-                let _ = app.emit("term://unusable", json!({"tab": tab, "error": e}));
-            }
+            surface_failed(app, sh, tab, "terminal-rebuild-failed", &e);
             return Err(Box::new(old));
         }
     };
@@ -445,6 +498,10 @@ pub async fn term_bounds(
         native::set_frame(view, vx, vy, w, h);
         Ok(())
     })?;
+    if !visible {
+        // The render thread times how long the view stays hidden (`release`): it must see the hide.
+        shared.wake.notify_one();
+    }
     if visible {
         let scale = native::scale(&app).unwrap_or(2.0);
         let size = native::pixel_size(x, y, w, h, scale);

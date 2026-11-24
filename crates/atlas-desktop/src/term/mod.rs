@@ -24,6 +24,7 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux as native;
 mod mouse;
+mod release;
 mod render_loop;
 mod select;
 mod settings;

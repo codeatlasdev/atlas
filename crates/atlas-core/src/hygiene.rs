@@ -373,7 +373,7 @@ impl Registry {
     /// Record the current descendants of every live root as members of its session, and forget
     /// members that exited. Call it when a root is spawned and every few seconds while the owner
     /// runs: this is how a process that later daemonizes (re-parented to launchd, out of every
-    /// parent chain) is still known to be a session's. One process-table read; cheap.
+    /// parent chain) is still known to be a session's. Reads the processes below the live roots, not the machine's.
     pub fn track(&self) -> std::io::Result<()> {
         // Nothing registered (an idle daemon, a lab): no process-table read, and no registry or
         // lock file created just to find that out.
@@ -381,7 +381,13 @@ impl Registry {
         if store.roots.is_empty() && store.members.is_empty() {
             return Ok(());
         }
-        let table = procs::table();
+        let roots: Vec<u32> = store
+            .roots
+            .iter()
+            .filter(|r| r.alive())
+            .map(|r| r.pid)
+            .collect();
+        let table = procs::subtree(&roots);
         let names: HashMap<u32, &Proc> = table.iter().map(|p| (p.pid, p)).collect();
         self.maintain(|s| {
             s.members.retain(Member::alive);

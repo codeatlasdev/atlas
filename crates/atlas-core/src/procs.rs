@@ -29,6 +29,22 @@ pub fn table() -> Vec<Proc> {
     imp::table()
 }
 
+/// The rows of `roots` and every process below them by parent links (the rows [`tree`] would walk), without reading the
+/// whole machine where the OS lets us: Linux follows the kernel's `children` lists, so the cost is the size of the
+/// subtrees, not of the process table. Everywhere else, or on a kernel without those lists, it is [`table`] filtered.
+pub fn subtree(roots: &[u32]) -> Vec<Proc> {
+    if roots.is_empty() {
+        return Vec::new();
+    }
+    #[cfg(target_os = "linux")]
+    if let Some(rows) = imp::subtree(roots) {
+        return rows;
+    }
+    let rows = table();
+    let keep: HashSet<u32> = roots.iter().flat_map(|&r| tree(r, &rows)).collect();
+    rows.into_iter().filter(|p| keep.contains(&p.pid)).collect()
+}
+
 /// Start time of `pid` as Unix seconds, `None` when it is gone or unreadable.
 pub fn start_time(pid: u32) -> Option<u64> {
     imp::start_time(pid)
@@ -260,6 +276,50 @@ mod imp {
         table_in(Path::new("/proc"), &boot_time)
     }
 
+    /// The rows of `roots` and every process below them, read from the kernel's per-thread `children` lists instead of
+    /// a scan of every process of the machine. `None` when the kernel has no such lists (no `CONFIG_PROC_CHILDREN`):
+    /// the caller scans the table.
+    pub fn subtree(roots: &[u32]) -> Option<Vec<Proc>> {
+        subtree_in(Path::new("/proc"), &boot_time, roots)
+    }
+
+    pub(super) fn subtree_in(
+        root: &Path,
+        boot: &dyn Fn() -> Option<u64>,
+        roots: &[u32],
+    ) -> Option<Vec<Proc>> {
+        let boot = boot()?;
+        let mut seen: std::collections::HashSet<u32> = roots.iter().copied().collect();
+        let mut queue: std::collections::VecDeque<u32> = seen.iter().copied().collect();
+        let mut rows = Vec::new();
+        while let Some(pid) = queue.pop_front() {
+            let Some(row) = stat(root, pid, boot) else {
+                continue;
+            };
+            rows.push(row);
+            let Ok(tasks) = std::fs::read_dir(root.join(pid.to_string()).join("task")) else {
+                continue;
+            };
+            // A child is listed under the thread that forked it: every thread's list is read.
+            for task in tasks.flatten() {
+                match std::fs::read_to_string(task.path().join("children")) {
+                    Ok(kids) => {
+                        for kid in kids.split_whitespace().filter_map(|k| k.parse::<u32>().ok()) {
+                            if seen.insert(kid) {
+                                queue.push_back(kid);
+                            }
+                        }
+                    }
+                    // The thread is listed and the file is not: either the kernel has no such file, or the thread
+                    // exited since the listing. The table scan answers both.
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+                    Err(_) => {}
+                }
+            }
+        }
+        Some(rows)
+    }
+
     /// The table of the `/proc`-shaped tree at `root`; `boot` reads the boot time (injected so a test
     /// can count the reads).
     pub(super) fn table_in(root: &Path, boot: &dyn Fn() -> Option<u64>) -> Vec<Proc> {
@@ -374,6 +434,43 @@ mod imp {
         fn an_unreadable_boot_time_gives_no_rows_rather_than_start_times_of_zero() {
             let proc = fake_proc(3);
             assert!(table_in(proc.path(), &|| None).is_empty());
+        }
+
+        /// `<pid>/task/<tid>/children` of the fake `/proc` (the kernel's file: space separated pids).
+        fn children(d: &std::path::Path, pid: u32, tid: u32, kids: &str) {
+            let t = d.join(pid.to_string()).join("task").join(tid.to_string());
+            std::fs::create_dir_all(&t).unwrap();
+            std::fs::write(t.join("children"), kids).unwrap();
+        }
+
+        #[test]
+        fn a_subtree_follows_the_children_files_of_every_thread_and_ignores_the_rest_of_the_machine() {
+            let proc = fake_proc(500);
+            let d = proc.path();
+            // 10 -> 11, 12 (the second one forked by another thread of 10); 11 -> 13. Everything else is unrelated.
+            children(d, 10, 10, "11 ");
+            children(d, 10, 11, "12 ");
+            children(d, 11, 11, "13 ");
+            let boot = || Some(1_700_000_000);
+            let mut pids: Vec<u32> = subtree_in(d, &boot, &[10])
+                .expect("children files exist")
+                .iter()
+                .map(|r| r.pid)
+                .collect();
+            pids.sort_unstable();
+            assert_eq!(pids, [10, 11, 12, 13]);
+            // A root that is gone gives no row; two roots are walked once each even when one is below the other.
+            assert!(subtree_in(d, &boot, &[900_000]).unwrap().is_empty());
+            assert_eq!(subtree_in(d, &boot, &[10, 11]).unwrap().len(), 4);
+        }
+
+        // A kernel built without CONFIG_PROC_CHILDREN has no such file: the caller must scan the table instead, not
+        // conclude that nothing runs below its terminals (that would let a session's leftovers outlive it).
+        #[test]
+        fn a_kernel_without_children_files_says_so_instead_of_returning_an_empty_subtree() {
+            let proc = fake_proc(5);
+            std::fs::create_dir_all(proc.path().join("3").join("task").join("3")).unwrap();
+            assert!(subtree_in(proc.path(), &|| Some(1_700_000_000), &[3]).is_none());
         }
     }
 }
@@ -492,5 +589,34 @@ mod tests {
         // argv words are not mistaken for variables.
         assert_eq!(find_var(&env, "x"), None);
         assert!(imp::parse_procargs2(&b[..6]).is_none());
+    }
+
+    // Incident (Linux idle, #289): hostd's 2 s session tracker read `/proc/<pid>/stat` of EVERY process of the machine to
+    // find the few below its terminals (0.5-0.6 % of a core on a machine with ~450 processes, per tick of nothing).
+    #[cfg(unix)]
+    #[test]
+    fn a_subtree_is_the_root_and_everything_below_it_and_nothing_else() {
+        let mut sh = std::process::Command::new("sh")
+            .args(["-c", "sleep 30 & sleep 30 & wait"])
+            .spawn()
+            .unwrap();
+        let root = sh.id();
+        let end = std::time::Instant::now() + crate::scaling::HANG;
+        let mut rows = subtree(&[root]);
+        while rows.len() < 3 && std::time::Instant::now() < end {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            rows = subtree(&[root]);
+        }
+        let _ = sh.kill();
+        let _ = sh.wait();
+        let me = std::process::id();
+        let pids: Vec<u32> = rows.iter().map(|r| r.pid).collect();
+        assert_eq!(rows.len(), 3, "the shell and its two sleeps: {rows:?}");
+        assert!(pids.contains(&root) && !pids.contains(&me));
+        assert!(
+            rows.iter().filter(|r| r.ppid == root).count() == 2,
+            "{rows:?}"
+        );
+        assert!(subtree(&[]).is_empty());
     }
 }

@@ -1,6 +1,14 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import {
+	mkdtempSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+	existsSync,
+	readdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -41,6 +49,29 @@ test("six processes that find the output stale compile it once, and none returns
 	expect(exits).toEqual([0, 0, 0, 0, 0, 0]);
 	expect(readFileSync(join(dir, "builds"), "utf8")).toBe("x");
 	expect(existsSync(join(dir, "lock"))).toBe(false);
+});
+
+// Regression (the six-process test above failed once under a loaded `bun run check`, 2026-11-24): a process saw no lock,
+// then another took it and wrote its marker, and the first read "not stale" and returned while the rest of the folder
+// was still being written. Here `stale()` plays that other process on its first call.
+test("an output that turns current while another process holds the lock is waited for, not returned", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "compile-lock-"));
+	const { withCompileLock } = await import(LOCK);
+	// A real timer on purpose: `withCompileLock` polls a real lock directory; the 200 ms only makes the wait observable.
+	const lock = join(dir, "lock");
+	let released = false;
+	let calls = 0;
+	const stale = () => {
+		if (calls++ === 0) {
+			mkdirSync(lock); // the other process took the lock and wrote the marker `stale()` reads...
+			setTimeout(() => ((released = true), rmSync(lock, { recursive: true })), 200); // ...and finishes later
+		}
+		return false;
+	};
+	await withCompileLock(lock, stale, async () => {
+		throw new Error("nothing is stale: no build");
+	});
+	expect(released).toBe(true);
 });
 
 test("a lock left behind by a killed process does not block forever", async () => {

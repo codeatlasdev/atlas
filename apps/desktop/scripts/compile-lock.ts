@@ -23,8 +23,11 @@ export async function withCompileLock(
 ): Promise<void> {
 	for (;;) {
 		// A build in progress is waited for even when the output already looks current: the compiler writes its marker
-		// files (what `stale()` reads) before the rest of the folder.
-		if (!existsSync(lock) && !stale()) return;
+		// files (what `stale()` reads) before the rest of the folder. `stale()` comes first: if the output looks current,
+		// its marker was written under the lock, and the lock goes only after the whole folder, so no lock after that
+		// means done. The other order let a process see no lock, then a new owner write the marker, then read "current"
+		// and return mid-build.
+		if (!stale() && !existsSync(lock)) return;
 		try {
 			mkdirSync(lock);
 		} catch (e) {

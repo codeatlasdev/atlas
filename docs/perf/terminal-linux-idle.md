@@ -33,3 +33,17 @@ Wakeups per second: app 83 -> 64, web process 47 -> 30. Raw windows: [terminal-l
 ## Tests
 
 `blink::tests` (the policy: flips each half cycle, rests after 10 s with the cursor visible and no wakeup, comes back once when it rests in the off phase, restarts on output, never wakes when hidden or steady, ignores a tick before the deadline). Incident-named test `the_blink_rests_with_the_cursor_visible_and_the_thread_sleeps` was run against the old behavior (rest disabled) and fails with 113 frames in 60 s against 19 + 0.
+
+## Hidden terminals give their GPU back ([#254](https://github.com/codeatlasdev/atlas/issues/254))
+
+A view the page parked (a background tab or worktree, a dialog over it) kept its swapchain, atlases and buffers. The render thread now drops the `Renderer` once the view has been hidden for 30 s (`term/release.rs`, pure policy; Linux only until the same numbers exist on macOS) and builds a new one on the same view when it is shown again; the view stays off screen until that renderer's first frame, so the rebuild is never seen. The screen and scrollback live in the `Vt`. Geometry, font and ligature requests wait in `State` while released and apply to the new renderer.
+
+Measured with `terminal-linux-gpu-tools/rel.sh` (release builds with and without the change, private headless sway on the Radeon 680M, VRAM from amdgpu `fdinfo` of app + web process + hostd, N terminal tabs of one worktree with the last in front, a sample waits for 1-minute load < 2; raw: [terminal-linux-hidden-release.jsonl](terminal-linux-hidden-release.jsonl)):
+
+| terminals (1 visible) | VRAM without release, 45 s after opening | with release, 45 s after opening | after showing one hidden terminal |
+|---|---|---|---|
+| 1 | 368.1 MB | 369.1 MB | 369.1 MB |
+| 4 | 409.8 MB | 373.6 MB (-36.2) | 385.2 MB (+11.6) |
+| 20 | 863.1 MB | 633.9 MB (-229.2) | 646.9 MB (+13.0) |
+
+Base (no terminal) is 347.4 MB. **Rebuild on show: 6.6 ms** (measured in the app around renderer creation, N = 4 and 20; one sample each). **What is not freed**: about 12 MB of the ~21-26 MB a terminal holds stays after its renderer is dropped (19 released terminals still hold 12.3 MB each); the cause was not investigated (a deferred wgpu destruction until the device is polled is the first suspect [HYPOTHESIS]). The flicker sweep (Linux variant) was not run; the first frame after a show is drawn before the view moves over the pane, as for every first frame (`Placement`).

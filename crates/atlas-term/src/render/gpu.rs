@@ -36,6 +36,10 @@ static GPU: LazyLock<Result<Gpu, String>> = LazyLock::new(|| {
     }
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("atlas-term"),
+        // Blocks of 8-64 MB instead of 128-256 MB: a block is only given back to the driver once nothing lives in it,
+        // so with large ones a released terminal's atlases kept their block (#254). A terminal's data is one or two
+        // allocations of a few MB; the extra `vkAllocateMemory` calls are paid on open and on show, never per frame.
+        memory_hints: wgpu::MemoryHints::MemoryUsage,
         ..Default::default()
     }))
     .map_err(|e| e.to_string())?;

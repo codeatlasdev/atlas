@@ -8,4 +8,4 @@ Nested notes, loaded when you work under `crates/atlas-tui/`. Moved verbatim fro
 - TUI: EventStream input, dirty-flag rendering, non-blocking startup.
 - `pre_command` output goes to `.logs/setup.log` / `.logs/setup.json`; `pre_command_when: always` is the default with an explicit command.
 
-Manager tests live in `runtime/manager/tests.rs` and are wired by `#[cfg(test)] mod tests;` in `mod.rs` — when splitting modules, check the test count does not drop.
+Manager tests live in `runtime/manager/tests/` (`mod.rs` holds the shared fixtures, one module per topic) and are wired by `#[cfg(test)] mod tests;` in `mod.rs`. When splitting test files, compare the `cargo nextest list` count before and after; `port_conflict` re-runs itself by its full test path, so a move must update that string.

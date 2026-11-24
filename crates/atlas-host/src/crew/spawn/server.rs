@@ -251,7 +251,7 @@ impl Server {
     }
 
     fn connection(&self, conn: UnixStream) -> io::Result<()> {
-        let who = peer::peer_of(&conn)?;
+        let who = atlas_core::sys::peer_cred(&conn)?;
         if !peer::allowed(who, self.cfg.crew_uid) {
             // Not even an error reply: a stranger gets a closed socket.
             return Ok(());
@@ -381,14 +381,12 @@ impl Server {
                 // The child called `setsid` before exec, so its pid is its process group id: `-pid` is its
                 // whole tree (what an engine started), like `TurnProc` for the crew user. Not `Reap`: that
                 // ends every process of the crewmate, including its other sessions.
-                // SAFETY: kill(2) on the process group of a child we own and have not reaped; its pid is
-                // positive and in i32 range (a `pid_t`).
-                if unsafe { libc::kill(-(e.pid as libc::pid_t), sig) } == 0 {
-                    Response::Done
-                } else {
-                    Response::Error {
-                        reason: io::Error::last_os_error().to_string(),
-                    }
+                // A child we own and have not reaped.
+                match atlas_core::sys::kill_group(e.pid, sig) {
+                    Ok(()) => Response::Done,
+                    Err(e) => Response::Error {
+                        reason: e.to_string(),
+                    },
                 }
             }
         }
@@ -592,8 +590,7 @@ pub fn kill_uid(uid: u32) -> io::Result<usize> {
             "refusing to kill uid 0",
         ));
     }
-    // SAFETY: plain getter.
-    if uid == unsafe { libc::geteuid() } {
+    if uid == atlas_core::sys::euid() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "refusing to kill every process of the caller's own user",
@@ -605,8 +602,7 @@ pub fn kill_uid(uid: u32) -> io::Result<usize> {
         if pid == me || pid == 0 || pid > i32::MAX as u32 {
             continue;
         }
-        // SAFETY: kill(2) with an exact positive pid.
-        if unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) } == 0 {
+        if atlas_core::sys::force_kill(pid) {
             n += 1;
         }
     }
@@ -743,8 +739,7 @@ mod tests {
             .arg("30")
             .spawn()
             .unwrap();
-        // SAFETY: plain getter.
-        let me = unsafe { libc::geteuid() };
+        let me = atlas_core::sys::euid();
         let r = kill_uid(me);
         let alive = sibling.try_wait().unwrap().is_none();
         let _ = sibling.kill();
@@ -829,7 +824,9 @@ mod tests {
             .spawn(&req(&r, Mode::Pipe, "/bin/sleep 30"))
             .unwrap();
         assert_eq!(r.client.wait(sp.session).unwrap(), (false, None));
-        r.client.signal(sp.session, libc::SIGKILL).unwrap();
+        r.client
+            .signal(sp.session, atlas_core::sys::SIGKILL)
+            .unwrap();
         // 137 = 128 + SIGKILL: the same code a shell shows for a killed child.
         assert_eq!(r.client.wait_exit(sp.session), Some(137));
     }
@@ -847,10 +844,14 @@ mod tests {
             .unwrap();
         // The trap is installed once the script printed its banner; give the shell a moment.
         std::thread::sleep(Duration::from_millis(300));
-        r.client.signal(sp.session, libc::SIGTERM).unwrap();
+        r.client
+            .signal(sp.session, atlas_core::sys::SIGTERM)
+            .unwrap();
         assert_eq!(r.client.wait_exit(sp.session), Some(42));
         // Signalling what already ended must not hit a recycled pid, and must not fail.
-        r.client.signal(sp.session, libc::SIGKILL).unwrap();
+        r.client
+            .signal(sp.session, atlas_core::sys::SIGKILL)
+            .unwrap();
     }
 
     // Merging #200 with the engine launcher of #359: a cancelled turn must end what the engine started
@@ -881,9 +882,13 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(20));
         };
-        // SAFETY: signal 0 only tests that the pid exists.
-        assert_eq!(unsafe { libc::kill(tool, 0) }, 0, "the tool is running");
-        r.client.signal(sp.session, libc::SIGKILL).unwrap();
+        assert!(
+            atlas_core::sys::pid_alive(tool as u32),
+            "the tool is running"
+        );
+        r.client
+            .signal(sp.session, atlas_core::sys::SIGKILL)
+            .unwrap();
         r.client.wait_exit(sp.session);
         let start = Instant::now();
         // A killed process whose parent is gone is reaped by init at once; a zombie only waits for that.
@@ -895,7 +900,7 @@ mod tests {
                         .is_some_and(|r| r.trim_start().starts_with('Z'))
                 })
                 // No /proc (macOS): kill(pid, 0) says whether the pid is still there.
-                .unwrap_or_else(|_| unsafe { libc::kill(tool, 0) } != 0);
+                .unwrap_or_else(|_| !atlas_core::sys::pid_alive(tool as u32));
             if dead {
                 return;
             }
@@ -929,17 +934,22 @@ mod tests {
             .client
             .spawn(&req(&r, Mode::Pipe, "/bin/sleep 30"))
             .unwrap();
-        let e = r.client.signal(sp.session, libc::SIGSTOP).unwrap_err();
+        let e = r
+            .client
+            .signal(sp.session, atlas_core::sys::SIGSTOP)
+            .unwrap_err();
         assert!(e.to_string().contains("signal not allowed"), "{e}");
         assert_eq!(r.client.wait(sp.session).unwrap(), (false, None));
-        r.client.signal(sp.session, libc::SIGKILL).unwrap();
+        r.client
+            .signal(sp.session, atlas_core::sys::SIGKILL)
+            .unwrap();
     }
 
     #[test]
     fn an_unknown_session_is_reported_as_such_for_every_session_request() {
         let r = rig();
         for e in [
-            r.client.signal(999, libc::SIGTERM).unwrap_err(),
+            r.client.signal(999, atlas_core::sys::SIGTERM).unwrap_err(),
             r.client.wait(999).unwrap_err(),
             r.client.cwd(999).unwrap_err(),
         ] {
@@ -1078,14 +1088,16 @@ mod tests {
             std::fs::canonicalize(now).unwrap(),
             std::fs::canonicalize("/tmp").unwrap()
         );
-        r.client.signal(sp.session, libc::SIGKILL).unwrap();
+        r.client
+            .signal(sp.session, atlas_core::sys::SIGKILL)
+            .unwrap();
     }
 
     // The second lock: a peer that is not the crew user (or root) is dropped without a reply.
     #[test]
     fn a_user_that_is_not_the_crew_user_gets_nothing() {
         let r = rig();
-        let me_uid = unsafe { libc::geteuid() };
+        let me_uid = atlas_core::sys::euid();
         let s = Server::new(Config {
             crew_uid: me_uid.wrapping_add(1).max(1),
             ..r.server.config().clone()
@@ -1121,7 +1133,9 @@ mod tests {
             &r.client.wait(done.session).unwrap_err()
         ));
         assert_eq!(r.client.wait(live.session).unwrap(), (false, None));
-        r.client.signal(live.session, libc::SIGKILL).unwrap();
+        r.client
+            .signal(live.session, atlas_core::sys::SIGKILL)
+            .unwrap();
     }
 
     #[test]
@@ -1165,7 +1179,7 @@ mod tests {
     fn the_crew_user_is_read_from_the_socket_file_not_from_the_descriptor() {
         use std::os::unix::fs::MetadataExt;
         // A group of ours that is not our primary one: the file can be given to it without privileges.
-        let primary = unsafe { libc::getegid() };
+        let primary = atlas_core::sys::egid();
         let mut groups = [0 as libc::gid_t; 64];
         let n = unsafe { libc::getgroups(groups.len() as i32, groups.as_mut_ptr()) };
         let Some(other) = groups[..n.max(0) as usize]
@@ -1282,7 +1296,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn pids_of_uid_finds_our_own_process_and_not_a_uid_nobody_has() {
-        let me = unsafe { libc::getuid() };
+        let me = atlas_core::sys::uid();
         assert!(pids_of_uid(me).unwrap().contains(&std::process::id()));
         // 4294967294 is `(uid_t)-2`: never a real account.
         assert!(pids_of_uid(4_294_967_294).unwrap().is_empty());

@@ -104,15 +104,8 @@ impl Tree {
         }
         self.done = true;
         let Some(pid) = self.pid else { return };
-        #[cfg(unix)]
-        {
-            // SAFETY: `process_group(0)` made the child's pid its group id, so `-pid` is exactly this
-            // call's group. `pid` came from our own spawn: positive and in i32 range.
-            if pid <= i32::MAX as u32 {
-                unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) };
-            }
-        }
-        #[cfg(windows)]
+        // `process_group(0)` made the child's pid its group id, so this is exactly this call's group; on Windows,
+        // the process and its descendants.
         atlas_core::sys::kill_tree(pid);
     }
 }

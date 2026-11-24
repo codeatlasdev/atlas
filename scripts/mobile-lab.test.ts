@@ -1,6 +1,6 @@
 // `bun run mobile:lab` touches the maintainer's real machine: his phone, his hostd dir, his Atlas. These tests pin
 // the decisions that keep it away from the real installation (the pure core of scripts/mobile-lab.ts); the lab
-// daemon itself is covered by crates/atlas-host (lab::tests) and crates/atlas-cli/tests/hostd.rs.
+// daemon itself is covered by crates/atlas-host (lab::tests) and crates/atlas-cli/tests/hostd/lab.rs.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

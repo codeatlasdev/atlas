@@ -117,15 +117,15 @@ fn run_inner(cfg: &Config, req: &GitReq) -> io::Result<(Response, OwnedFd)> {
         }
         if Instant::now() >= deadline {
             timed_out = true;
-            // SAFETY: kill(2) on the process group of a child we own and have not reaped.
-            unsafe { libc::kill(-(child.id() as libc::pid_t), libc::SIGKILL) };
+            // The child's group (`setsid` before exec): a child we own and have not reaped.
+            atlas_core::sys::kill_tree(child.id());
             break child.wait()?;
         }
         std::thread::sleep(Duration::from_millis(10));
     };
     // The group may hold something that outlived git (a daemonized hook): end it too.
-    // SAFETY: as above; the group id is the child's pid, and a no-such-group answer is fine.
-    unsafe { libc::kill(-(child.id() as libc::pid_t), libc::SIGKILL) };
+    // As above; a no-such-group answer is fine.
+    atlas_core::sys::kill_tree(child.id());
 
     let code = status.code();
     let stderr = tail(&mut err, MAX_STDERR)?;
@@ -336,11 +336,9 @@ mod tests {
         let rig = rig();
         let made = rig.cm.join("made-by-hook");
         rig.planted_repo(&format!(": > {}\nexit 1\n", made.display()));
-        // SAFETY: plain umask; this test's process is the helper here.
-        let before = unsafe { libc::umask(0o022) };
+        let before = atlas_core::sys::set_umask(0o022);
         let out = rig.client.git(&req(&rig, &["status"])).unwrap();
-        // SAFETY: restores the value read above.
-        unsafe { libc::umask(before) };
+        atlas_core::sys::set_umask(before);
         assert_eq!(out.code, Some(0), "{}", out.stderr);
         assert_eq!(
             std::fs::metadata(&made).unwrap().mode() & 0o777,
@@ -356,8 +354,7 @@ mod tests {
     fn a_real_git_request_runs_the_crewmates_config_as_the_crewmates_uid() {
         use std::os::unix::fs::MetadataExt;
         use std::process::Command as C;
-        // SAFETY: plain getter.
-        assert_eq!(unsafe { libc::geteuid() }, 0, "this test must run as root");
+        assert_eq!(atlas_core::sys::euid(), 0, "this test must run as root");
         let user = "atlas-cm-fffffffffffe";
         let sh = |cmd: &str| C::new("sh").args(["-c", cmd]).status().unwrap().success();
         assert!(sh(&format!(

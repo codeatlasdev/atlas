@@ -116,16 +116,8 @@ impl TurnProc {
 
     fn kill_tree(&self) {
         let Some(pid) = self.pid else { return };
-        #[cfg(unix)]
-        {
-            // SAFETY: `process_group(0)` made the child's pid its group id, so `-pid` is exactly this
-            // turn's group (a tool that left it with setsid is not reached, same as the pty). `pid`
-            // came from our own spawn, positive and in i32 range.
-            if pid <= i32::MAX as u32 {
-                unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) };
-            }
-        }
-        #[cfg(windows)]
+        // `process_group(0)` made the child's pid its group id, so this is exactly this turn's group (a tool that
+        // left it with setsid is not reached, same as the pty); on Windows, the process and its descendants.
         atlas_core::sys::kill_tree(pid);
     }
 

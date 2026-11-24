@@ -342,7 +342,7 @@ impl Session {
         let (client, session) = (self.client.clone(), self.session);
         // Off the caller's thread: the helper answers quickly, but this may run in a runtime.
         std::thread::spawn(move || {
-            let _ = client.signal(session, libc::SIGKILL);
+            let _ = client.signal(session, atlas_core::sys::SIGKILL);
         });
     }
 }

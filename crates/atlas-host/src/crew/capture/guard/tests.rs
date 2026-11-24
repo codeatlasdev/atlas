@@ -499,9 +499,8 @@ async fn check_url_refuses_what_the_proxy_would() {
     assert!(why.contains("no server of yours"), "{why}");
     #[cfg(target_os = "linux")]
     {
-        // SAFETY: plain getter.
         let me = Reach {
-            uid: unsafe { libc::geteuid() },
+            uid: atlas_core::sys::euid(),
         };
         assert_eq!(
             me.check_url(&format!("http://127.0.0.1:{port}/")).await,

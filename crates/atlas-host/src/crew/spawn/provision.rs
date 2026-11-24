@@ -649,7 +649,7 @@ impl Service {
     }
 
     fn connection(&self, conn: UnixStream) -> io::Result<()> {
-        let who = peer::peer_of(&conn)?;
+        let who = atlas_core::sys::peer_cred(&conn)?;
         if !peer::allowed(who, self.crew_uid) {
             return Ok(());
         }
@@ -1113,8 +1113,7 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
     // ---- a crewmate that owns its directory must not steer root's chown/chmod --------------------
 
     fn my_ids() -> (u32, u32) {
-        // SAFETY: plain getters.
-        unsafe { (libc::geteuid(), libc::getegid()) }
+        (atlas_core::sys::euid(), atlas_core::sys::egid())
     }
 
     fn mode_of(p: &Path) -> u32 {
@@ -1225,8 +1224,7 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
     #[test]
     #[ignore = "needs root on Linux: creates and deletes a system user (see docs/contributing.md)"]
     fn a_real_provision_creates_the_user_and_modes_and_a_real_deprovision_removes_them() {
-        // SAFETY: plain getter.
-        assert_eq!(unsafe { libc::geteuid() }, 0, "this test must run as root");
+        assert_eq!(atlas_core::sys::euid(), 0, "this test must run as root");
         let t = tempfile::tempdir().unwrap();
         std::fs::set_permissions(t.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
         let user = "atlas-cm-eeeeeeeeeeee";

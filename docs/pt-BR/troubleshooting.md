@@ -1,7 +1,7 @@
 ---
 title: "Solução de problemas"
 source: troubleshooting.md
-source_sha: "4263b78d0fb04b1b8b8fcf7a19939688c542f583"
+source_sha: "40d224e50c65c81086092275d558e41e059d38c0"
 translation: machine
 ---
 

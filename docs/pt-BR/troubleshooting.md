@@ -1,7 +1,7 @@
 ---
 title: "Solução de problemas"
 source: troubleshooting.md
-source_sha: "4263b78d0fb04b1b8b8fcf7a19939688c542f583"
+source_sha: "40d224e50c65c81086092275d558e41e059d38c0"
 translation: machine
 ---
 
@@ -65,6 +65,7 @@ A tabela completa está em [Configuração dos agentes](agents.md#solução-de-p
 | `bun` ou `node` não encontrado dentro do app (`exit 127: sh: 1: bun: not found` na configuração da stack) | Um app aberto pelo Finder, pelo Dock ou por uma entrada de menu do Linux recebe um ambiente vazio. O Atlas lê o ambiente do seu shell de login na inicialização (como shell de login interativo, então `~/.bashrc`, `~/.zshrc` e `~/.config/fish/config.fish` valem); o erro de configuração mostra o `PATH` que o Atlas usou; Configurações → Integrações → Shell e links → *Shell dos seus projetos* mostra o que ele encontrou e tem **Recarregar agora**. Reinicie uma stack em execução depois de mudar. |
 | Os terminais usam o renderizador clássico com a GPU ligada, e as Configurações dizem que o host de terminais em execução é de uma versão mais antiga do Atlas | O daemon é anterior ao app e não pôde ser substituído ao vivo. Clique em **Reiniciar o host de terminais** em Configurações → Terminal quando nenhum terminal estiver ocupado. |
 | Linux: sem sons, e o log do app (ou `stderr.log`) tem `GStreamer element autoaudiosink not found` | Os plugins good do GStreamer não estão instalados (o `.deb`, o `.rpm`, o pacote do Arch e o AppImage os trazem; uma instalação feita à mão ou com `--nodeps` não). O Atlas então fica em silêncio em vez de iniciar um dispositivo de áudio que o WebKit não consegue abrir. Instale `gst-plugins-good` (`gstreamer1.0-plugins-good`, `gstreamer1-plugins-good`) e reinicie o Atlas. |
+| Linux: a página congelou no primeiro som, `atlas desktop debug eval` nunca responde, e o PipeWire roda sem gerenciador de sessão | Nada roteia os fluxos de áudio (sem WirePlumber nem `pipewire-media-session`), então o sink de áudio do WebKit espera para sempre. O Atlas detecta isso ao iniciar e fica em silêncio; inicie o gerenciador de sessão (`systemctl --user enable --now wireplumber`) e reinicie o Atlas para ter som. |
 | Um terminal fica em branco logo depois de abrir | Desligue *Terminal rápido (GPU)* em Configurações → Terminal para comparar com o renderizador xterm.js e abra uma issue com a saída de `atlas desktop debug logs`. |
 | Uma worktree não foi apagada junto com a branch | A branch não passou por merge, então o Atlas a mantém (um toast avisa). Apague com `git branch -D` quando tiver certeza. |
 | `atlas wt` ou `atlas term` diz que o app não está rodando | Eles usam o `~/.atlas/desktop.sock`; abra o Atlas Desktop primeiro. O `atlas term` recorre ao hostd local quando o app está fechado. |

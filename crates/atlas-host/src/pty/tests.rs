@@ -1183,3 +1183,86 @@ async fn output_during_a_slow_scrollback_rewrite_is_buffered_up_to_the_ring_size
     let file = std::fs::read(&bin).unwrap();
     assert_eq!(file[file.len() - held..], all[all.len() - held..]);
 }
+
+/// Voluntary context switches (every return from a sleep) of the thread named `name` in this process.
+#[cfg(target_os = "linux")]
+fn wakeups_of(name: &str) -> u64 {
+    for t in std::fs::read_dir("/proc/self/task").unwrap().flatten() {
+        let comm = std::fs::read_to_string(t.path().join("comm")).unwrap_or_default();
+        if comm.trim() != name {
+            continue;
+        }
+        let status = std::fs::read_to_string(t.path().join("status")).unwrap();
+        return status
+            .lines()
+            .find_map(|l| l.strip_prefix("voluntary_ctxt_switches:"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+    }
+    panic!("no thread named {name}");
+}
+
+// Incident (Linux idle, #289): the reader polled the pty master with a 100 ms bound only to notice `freeze`'s stop
+// flag, so every open terminal woke hostd's reader thread ten times a second for as long as it lived, with nothing to
+// read. It sleeps until the program prints or `freeze` wakes it.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_quiet_terminals_reader_sleeps_instead_of_polling() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Session::spawn(shell_req("sleep 30"), dir.path()).unwrap();
+    let name = super::stream::reader_name(&s.id);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let before = wakeups_of(&name);
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let woke = wakeups_of(&name) - before;
+    assert!(
+        woke <= 1,
+        "the reader woke {woke} times in 1.5 s with nothing to read (a 100 ms poll tick is 15)"
+    );
+    // Output still wakes it at once.
+    let (tx, mut rx) = mpsc::channel(RAW_QUEUE);
+    s.attach_raw(1, tx, false);
+    s.write(b"echo hi\n").unwrap();
+    let mut seen = Vec::new();
+    while !String::from_utf8_lossy(&seen).contains("hi") {
+        let chunk = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv())
+            .await
+            .expect("a program's output reached nobody")
+            .unwrap();
+        seen.extend(chunk);
+    }
+    s.kill().await;
+}
+
+// Without the poll tick, `freeze` must wake the reader itself: a lost wake would leave the live upgrade waiting out
+// its 3 s bound. After a failed handoff `thaw` starts a reader that reads again.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn freeze_stops_a_blocked_reader_at_once_and_thaw_reads_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Session::spawn(shell_req("while read x; do echo got-$x; done"), dir.path()).unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let t0 = std::time::Instant::now();
+    let (state, fd) = s.freeze().await.unwrap();
+    let took = t0.elapsed();
+    assert!(!state.exited && fd.is_some());
+    assert!(
+        took < Duration::from_millis(1500),
+        "freeze waited {took:?} for the reader"
+    );
+    s.thaw();
+    let (tx, mut rx) = mpsc::channel(RAW_QUEUE);
+    s.attach_raw(1, tx, false);
+    s.write(b"7\n").unwrap();
+    let mut seen = Vec::new();
+    while !String::from_utf8_lossy(&seen).contains("got-7") {
+        let chunk = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv())
+            .await
+            .expect("a thawed terminal's output reached nobody")
+            .unwrap();
+        seen.extend(chunk);
+    }
+    s.kill().await;
+}

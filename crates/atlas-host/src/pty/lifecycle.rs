@@ -154,9 +154,9 @@ impl Session {
             let fd = self.io.lock().as_ref()?.master.as_ref()?.raw_fd()?;
             let (tx, rx) = tokio::sync::oneshot::channel();
             *self.frozen.lock() = Some(tx);
-            self.stop.store(true, std::sync::atomic::Ordering::Release);
-            // Reader exits within one poll tick (100 ms); a session that exits while
-            // freezing finishes instead (then it is reported as exited).
+            self.stop.set();
+            // `set` wakes the reader at once; a session that exits while freezing finishes instead (then it is
+            // reported as exited).
             let _ = tokio::time::timeout(Duration::from_secs(3), rx).await;
             Some(fd)
         } else {
@@ -200,7 +200,7 @@ impl Session {
         if self.exited().is_some() {
             return;
         }
-        self.stop.store(false, std::sync::atomic::Ordering::Release);
+        self.stop.clear();
         let reader = self
             .io
             .lock()

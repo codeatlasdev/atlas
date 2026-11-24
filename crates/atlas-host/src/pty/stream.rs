@@ -3,7 +3,6 @@
 
 use std::io::{Read, Write};
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use base64::Engine;
@@ -12,6 +11,7 @@ use serde_json::json;
 use tokio::sync::mpsc;
 
 use super::master::Waiter;
+use super::stop::Stop;
 use super::title::{TitleParser, shown};
 use super::{Buf, RING_MAX, RawOut, Session, bin_path, open_append};
 
@@ -49,6 +49,12 @@ enum Msg {
     Frozen,
 }
 
+/// The reader thread's name (15 characters at most, the kernel's limit): one per terminal, so a thread listing or a
+/// wakeup count says which terminal a thread reads.
+pub(super) fn reader_name(id: &str) -> String {
+    format!("pty-{}", &id[..id.len().min(11)])
+}
+
 impl Session {
     /// Reader thread → bounded channel → coalescer task. `wait` blocks until the child
     /// is gone (after the reader hits EOF) and yields its code.
@@ -66,7 +72,10 @@ impl Session {
         #[cfg(windows)]
         let (poll_fd, wait) = (None, self.close_console_on_exit(wait));
         let stop = self.stop.clone();
-        std::thread::spawn(move || read_loop(reader, wait, poll_fd, &stop, &tx));
+        std::thread::Builder::new()
+            .name(reader_name(&self.id))
+            .spawn(move || read_loop(reader, wait, poll_fd, &stop, &tx))
+            .expect("spawn the pty reader thread");
         tokio::spawn(self.clone().coalesce(rx));
     }
 
@@ -310,28 +319,40 @@ fn read_loop(
     mut reader: Box<dyn Read + Send>,
     wait: Waiter,
     poll_fd: Option<PollFd>,
-    stop: &std::sync::atomic::AtomicBool,
+    stop: &Stop,
     tx: &mpsc::Sender<Msg>,
 ) {
     let mut chunk = vec![0u8; 16 * 1024];
     loop {
-        if stop.load(Ordering::Acquire) {
+        if stop.is_set() {
             let _ = tx.blocking_send(Msg::Frozen);
             return;
         }
         #[cfg(unix)]
         if let Some(fd) = poll_fd {
-            let mut p = libc::pollfd {
-                fd,
-                events: libc::POLLIN,
-                revents: 0,
-            };
-            // SAFETY: one valid pollfd; 100 ms bound so `stop` is noticed.
-            let r = unsafe { libc::poll(&mut p, 1, 100) };
-            if r == 0
-                || (r < 0
-                    && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted)
-            {
+            let mut p = [
+                libc::pollfd {
+                    fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+                libc::pollfd {
+                    fd: stop.wake_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+            ];
+            // SAFETY: two valid pollfds. No timeout: the pty's output or `Stop::set`'s byte ends the wait, so a quiet
+            // terminal's reader never wakes (it used to poll every 100 ms to look at the flag).
+            let r = unsafe { libc::poll(p.as_mut_ptr(), 2, -1) };
+            if r < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            if r > 0 && p[0].revents == 0 {
+                // Only the wake socket: the loop top acts on a request, and a byte left by a withdrawn one goes.
+                if !stop.is_set() {
+                    stop.drain();
+                }
                 continue;
             }
         }

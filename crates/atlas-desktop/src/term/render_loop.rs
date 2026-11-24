@@ -14,7 +14,8 @@ use std::time::Instant;
 
 use atlas_term::{FontResolution, FontSpec, Frame, Renderer};
 
-use super::shared::{BLINK, Shared};
+use super::blink::Blink;
+use super::shared::Shared;
 use super::watchdog::{Action, Watchdog, Why};
 
 /// The shortest time between two draws of one terminal: one display refresh (60 Hz floor; a faster panel only
@@ -106,8 +107,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
     let mut first_frame_pending = true;
     let mut pal = sh.state.lock().pal.clone();
     let mut frame = Frame::default();
-    let mut blink_at = Instant::now() + BLINK;
-    let mut blink_on = true;
+    let mut blink = Blink::new(Instant::now());
     let mut dog = Watchdog::default();
     // A rebuild was recorded and no frame has been presented since: say so when one is.
     let mut stall_logged = false;
@@ -121,16 +121,15 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
             loop {
                 if s.closed || s.size.is_some() || s.dirty || s.rebuild.is_some() {
                     // New output or input: restart the blink cycle visible.
-                    blink_on = true;
-                    blink_at = Instant::now() + BLINK;
+                    blink.restart(Instant::now());
                     break;
                 }
                 // A parked view has no blink or bell to show; waking for them is pure waste.
                 let hidden = !first_frame_pending && !sh.placement.lock().is_shown();
-                let blink = (frame.cursor_blinks && !hidden).then_some(blink_at);
+                let blink_at = blink.deadline(frame.cursor_blinks, hidden);
                 let bell = s.bell_until.filter(|_| !hidden);
                 let now = Instant::now();
-                let next = [blink, bell, dog.next_check(now)]
+                let next = [blink_at, bell, dog.next_check(now)]
                     .into_iter()
                     .flatten()
                     .min();
@@ -142,14 +141,20 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
                     continue;
                 }
                 let now = Instant::now();
+                let mut owed = false;
                 if s.bell_until.is_some_and(|b| b <= now) {
                     s.bell_until = None;
+                    owed = true;
                 }
-                if frame.cursor_blinks && blink_at <= now {
-                    blink_on = !blink_on;
-                    blink_at = now + BLINK;
+                if frame.cursor_blinks {
+                    owed |= blink.tick(now);
                 }
-                break;
+                // A timer that changed nothing (the blink came due while resting, a watchdog check with no frame
+                // owed) draws nothing: the watchdog's own `poll` below decides whether a redraw is due.
+                if owed || dog.next_check(now).is_some_and(|c| c <= now) {
+                    break;
+                }
+                continue;
             }
             if s.closed {
                 return;
@@ -285,7 +290,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
         frame.search_color = SEARCH;
         frame.search_current_color = SEARCH_CURRENT;
         frame.focused = focused;
-        frame.blink_on = blink_on;
+        frame.blink_on = blink.on();
         // Smooth scrolling: the offset the wheel left, drawn with the row above and below the viewport.
         let frac = sh.state.lock().scroll_frac;
         frame.over = u32::from(frac != 0.0);

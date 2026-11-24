@@ -388,12 +388,14 @@
 	.area.link {
 		cursor: pointer;
 	}
-	/* Focus target for keys/IME/paste; the native view draws the terminal. */
+	/* Focus target for keys/IME/paste; the native view draws the terminal. It has NO area (xterm.js's helper textarea is
+	   the same): a focused 1 px textarea still blinks its caret, which makes WebKit repaint and the compositor commit the
+	   whole window twice a second (idle terminal: 1.6 % of a core against 0.3-0.7 % for xterm.js, #774). */
 	.sink {
 		position: absolute;
 		opacity: 0;
-		width: 1px;
-		height: 1px;
+		width: 0;
+		height: 0;
 		padding: 0;
 		border: 0;
 		resize: none;

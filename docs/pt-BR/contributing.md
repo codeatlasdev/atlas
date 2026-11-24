@@ -1,7 +1,7 @@
 ---
 title: "Contribuir"
 source: contributing.md
-source_sha: "eea4d7b3d2287a498aa9dfaae6134711e0b03c7a"
+source_sha: "3728b8dc178749bb03b4d70bab9ce5fb605fe252"
 translation: machine
 ---
 
@@ -243,7 +243,7 @@ Veja [Arquitetura](architecture.md) para os crates e para como os processos conv
 
 ## Convenções
 
-- **Testes.** Prefira testes de comportamento: limites, falhas e transições de estado em vez de getters. Os testes do manager ficam em `runtime/manager/tests.rs` e são ligados por `#[cfg(test)] mod tests;` no `mod.rs`; ao dividir módulos, confira se a contagem de testes não cai. Os testes de integração conduzem o binário real.
+- **Testes.** Prefira testes de comportamento: limites, falhas e transições de estado em vez de getters. Os testes do manager ficam em `runtime/manager/tests/` (fixtures compartilhadas no `mod.rs`, um módulo por assunto) e são ligados por `#[cfg(test)] mod tests;` no `mod.rs`; as suítes de integração grandes (`crates/atlas-cli/tests/hostd/`, `mcp/`) são um diretório cada, com um módulo por assunto. Ao dividir um arquivo de testes, compare a contagem do `cargo nextest list` antes e depois. Os testes de integração conduzem o binário real.
 - **A documentação anda com o código.** Uma alteração que muda uma flag, uma tecla, um campo de configuração ou um comportamento atualiza a página que o documenta, no mesmo pull request. A ajuda e o rodapé da TUI são gerados a partir de uma única tabela de teclas; os atalhos do desktop são o `DEFAULT_KEYMAP` em `apps/desktop/src/lib/keys.ts`.
 - **Changelog.** Alterações visíveis ao usuário ganham uma linha em `## [Unreleased]` no `CHANGELOG.md`. As notas de versão são montadas a partir dele.
 - **Instruções para agentes.** O `AGENTS.md` é um mapa com menos de 8 KB: as regras que causam dano se quebradas e uma tabela "antes de mexer em X, leia Y". O detalhe vai para uma skill em `.agents/skills/<name>/SKILL.md` (curta, com arquivos irmãos para o resto) ou para um `AGENTS.md` aninhado ao lado do código que ele cobre; nunca de volta para o arquivo da raiz. O `.claude/skills` é um symlink para `.agents/skills` porque o Claude Code lê só esse caminho (o Codex e o omp leem `.agents/skills` diretamente, e o omp remove duplicatas pelo realpath). O `bun test scripts/agents-md.test.ts` (parte do `bun run check`) verifica o tamanho, as referências e o link; no Windows sem suporte a symlink, o link continua commitado como um arquivo comum.

@@ -70,19 +70,6 @@ pub fn wanted(env: Option<&str>, setting: Option<&serde_json::Value>) -> bool {
         .unwrap_or(false)
 }
 
-/// The session says Wayland (cheap, no GPU or display needed): what the main window's transparency decides on, before
-/// GTK is up. A Wayland session whose app is forced to X11 (`GDK_BACKEND=x11`) is not one.
-pub fn session_is_wayland(var: impl Fn(&str) -> Option<String>) -> bool {
-    let set = |k: &str| var(k).is_some_and(|v| !v.is_empty());
-    let backend = var("GDK_BACKEND").unwrap_or_default();
-    let backend_ok = backend.is_empty()
-        || backend
-            .split(',')
-            .next()
-            .is_some_and(|b| b.trim() == "wayland");
-    set("WAYLAND_DISPLAY") && backend_ok
-}
-
 /// The user's choice, read from the environment and settings.json.
 pub fn setting_on() -> bool {
     let env = std::env::var("ATLAS_GPU_TERMINAL").ok();
@@ -92,7 +79,7 @@ pub fn setting_on() -> bool {
 
 /// Should the main window be created see-through? Only where the native terminal may run and was asked for.
 pub fn window_wanted() -> bool {
-    setting_on() && session_is_wayland(|k| std::env::var(k).ok())
+    setting_on() && crate::linux_gfx::session_is_wayland(|k| std::env::var(k).ok())
 }
 
 /// The `term_capability` reply.
@@ -204,30 +191,6 @@ mod tests {
         assert!(!wanted(Some("0"), Some(&serde_json::json!(true))));
         assert!(wanted(Some(" on "), None));
         assert!(!wanted(Some(""), None));
-    }
-
-    #[test]
-    fn the_session_is_wayland_only_when_the_app_will_use_it() {
-        let env = |pairs: &'static [(&str, &str)]| {
-            move |k: &str| {
-                pairs
-                    .iter()
-                    .find(|(n, _)| *n == k)
-                    .map(|(_, v)| (*v).to_string())
-            }
-        };
-        assert!(session_is_wayland(env(&[("WAYLAND_DISPLAY", "wayland-1")])));
-        assert!(session_is_wayland(env(&[
-            ("WAYLAND_DISPLAY", "wayland-1"),
-            ("GDK_BACKEND", "wayland,x11")
-        ])));
-        // GDK_BACKEND=x11 forces XWayland on a Wayland session: the GTK window is not a Wayland surface.
-        assert!(!session_is_wayland(env(&[
-            ("WAYLAND_DISPLAY", "wayland-1"),
-            ("GDK_BACKEND", "x11")
-        ])));
-        assert!(!session_is_wayland(env(&[("DISPLAY", ":0")])));
-        assert!(!session_is_wayland(env(&[])));
     }
 
     #[test]

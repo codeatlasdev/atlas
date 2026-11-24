@@ -15,6 +15,7 @@ use std::time::Instant;
 use atlas_term::{FontResolution, FontSpec, Frame, Renderer};
 
 use super::blink::Blink;
+use super::release::Release;
 use super::shared::Shared;
 use super::watchdog::{Action, Watchdog, Why};
 
@@ -99,11 +100,27 @@ pub(super) struct Hooks<R> {
     /// view (a surface must be gone before its view). `Err` gives the old renderer back (boxed):
     /// the replacement could not be made.
     pub(super) rebuild: RebuildHook<R>,
+    /// Build a renderer on the terminal's CURRENT view at `(physical w, h)`, after the loop released the old one
+    /// (#254). The font, scale and ligatures come from the terminal's state. `Err` is why not: the loop retries.
+    pub(super) acquire: AcquireHook<R>,
+    /// How long a hidden view keeps its renderer; `None` never releases it (`release::ENABLED`).
+    pub(super) release_after: Option<std::time::Duration>,
     /// An incident for the diagnostics report: `(kind detail)`.
     pub(super) incident: IncidentHook,
 }
 
-pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hooks<R>) {
+/// Builds a renderer on the terminal's own view at `(physical w, h)`.
+pub(super) type AcquireHook<R> = Box<dyn FnMut((u32, u32)) -> Result<R, String> + Send>;
+
+pub(super) fn render_loop<R: Present>(first: R, sh: Arc<Shared>, mut hooks: Hooks<R>) {
+    // `None` while the renderer is released (a view hidden for `release_after`): the GPU holds nothing for this
+    // terminal and geometry, font and ligature requests wait in `State` until the view is shown and one is built.
+    let mut r: Option<R> = Some(first);
+    // The surface size of the renderer that was released, for the one that replaces it.
+    let mut last_px = (1, 1);
+    // The ligature setting last applied, re-applied to a renderer built after a release.
+    let mut ligatures_cur: Option<bool> = None;
+    let mut release = Release::new(hooks.release_after);
     let mut first_frame_pending = true;
     let mut pal = sh.state.lock().pal.clone();
     let mut frame = Frame::default();
@@ -119,17 +136,22 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
         let (size, font_pt, font_new, ligatures, focused, bell, forced, demand) = {
             let mut s = sh.state.lock();
             loop {
-                if s.closed || s.size.is_some() || s.dirty || s.rebuild.is_some() {
+                // A parked view has no blink or bell to show; waking for them is pure waste.
+                let hidden = !first_frame_pending && !sh.placement.lock().is_shown();
+                // Hidden with no renderer: output, geometry and fonts wait for the show; only `closed` and a
+                // rebuild request (which is dropped below) end the wait.
+                let idle = hidden && r.is_none();
+                if s.closed || s.rebuild.is_some() || (!idle && (s.size.is_some() || s.dirty)) {
                     // New output or input: restart the blink cycle visible.
                     blink.restart(Instant::now());
                     break;
                 }
-                // A parked view has no blink or bell to show; waking for them is pure waste.
-                let hidden = !first_frame_pending && !sh.placement.lock().is_shown();
+                let now = Instant::now();
+                release.observe(hidden, now);
+                let release_at = r.as_ref().and_then(|_| release.deadline());
                 let blink_at = blink.deadline(frame.cursor_blinks, hidden);
                 let bell = s.bell_until.filter(|_| !hidden);
-                let now = Instant::now();
-                let next = [blink_at, bell, dog.next_check(now)]
+                let next = [blink_at, bell, release_at, dog.next_check(now)]
                     .into_iter()
                     .flatten()
                     .min();
@@ -149,6 +171,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
                 if frame.cursor_blinks {
                     owed |= blink.tick(now);
                 }
+                owed |= r.is_some() && release.due(now);
                 // A timer that changed nothing (the blink came due while resting, a watchdog check with no frame
                 // owed) draws nothing: the watchdog's own `poll` below decides whether a redraw is due.
                 if owed || dog.next_check(now).is_some_and(|c| c <= now) {
@@ -159,41 +182,54 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
             if s.closed {
                 return;
             }
-            // One frame per display refresh, always of the latest state: output that arrives while we wait just
-            // marks the screen dirty again (it is drawn by the frame that ends the wait). Geometry, a rebuild and
-            // `closed` are not paced.
-            if let Some(t) = last_draw
-                && s.rebuild.is_none()
-                && s.size.is_none()
-                && s.font_pt.is_none()
-                && s.font_new.is_none()
-            {
-                let ready = pace_until(t, Instant::now()).unwrap_or_else(Instant::now);
-                while Instant::now() < ready && !s.closed && s.rebuild.is_none() && s.size.is_none()
+            let hidden = !first_frame_pending && !sh.placement.lock().is_shown();
+            if r.is_none() && hidden {
+                // Nothing to draw with and nothing to show: take only the rebuild request (there is no surface to
+                // rebuild; the one built on show is fresh) and leave the rest for then.
+                s.rebuild = None;
+                (None, None, None, None, s.focused, false, None, false)
+            } else {
+                // One frame per display refresh, always of the latest state: output that arrives while we wait just
+                // marks the screen dirty again (it is drawn by the frame that ends the wait). Geometry, a rebuild and
+                // `closed` are not paced.
+                if let Some(t) = last_draw
+                    && s.rebuild.is_none()
+                    && s.size.is_none()
+                    && s.font_pt.is_none()
+                    && s.font_new.is_none()
                 {
-                    sh.wake.wait_until(&mut s, ready);
+                    let ready = pace_until(t, Instant::now()).unwrap_or_else(Instant::now);
+                    while Instant::now() < ready
+                        && !s.closed
+                        && s.rebuild.is_none()
+                        && s.size.is_none()
+                    {
+                        sh.wake.wait_until(&mut s, ready);
+                    }
+                    if s.closed {
+                        return;
+                    }
                 }
-                if s.closed {
-                    return;
+                if let Some(r) = r.as_mut()
+                    && std::mem::take(&mut s.reset)
+                {
+                    r.reset_stats();
                 }
+                let demand = std::mem::take(&mut s.dirty);
+                if std::mem::take(&mut s.pal_new) {
+                    pal = s.pal.clone();
+                }
+                (
+                    s.size.take(),
+                    s.font_pt.take(),
+                    s.font_new.take(),
+                    s.ligatures.take(),
+                    s.focused,
+                    s.bell_until.is_some(),
+                    s.rebuild.take(),
+                    demand,
+                )
             }
-            if std::mem::take(&mut s.reset) {
-                r.reset_stats();
-            }
-            let demand = std::mem::take(&mut s.dirty);
-            if std::mem::take(&mut s.pal_new) {
-                pal = s.pal.clone();
-            }
-            (
-                s.size.take(),
-                s.font_pt.take(),
-                s.font_new.take(),
-                s.ligatures.take(),
-                s.focused,
-                s.bell_until.is_some(),
-                s.rebuild.take(),
-                demand,
-            )
         };
         let now = Instant::now();
         // A view parked by the page (background tab or worktree, dialog open, space moving) is
@@ -207,6 +243,19 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
             stale = true;
         }
         let parked = !first_frame_pending && !sh.placement.lock().is_shown();
+        release.observe(parked, now);
+        if parked
+            && release.due(now)
+            && let Some(old) = r.take()
+        {
+            // Hidden for the whole delay: give the GPU back (swapchain, atlases, buffers). The view stays; the
+            // screen and scrollback are in the `Vt`.
+            last_px = old.pixel_size();
+            drop(old);
+        }
+        if let Some(on) = ligatures {
+            ligatures_cur = Some(on);
+        }
         if parked {
             stale |= demand;
             if forced.is_none() {
@@ -224,12 +273,43 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
             // by `poll` below (it must not count as new demand, or an idle tab would redraw forever).
             dog.owe(now);
         }
-        let mut why = forced;
-        if why.is_none() && !parked && dog.poll(now) == Action::Rebuild {
+        // Shown again after a release: build the renderer on the same view at the size asked for, then carry on as
+        // for any frame (the pending font, size and ligatures apply to it below).
+        let mut acquired = false;
+        if r.is_none() {
+            if parked {
+                continue;
+            }
+            match (hooks.acquire)(size.unwrap_or(last_px)) {
+                Ok(mut new) => {
+                    if let Some(on) = ligatures_cur {
+                        new.set_ligatures(on);
+                    }
+                    r = Some(new);
+                    acquired = true;
+                    first_frame_pending = true;
+                }
+                Err(e) => {
+                    (hooks.incident)("terminal-reacquire-failed", &e);
+                    // Try again on the watchdog's schedule; the requests already taken go back.
+                    sh.update(|s| {
+                        s.size = size.or(s.size);
+                        s.font_pt = font_pt.or(s.font_pt);
+                        s.font_new = font_new.or_else(|| s.font_new.take());
+                        s.ligatures = ligatures.or(s.ligatures);
+                    });
+                    dog.rebuilt(Instant::now());
+                    continue;
+                }
+            }
+        }
+        let Some(mut cur) = r.take() else { continue };
+        let mut why = forced.filter(|_| !acquired);
+        if why.is_none() && !parked && !acquired && dog.poll(now) == Action::Rebuild {
             why = Some(Why::Stalled);
         }
         if let Some(why) = why {
-            let (w, h) = size.unwrap_or_else(|| r.pixel_size());
+            let (w, h) = size.unwrap_or_else(|| cur.pixel_size());
             let age = dog.frame_age(now);
             stall_logged = true;
             (hooks.incident)(
@@ -240,7 +320,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
                     age.map_or("never".into(), |a| format!("{} ms", a.as_millis()))
                 ),
             );
-            r = match (hooks.rebuild)(r, (w, h), why) {
+            cur = match (hooks.rebuild)(cur, (w, h), why) {
                 Ok(new) => {
                     // The new surface is blank: its first frame is the one that shows the view.
                     first_frame_pending = true;
@@ -253,27 +333,27 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
             dog.rebuilt(Instant::now());
         }
         if let Some(on) = ligatures {
-            r.set_ligatures(on);
+            cur.set_ligatures(on);
         }
         // A new font size or family changes the cell size, so the grid is re-fitted (and
         // the pty told) exactly like a resize.
         let font_change = match (font_new, font_pt) {
             (None, None) => None,
             (spec, pt) => {
-                let spec = spec.unwrap_or_else(|| r.font_spec().clone());
+                let spec = spec.unwrap_or_else(|| cur.font_spec().clone());
                 let pt = pt.unwrap_or_else(|| sh.state.lock().font_cur);
-                let (grid, res) = r.set_font(pt, &spec);
+                let (grid, res) = cur.set_font(pt, &spec);
                 (hooks.on_font)(&spec, &res);
                 Some(grid)
             }
         };
         let fitted = match (font_change, size) {
-            (Some(grid), size) => Some(size.map_or(grid, |(w, h)| r.resize(w, h))),
-            (None, Some((w, h))) => Some(r.resize(w, h)),
+            (Some(grid), size) => Some(size.map_or(grid, |(w, h)| cur.resize(w, h))),
+            (None, Some((w, h))) => Some(cur.resize(w, h)),
             (None, None) => None,
         };
         if let Some((cols, rows)) = fitted {
-            let [cw, ch] = r.cell_px();
+            let [cw, ch] = cur.cell_px();
             sh.vt.set_cell_px(cw, ch);
             if sh.vt.size() != (cols, rows) {
                 sh.vt.resize(cols, rows);
@@ -283,6 +363,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
         if parked && forced.is_none() {
             // Geometry and fonts above stay current so showing it again is one draw; the content
             // is drawn then (`stale`).
+            r = Some(cur);
             continue;
         }
         stale = false;
@@ -315,7 +396,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
             frame.bg.iter_mut().for_each(|c| *c = tint(*c));
             frame.clear = tint(frame.clear);
         }
-        match r.render(&frame) {
+        match cur.render(&frame) {
             Ok(true) => {
                 dog.presented(Instant::now());
                 if stall_logged {
@@ -334,9 +415,10 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
         }
         {
             let mut s = sh.state.lock();
-            s.stats = r.stats();
-            s.cell = r.cell_px();
+            s.stats = cur.stats();
+            s.cell = cur.cell_px();
         }
+        r = Some(cur);
     }
 }
 
@@ -374,6 +456,16 @@ mod tests {
         release: AtomicBool,
         /// While set, `rebuild` cannot make a new surface and gives the old renderer back.
         rebuild_fails: AtomicBool,
+        /// Renderers alive now (a `Fake` counts itself in `new` and out in `drop`): what a release gives back.
+        alive: AtomicUsize,
+        /// The size each renderer built after a release was asked for.
+        acquires: Mutex<Vec<(u32, u32)>>,
+        /// Every `acquire` attempt, failed or not.
+        acquire_tries: AtomicUsize,
+        /// While set, `acquire` fails.
+        acquire_fails: AtomicBool,
+        /// The renderers' sizes as `resize` set them, in order.
+        resizes: Mutex<Vec<(u32, u32)>>,
     }
 
     struct Fake {
@@ -386,6 +478,12 @@ mod tests {
         generation: usize,
     }
 
+    impl Drop for Fake {
+        fn drop(&mut self) {
+            self.log.alive.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
     impl Present for Fake {
         fn set_ligatures(&mut self, _: bool) {}
         fn font_spec(&self) -> &FontSpec {
@@ -396,6 +494,7 @@ mod tests {
         }
         fn resize(&mut self, w: u32, h: u32) -> (u16, u16) {
             self.size = (w, h);
+            self.log.resizes.lock().push((w, h));
             ((w / 8) as u16, (h / 16) as u16)
         }
         fn pixel_size(&self) -> (u32, u32) {
@@ -441,9 +540,15 @@ mod tests {
 
     impl Rig {
         fn start(mode: Mode) -> Rig {
+            Self::start_releasing(mode, None)
+        }
+
+        /// A terminal whose hidden view gives its renderer back after `release_after`.
+        fn start_releasing(mode: Mode, release_after: Option<Duration>) -> Rig {
             let sh = Shared::for_test(20, 4);
             let log = std::sync::Arc::new(Log::default());
             let mode = std::sync::Arc::new(Mutex::new(mode));
+            log.alive.fetch_add(1, Ordering::SeqCst);
             let fake = Fake {
                 mode: mode.clone(),
                 log: log.clone(),
@@ -460,6 +565,7 @@ mod tests {
                 mode.clone(),
                 sh.clone(),
             );
+            let (l5, m3, s3) = (log.clone(), mode.clone(), sh.clone());
             let hooks = Hooks {
                 on_resize: Box::new(|_, _| {}),
                 on_font: Box::new(|_, _| {}),
@@ -471,6 +577,7 @@ mod tests {
                     if l2.rebuild_fails.load(Ordering::SeqCst) {
                         return Err(Box::new(old));
                     }
+                    l3.alive.fetch_add(1, Ordering::SeqCst);
                     Ok(Fake {
                         mode: m2.clone(),
                         log: l3.clone(),
@@ -480,6 +587,23 @@ mod tests {
                         generation: old.generation + 1,
                     })
                 }),
+                acquire: Box::new(move |size| {
+                    l5.acquire_tries.fetch_add(1, Ordering::SeqCst);
+                    if l5.acquire_fails.load(Ordering::SeqCst) {
+                        return Err("no GPU".into());
+                    }
+                    l5.acquires.lock().push(size);
+                    l5.alive.fetch_add(1, Ordering::SeqCst);
+                    Ok(Fake {
+                        mode: m3.clone(),
+                        log: l5.clone(),
+                        sh: s3.clone(),
+                        size,
+                        spec: FontSpec::default(),
+                        generation: 0,
+                    })
+                }),
+                release_after,
                 incident: Box::new(move |k, d| l4.incidents.lock().push(format!("{k}: {d}"))),
             };
             let s = sh.clone();
@@ -497,6 +621,24 @@ mod tests {
                 .placement
                 .lock()
                 .request((0.0, 0.0, 160.0, 64.0), true);
+        }
+
+        /// The page parks the view (`term_bounds` with `visible: false`), which also wakes the thread.
+        fn hide(&self) {
+            self.sh
+                .placement
+                .lock()
+                .request((0.0, 0.0, 160.0, 64.0), false);
+            self.sh.wake.notify_one();
+        }
+
+        /// The page shows it again at `size` physical pixels (`term_bounds` with `visible: true`).
+        fn show_at(&self, size: (u32, u32)) {
+            self.sh
+                .placement
+                .lock()
+                .request((0.0, 0.0, size.0 as f64, size.1 as f64), true);
+            self.sh.update(|s| s.size = Some(size));
         }
 
         /// Poll until `cond` or fail after a generous (never-sleeping-to-pass) deadline.
@@ -860,6 +1002,190 @@ mod tests {
         rig.until("a frame without it", |l| {
             l.drawn.lock().last().is_some_and(|d| !d.contains('n'))
         });
+        rig.stop();
+    }
+
+    // #254: a hidden view keeps its renderer for this long in these tests (the real delay is `RELEASE_AFTER`).
+    const SHORT: Duration = Duration::from_millis(60);
+
+    /// Show the terminal, let it draw once, hide it, and wait until its renderer is gone.
+    fn released_rig() -> Rig {
+        let rig = Rig::start_releasing(Mode::Draw, Some(SHORT));
+        rig.show();
+        rig.sh.vt.feed(b"before");
+        rig.sh.redraw();
+        rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 1);
+        rig.hide();
+        rig.until("the renderer is released", |l| {
+            l.alive.load(Ordering::SeqCst) == 0
+        });
+        rig
+    }
+
+    // #254: 20 terminals of a crew kept 20 swapchains, atlases and buffers for views nobody sees.
+    #[test]
+    fn a_view_hidden_for_the_delay_gives_its_renderer_back_and_draws_nothing_more() {
+        let rig = released_rig();
+        let renders = rig.log.renders.load(Ordering::SeqCst);
+        // Output and a resize while hidden and released: nothing to draw with, nothing built, nothing applied.
+        rig.sh.vt.feed(b"\r\nwhile hidden");
+        rig.sh.update(|s| {
+            s.size = Some((320, 128));
+            s.dirty = true;
+        });
+        std::thread::sleep(SHORT * 3);
+        assert_eq!(rig.log.renders.load(Ordering::SeqCst), renders);
+        assert_eq!(rig.log.acquire_tries.load(Ordering::SeqCst), 0);
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 0);
+        rig.stop();
+    }
+
+    // The rebuild on show draws the CURRENT screen at the size the page asks for, and shows the view only with its
+    // first frame (no flash of an empty or stale surface).
+    #[test]
+    fn showing_a_released_view_builds_a_renderer_at_the_new_size_and_draws_the_latest_screen() {
+        let rig = released_rig();
+        rig.sh.vt.feed(b"\r\nwhile hidden");
+        let (first_frames, presented) = (
+            rig.log.first_frames.load(Ordering::SeqCst),
+            rig.log.presented.load(Ordering::SeqCst),
+        );
+        rig.show_at((320, 128));
+        rig.until("a frame from the new renderer", |l| {
+            l.presented.load(Ordering::SeqCst) > presented
+        });
+        assert_eq!(*rig.log.acquires.lock(), vec![(320, 128)]);
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 1);
+        assert!(rig.log.seen.lock().last().unwrap().contains("while hidden"));
+        assert_eq!(
+            rig.log.first_frames.load(Ordering::SeqCst),
+            first_frames + 1,
+            "the view is shown by the new renderer's first frame"
+        );
+        assert_eq!(rig.log.resizes.lock().last(), Some(&(320, 128)));
+        rig.stop();
+    }
+
+    // A worktree switch A, B, A must not rebuild A: it was hidden for less than the delay.
+    #[test]
+    fn a_view_shown_again_before_the_delay_keeps_its_renderer() {
+        let rig = Rig::start_releasing(Mode::Draw, Some(Duration::from_secs(3600)));
+        rig.show();
+        rig.sh.redraw();
+        rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
+        rig.hide();
+        std::thread::sleep(Duration::from_millis(80));
+        rig.show();
+        rig.sh.redraw();
+        rig.until("drawn again", |l| l.presented.load(Ordering::SeqCst) >= 2);
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 1);
+        assert_eq!(rig.log.acquire_tries.load(Ordering::SeqCst), 0);
+        rig.stop();
+    }
+
+    // A platform that has not opted in never releases, however long the view is hidden.
+    #[test]
+    fn without_a_delay_a_hidden_view_keeps_its_renderer() {
+        let rig = Rig::start_releasing(Mode::Draw, None);
+        rig.show();
+        rig.sh.redraw();
+        rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
+        rig.hide();
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 1);
+        rig.stop();
+    }
+
+    // "Reload terminal", a wake or a display change while released has no surface to rebuild: the renderer built on
+    // show is already fresh, so no rebuild runs (a rebuild of nothing would also mean a second surface).
+    #[test]
+    fn a_rebuild_request_while_released_builds_nothing_until_the_view_is_shown() {
+        let rig = released_rig();
+        rig.sh.rebuild(Why::Screens);
+        std::thread::sleep(SHORT * 3);
+        assert!(rig.log.rebuilds.lock().is_empty());
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 0);
+        let presented = rig.log.presented.load(Ordering::SeqCst);
+        rig.show_at((160, 64));
+        rig.until("drawn after the show", |l| {
+            l.presented.load(Ordering::SeqCst) > presented
+        });
+        assert!(
+            rig.log.rebuilds.lock().is_empty(),
+            "the new renderer is not rebuilt again"
+        );
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 1);
+        rig.stop();
+    }
+
+    // A GPU that refuses the new surface leaves the terminal released and retrying, never a blank view shown: the view
+    // stays off screen until a frame is on it. When the GPU is back the next try draws.
+    #[test]
+    fn a_failed_acquire_is_retried_until_it_draws_and_the_requests_survive() {
+        let rig = released_rig();
+        rig.log.acquire_fails.store(true, Ordering::SeqCst);
+        let presented = rig.log.presented.load(Ordering::SeqCst);
+        rig.show_at((320, 128));
+        rig.until("two failed tries", |l| {
+            l.acquire_tries.load(Ordering::SeqCst) >= 2
+        });
+        assert_eq!(rig.log.presented.load(Ordering::SeqCst), presented);
+        assert_eq!(
+            rig.log.first_frames.load(Ordering::SeqCst),
+            1,
+            "never shown without a frame"
+        );
+        rig.log.acquire_fails.store(false, Ordering::SeqCst);
+        rig.until("the retry draws", |l| {
+            l.presented.load(Ordering::SeqCst) > presented
+        });
+        assert_eq!(
+            *rig.log.acquires.lock(),
+            vec![(320, 128)],
+            "the size asked for survived the failures"
+        );
+        rig.stop();
+    }
+
+    // Hidden again after a rebuild: the cycle repeats (the delay restarts from the new hide).
+    #[test]
+    fn a_view_can_be_released_shown_and_released_again() {
+        let rig = released_rig();
+        let presented = rig.log.presented.load(Ordering::SeqCst);
+        rig.show_at((160, 64));
+        rig.until("shown", |l| l.presented.load(Ordering::SeqCst) > presented);
+        rig.hide();
+        rig.until("released again", |l| l.alive.load(Ordering::SeqCst) == 0);
+        assert_eq!(rig.log.acquires.lock().len(), 1);
+        rig.stop();
+    }
+
+    // #247 with #254: an input method composing into a terminal whose renderer was given back. The preedit update has
+    // nothing to draw with (and must not touch the missing renderer); the renderer built on show draws it.
+    #[test]
+    fn a_preedit_set_while_the_renderer_is_released_is_drawn_by_the_one_built_on_show() {
+        let rig = released_rig();
+        let renders = rig.log.renders.load(Ordering::SeqCst);
+        rig.sh.update(|s| {
+            s.preedit = "ni".into();
+            s.dirty = true;
+        });
+        std::thread::sleep(SHORT * 3);
+        assert_eq!(rig.log.renders.load(Ordering::SeqCst), renders);
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 0);
+        let presented = rig.log.presented.load(Ordering::SeqCst);
+        rig.show_at((320, 128));
+        rig.until("a frame of the new renderer with the preedit", |l| {
+            l.presented.load(Ordering::SeqCst) > presented
+                && l.drawn.lock().last().is_some_and(|d| d.ends_with("ni"))
+        });
+        assert_eq!(rig.log.alive.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            rig.sh.vt.text(),
+            "before",
+            "the preedit is not program output"
+        );
         rig.stop();
     }
 }

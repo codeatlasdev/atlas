@@ -48,7 +48,7 @@ anyhow = "1.0"
 # jiff 0.2 (its `jiff` feature), so this stays on 0.2 until croner moves to jiff 1. `jiff-tzdb` is the zone database
 # bundled in the binary, which `atlas_core::time::zone` reads: like chrono-tz, a named zone does not depend on the
 # machine's tzdata (a Ubuntu 24.04 server has none of `US/Pacific`, `EST5EDT`, `Zulu` without `tzdata-legacy`).
-jiff = "0.2"
+jiff = "1.0"
 jiff-tzdb = "0.1"
 semver = "1.0"
 dirs = "7"

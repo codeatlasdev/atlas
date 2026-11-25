@@ -49,9 +49,9 @@
 	aria-label={label}
 />
 <div class="action-btns">
-	<Button size="sm" disabled={!value.trim() || submitting} onclick={submit}
-		>{m.crew_chat_action_text_answer_submit()}</Button
-	>
+	<Button size="sm" disabled={!value.trim() || submitting} onclick={submit}>
+		{m.crew_chat_action_text_answer_submit()}
+	</Button>
 	<Button variant="ghost" size="sm" onclick={oncancel}>{m.common_action_cancel()}</Button>
 </div>
 

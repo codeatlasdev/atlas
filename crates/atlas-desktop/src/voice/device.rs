@@ -103,7 +103,7 @@ fn start_stream(feed: Feed) -> Result<cpal::Stream, StartError> {
     let mut buf: Vec<f32> = Vec::new();
     let stream = device
         .build_input_stream_raw(
-            &config,
+            config,
             format,
             move |data, _| {
                 if frames(data, &mut buf) {
@@ -116,9 +116,9 @@ fn start_stream(feed: Feed) -> Result<cpal::Stream, StartError> {
             move |_| lost.lost(),
             None,
         )
-        .map_err(|e| match e {
-            cpal::BuildStreamError::DeviceNotAvailable => StartError::NoDevice,
-            e => StartError::Failed {
+        .map_err(|e| match e.kind() {
+            cpal::ErrorKind::DeviceNotAvailable => StartError::NoDevice,
+            _ => StartError::Failed {
                 detail: format!("{format:?} stream: {e}"),
             },
         })?;

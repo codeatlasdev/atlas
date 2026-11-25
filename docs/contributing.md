@@ -105,7 +105,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run icons` / `icons:check` | regenerate the app icons from `assets/*.svg`; fail when anything derived is stale |
 | `bun run i18n:extract <path-or-glob>` | move the hardcoded text of Svelte components into the catalog (`--dry-run`, `--json`, `--area`; `--plan` prints the migration batches of [`i18n/MIGRATION.md`](https://github.com/codeatlasdev/atlas/blob/main/i18n/MIGRATION.md); a `.rs` path prints a worklist and never writes) |
 | `bun run i18n:check` / `i18n:translate` / `i18n:fix` / `i18n:add-locale` | translations: check every catalog (also part of `bun run check`), draft missing or outdated keys with a model, sort and relock, add a language (see [Translating Atlas](#translating-atlas)) |
-| `bun run deps:update` | update JS dependencies everywhere (see [Updating JS dependencies](#updating-js-dependencies)) |
+| `bun run deps:outdated` / `deps:update` | what is behind its latest release in every ecosystem / move all of it to latest (see [Updating dependencies](#updating-dependencies)) |
 | `bun run release <alpha\|beta\|rc\|stable\|patch>` / `release:dry` / `release:publish vX.Y.Z` / `release:test` | maintainers only: cut a release, rehearse it, (re)publish an existing tag, run the release tooling's tests (see [Releasing](release.md)) |
 | `cargo test -p atlas-cli --test mcp` | the MCP integration suite (real binary, live headless run; needs `python3`) |
 | `cargo test -p atlas-tui --release -- --ignored --nocapture bench_one_million` | the log pipeline benchmark |
@@ -125,9 +125,20 @@ To run them yourself use a disposable Linux machine or VM, never your Mac (they 
 
 The egress rules (`nft`) are a pure string tested for order and content here; applying them, the engine installers and the rest of a crew server on real systemd are covered by the crew end-to-end test ([Atlas Crew, "End-to-end test on real systemd"](crew.md#end-to-end-test-on-real-systemd)).
 
-### Updating JS dependencies
+### Updating dependencies
 
-`bun run deps:update` runs `npm-check-updates -u` in the root, `apps/desktop`, `site` and `studio` (config: `.ncurc.json`) and then reinstalls. `typescript` is rejected on purpose: it stays on 6.x because TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` rely on. Move it by hand once those tools support 7. `studio` pins `hyperframes` exactly; after an update run `bun studio check` and keep the old pin if it fails.
+Every manifest of the repo, in one place: Cargo (the workspace and `apps/mobile/native`), the bun projects (root, `apps/desktop`, `site`, `studio`, `scripts/i18n`), Atlas Mobile's Dart packages and Gemfile, and the push relay's Go module. Dependabot (`.github/dependabot.yml`) watches the same set plus the push relay's builder image and the GitHub Actions pins.
+
+- `bun run deps:outdated` is read-only: per ecosystem, what has a newer release, majors included, and the pinned toolchains (Rust, Go, Flutter, `tauri-cli`) against their latest stable.
+- `bun run deps:update` (`scripts/deps.sh`) moves everything to its latest release, majors included: `cargo upgrade --incompatible` then `cargo update`, `npm-check-updates -u` per bun project (config: `.ncurc.json`), `go get -u`, `flutter pub upgrade --major-versions`, `bundle update`. A missing tool skips its ecosystem with a note. Then run `bun run check:changed` and fix what a major broke.
+- Toolchains move by hand, each in one place: `rust-toolchain.toml`, `flutter:` in `apps/mobile/pubspec.yaml` (CI reads it), the `go` line of `services/push-relay/go.mod` with the same minor in its `Dockerfile`, and `TAURI_CLI_VERSION` in `scripts/setup.sh` (same minor as the `tauri` crate).
+
+Holds, each with its reason where it is set:
+
+- `windows` and `windows-core` (Cargo) stay on the exact versions `webview2-com` builds on: their COM traits are per-version, so a lone bump breaks the Windows build (#156). `CARGO_HOLDS` in `scripts/deps.sh` and the `ignore` in `.github/dependabot.yml`.
+- `webkit2gtk`, `gtk` and `gdkwayland-sys` (Cargo, Linux) stay on the versions tauri's wry runtime links (`wry` pins `webkit2gtk =2.0.2`, `tao` 0.37 uses `gdkwayland-sys` 0.18): a newer one links a second set of GTK types and the Linux build does not compile. They move when tauri does. `CARGO_HOLDS` in `scripts/deps.sh`, reasons in `crates/atlas-desktop/Cargo.toml`.
+- `typescript` is rejected in `.ncurc.json`: it stays on 6.x because TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` rely on. Move it by hand once those tools support 7.
+- `studio` pins `hyperframes` exactly; after an update run `bun run studio:check` and keep the old pin if it fails.
 
 ## Build and run your changes
 

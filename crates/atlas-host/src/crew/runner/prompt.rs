@@ -189,7 +189,7 @@ fn tz_line(tz: Option<&str>, now_s: i64) -> String {
     if let Some(zone) = atlas_core::time::zone(tz_str) {
         let local = jiff::Timestamp::from_second(now_s)
             .unwrap_or_default()
-            .to_zoned(zone);
+            .to_zoned_datetime(zone);
         format!(
             "The user's timezone is {tz_str}. Current local time there: {}.\n",
             local.strftime("%Y-%m-%d %H:%M %Z")

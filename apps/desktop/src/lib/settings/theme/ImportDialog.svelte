@@ -182,9 +182,10 @@
 		<PackageImport bind:open bind:active={packaged} onerror={(message) => (error = message)} />
 		{#if !packaged}
 			<div class="pick">
-				<Button variant="outlined" onclick={choose}
-					><Upload size={13} /> {m.settings_theme_import_dialog_choose_file()}</Button
-				>
+				<Button variant="outlined" onclick={choose}>
+					<Upload size={13} />
+					{m.settings_theme_import_dialog_choose_file()}
+				</Button>
 				<span class="hint">{m.settings_theme_import_dialog_drop_hint()}</span>
 			</div>
 			<TextArea
@@ -243,9 +244,9 @@
 	{#snippet actions()}
 		<Button variant="ghost" onclick={() => (open = false)}>{m.common_action_cancel()}</Button>
 		{#if !packaged}
-			<Button disabled={!ready || busy || (!copyOnly && !name.trim())} loading={busy} onclick={run}
-				>{m.settings_theme_import_dialog_import()}</Button
-			>
+			<Button disabled={!ready || busy || (!copyOnly && !name.trim())} loading={busy} onclick={run}>
+				{m.settings_theme_import_dialog_import()}
+			</Button>
 		{/if}
 	{/snippet}
 </Dialog>

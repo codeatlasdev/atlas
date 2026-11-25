@@ -13,7 +13,7 @@ import { checkBlack, checkClipping, checkFlashing, checkFrozen, checkLoudness, c
 import { frameKindAt, lintCameraFile, loadSidecar, outsideViewports, sampleTimes, viewportsAt } from "./camera.ts";
 import { analyzeSubject, checkEdgeClipping, checkSafeArea } from "./checks-image.ts";
 import { detectBlack, detectClipping, detectFreeze, keyframeTimes, maxKeyframeGap, measureLoudness, probeMedia } from "./media.ts";
-import { checkContrast, checkTextSize, ocr, scopeTextToAuthored } from "./ocr.ts";
+import { checkContrast, checkTextSize, ocr, scopeTextToAuthored, withInk } from "./ocr.ts";
 import { decode, luminance } from "./pixels.ts";
 import { profileFor, profileForAspect } from "./profiles.ts";
 import type { Diagnostic, LintReport, Profile, Rect } from "./types.ts";
@@ -70,8 +70,9 @@ async function lintImageFile(file: string, profile: Profile, report: LintReport,
 		return { engine: "none" as const, boxes: [] };
 	});
 	if (engine !== "none" && !profile.captured) {
-		// legibility/contrast: only what the film authored; the captured app UI is the app's own typography
-		const { authored } = scopeTextToAuthored(outsideViewports(boxes, viewports), viewports.length ? undefined : analyzeSubject(img).box);
+		// legibility/contrast: only what the film authored (the captured app UI is the app's own typography), and only
+		// lines a viewer can see (OCR also reads letters into gradients)
+		const authored = withInk(img, scopeTextToAuthored(outsideViewports(boxes, viewports), viewports.length ? undefined : analyzeSubject(img).box).authored);
 		d.push(...checkTextSize(authored, img.h, profile), ...checkContrast(img, authored, profile), ...checkSafeArea(img, profile, authored));
 	}
 }

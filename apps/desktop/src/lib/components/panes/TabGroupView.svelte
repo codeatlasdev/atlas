@@ -163,9 +163,9 @@
 					>
 						{#if t.agent}<AgentLogo agent={t.agent} size={13} /><AgentGlyph
 								state={agents.status[t.id]?.state ?? "idle"}
-							/>{:else if t.kind === "editor" && t.path}<span class="ico" data-contrast-decorative
-								>{@html fileIcon(t.path.split("/").pop() ?? t.label)}</span
-							>{:else}<Icon size={13} />{/if}
+							/>{:else if t.kind === "editor" && t.path}<span class="ico" data-contrast-decorative>
+								{@html fileIcon(t.path.split("/").pop() ?? t.label)}
+							</span>{:else}<Icon size={13} />{/if}
 						{#if renaming === t.id}
 							<!-- svelte-ignore a11y_autofocus -->
 							<input

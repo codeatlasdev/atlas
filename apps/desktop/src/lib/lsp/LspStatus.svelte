@@ -42,14 +42,14 @@
 		<LspPopover {doc} {ui} />
 	</Popover>
 	{#if errors > 0}
-		<span class="count err" title={m.workbench_editor_errors({ count: errors })}
-			><CircleAlert size={12} />{errors}</span
-		>
+		<span class="count err" title={m.workbench_editor_errors({ count: errors })}>
+			<CircleAlert size={12} />{errors}
+		</span>
 	{/if}
 	{#if warnings > 0}
-		<span class="count warn" title={m.workbench_editor_warnings({ count: warnings })}
-			><TriangleAlert size={12} />{warnings}</span
-		>
+		<span class="count warn" title={m.workbench_editor_warnings({ count: warnings })}>
+			<TriangleAlert size={12} />{warnings}
+		</span>
 	{/if}
 </span>
 

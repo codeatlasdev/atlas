@@ -208,8 +208,10 @@
 				{#if st.mode === "pill"}<kbd>{hint}</kbd>{/if}
 				{#if st.attention > 0}<span
 						class="badge"
-						aria-label={m.tray_dock_page_attention_badge({ attention: st.attention })}>{st.attention}</span
-					>{/if}
+						aria-label={m.tray_dock_page_attention_badge({ attention: st.attention })}
+					>
+						{st.attention}
+					</span>{/if}
 			</button>
 			<button
 				class="hide"
@@ -242,9 +244,9 @@
 						<option value={a.tabId}>{agentLabel(a)}</option>
 					{/each}
 				</select>
-				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label={m.common_action_close()}
-					><X size={14} /></button
-				>
+				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label={m.common_action_close()}>
+					<X size={14} />
+				</button>
 			</div>
 			<textarea
 				bind:this={input}
@@ -261,8 +263,9 @@
 							<button
 								onclick={() => dispatch({ type: "detach", path: a.path })}
 								aria-label={m.tray_dock_page_remove_capture({ name: a.path.split("/").pop() ?? a.path })}
-								><X size={12} /></button
 							>
+								<X size={12} />
+							</button>
 						</li>
 					{/each}
 				</ul>
@@ -292,9 +295,9 @@
 					<CornerDownLeft size={13} aria-hidden="true" />
 				</button>
 				{#if agents.length === 0}
-					<button class="link" onclick={() => dispatch({ type: "openInAtlas" })}
-						>{m.tray_dock_page_open_atlas()}</button
-					>
+					<button class="link" onclick={() => dispatch({ type: "openInAtlas" })}>
+						{m.tray_dock_page_open_atlas()}
+					</button>
 				{/if}
 			</div>
 		</div>
@@ -319,14 +322,14 @@
 		<div class="card need">
 			<div class="to">
 				<TriangleAlert size={14} aria-hidden="true" />
-				<strong
-					>{asking
+				<strong>
+					{asking
 						? m.tray_dock_page_needs_you({ agent: agentLabel(asking) })
-						: m.tray_dock_page_an_agent_needs_you()}</strong
-				>
-				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label={m.tray_dock_page_dismiss()}
-					><X size={14} /></button
-				>
+						: m.tray_dock_page_an_agent_needs_you()}
+				</strong>
+				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label={m.tray_dock_page_dismiss()}>
+					<X size={14} />
+				</button>
 			</div>
 			<div class="lines">
 				{#each replyOf(asking ?? { lastMessage: null, state: "waiting" }).lines as l, i (i)}<p>{l}</p>{/each}

@@ -28,9 +28,9 @@
 				<TriangleAlert size={14} />
 				{m.viewers_devops_cannot_parse({ error: parsed.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
-					>{m.viewers_devops_open_as_source()}</button
-				>
+				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}>
+					{m.viewers_devops_open_as_source()}
+				</button>
 			</div>
 		{:else if nb}
 			<header class="rv-head">
@@ -53,9 +53,9 @@
 							</article>
 						{:else}
 							<div class="in">
-								<span class="ct"
-									>{c.type === "code" ? `[${c.execution ?? " "}]` : m.viewers_files_notebook_view_raw()}</span
-								>
+								<span class="ct">
+									{c.type === "code" ? `[${c.execution ?? " "}]` : m.viewers_files_notebook_view_raw()}
+								</span>
 								<div class="src"><Code code={c.source} lang={c.type === "code" ? nb.language : null} /></div>
 							</div>
 							{#each c.outputs as o, oi (oi)}

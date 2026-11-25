@@ -12,7 +12,7 @@ lint = "clippy --workspace --all-targets --locked -- -D warnings"
 t = "nextest run --workspace --locked"
 t-doc = "test --workspace --locked --doc"
 
-# Nightly-only experiments (never the default; stable 1.99 rejects -Z flags). Notes in
+# Nightly-only experiments (never the default; stable 1.100 rejects -Z flags). Notes in
 # docs/build-perf.md "Watch list". Run as e.g.:
 #   cargo +nightly build -Zunstable-options --jobs-frontend=4
 # Cranelift is not usable for `cargo test` on macOS (panic=abort only) and objc2 statics are open

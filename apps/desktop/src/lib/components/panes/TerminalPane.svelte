@@ -56,11 +56,11 @@
 	</PaneNotice>
 {:else if ended}
 	<PaneNotice>
-		<span
-			>{ended === "gone"
+		<span>
+			{ended === "gone"
 				? m.workbench_term_pane_gone()
-				: m.workbench_term_pane_ended({ code: ws.exited[pty] ?? "?" })}</span
-		>
+				: m.workbench_term_pane_ended({ code: ws.exited[pty] ?? "?" })}
+		</span>
 		<IconButton
 			size="sm"
 			variant="text"

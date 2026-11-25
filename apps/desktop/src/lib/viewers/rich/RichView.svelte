@@ -30,9 +30,9 @@
 				{m.viewers_files_rich_view_too_large({ size: formatBytes(ctx.size) })}
 				<span class="sp"></span>
 				<button class="rv-btn" onclick={() => ctx.toSource()}>{m.viewers_devops_open_as_source()}</button>
-				<button class="rv-btn" onclick={() => (force = true)}
-					>{m.viewers_files_rich_view_render_anyway()}</button
-				>
+				<button class="rv-btn" onclick={() => (force = true)}>
+					{m.viewers_files_rich_view_render_anyway()}
+				</button>
 			</div>
 		</div>
 	</div>

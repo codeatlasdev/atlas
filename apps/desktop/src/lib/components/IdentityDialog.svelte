@@ -157,8 +157,10 @@
 						<button
 							class="cell"
 							class:on={icon?.kind === "emoji" && icon.value === e}
-							onclick={() => pickEmoji(e)}>{e}</button
+							onclick={() => pickEmoji(e)}
 						>
+							{e}
+						</button>
 					{/each}
 				</div>
 			{:else if tab === "icons"}
@@ -193,8 +195,9 @@
 					onclick={() => (icon = { kind: "image", value: logo.path })}
 				>
 					<img src={logo.url} alt="" />
-					<span><b>{m.git_identity_dialog_use_project_logo()}</b><small class="mono">{logo.path}</small></span
-					>
+					<span>
+						<b>{m.git_identity_dialog_use_project_logo()}</b><small class="mono">{logo.path}</small>
+					</span>
 				</button>
 			{:else}
 				<p class="none">

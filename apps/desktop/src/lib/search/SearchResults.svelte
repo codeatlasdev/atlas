@@ -131,10 +131,11 @@
 						onkeydown={(e) => e.key === "Enter" && open(i)}
 					>
 						<span class="ln">{r.match.line}</span>
-						<span class="txt"
-							>{#each previewRuns(r.match) as run, k (k)}{#if run.hit}<mark>{run.text}</mark
-									>{:else}{run.text}{/if}{/each}</span
-						>
+						<span class="txt">
+							{#each previewRuns(r.match) as run, k (k)}{#if run.hit}<mark>
+										{run.text}
+									</mark>{:else}{run.text}{/if}{/each}
+						</span>
 					</div>
 				</div>
 			{/if}

@@ -30,17 +30,17 @@
 			<div class="rv-title">
 				<Hammer size={18} />
 				<h1>{ctx.path.split("/").pop()}</h1>
-				<span class="rv-ver"
-					>{just
+				<span class="rv-ver">
+					{just
 						? m.viewers_devops_make_view_recipes_count({ count: doc.targets.length })
-						: m.viewers_devops_make_view_targets_count({ count: doc.targets.length })}</span
-				>
+						: m.viewers_devops_make_view_targets_count({ count: doc.targets.length })}
+				</span>
 			</div>
 			<div class="rv-facts">
-				{#if doc.defaultTarget}<span class="rv-chip acc"
-						><Star size={10} />
-						{m.viewers_devops_make_view_default_target({ defaultTarget: doc.defaultTarget })}</span
-					>{/if}
+				{#if doc.defaultTarget}<span class="rv-chip acc">
+						<Star size={10} />
+						{m.viewers_devops_make_view_default_target({ defaultTarget: doc.defaultTarget })}
+					</span>{/if}
 				{#each doc.includes as i (i)}<span class="rv-chip mono">{`include ${i}`}</span>{/each}
 			</div>
 		</header>
@@ -53,9 +53,9 @@
 						<div class="rv-row">
 							<span class="rv-k">{v.name}</span>
 							<span class="rv-v" title={v.value}>{v.value}</span>
-							<button class="rv-btn" onclick={() => ctx.toSource(v.line)}
-								>{m.viewers_devops_line({ line: v.line })}</button
-							>
+							<button class="rv-btn" onclick={() => ctx.toSource(v.line)}>
+								{m.viewers_devops_line({ line: v.line })}
+							</button>
 						</div>
 					{/each}
 				</div>
@@ -91,9 +91,9 @@
 							<span class="rv-k">{t.name}</span>
 							{#each t.params as p (p)}<span class="rv-chip mono">{p}</span>{/each}
 							{#if t.phony}<span class="rv-chip info">{m.viewers_devops_make_view_phony()}</span>{/if}
-							{#if t.name === doc.defaultTarget}<span class="rv-chip acc"
-									>{m.viewers_devops_make_view_default()}</span
-								>{/if}
+							{#if t.name === doc.defaultTarget}<span class="rv-chip acc">
+									{m.viewers_devops_make_view_default()}
+								</span>{/if}
 							{#if t.doc}<span class="rv-note doc" title={t.doc}>{t.doc}</span>{/if}
 							<span class="rv-v">{t.deps.length ? `← ${t.deps.join(" ")}` : ""}</span>
 							<button

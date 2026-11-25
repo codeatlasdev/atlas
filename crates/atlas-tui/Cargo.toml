@@ -38,7 +38,7 @@ regex = "1"
 schemars = "1"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["signal", "process", "fs"] }
+nix = { version = "0.32", features = ["signal", "process", "fs"] }
 libc = { workspace = true }
 
 [dev-dependencies]

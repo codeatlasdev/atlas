@@ -183,15 +183,15 @@
 			{:else if releases.length === 0}
 				<div class="state">
 					<Sparkles size={22} />
-					<b
-						>{u.notesFor
+					<b>
+						{u.notesFor
 							? m.settings_updates_whats_new_empty_title({ version: u.notesFor })
-							: m.settings_updates_whats_new_empty_title_unknown()}</b
-					>
+							: m.settings_updates_whats_new_empty_title_unknown()}
+					</b>
 					<p>{m.settings_updates_whats_new_empty_body()}</p>
-					<Button variant="glass" onclick={() => api.openUrl(CHANGELOG_URL)}
-						>{m.settings_updates_whats_new_open_changelog()}</Button
-					>
+					<Button variant="glass" onclick={() => api.openUrl(CHANGELOG_URL)}>
+						{m.settings_updates_whats_new_open_changelog()}
+					</Button>
 				</div>
 			{:else}
 				{#if multi}
@@ -253,9 +253,9 @@
 								{@const k = KIND[g.kind]}
 								<div class="group" style="--tone: {k.tone}">
 									<h3>
-										<k.icon size={13} />{kindLabel(g.kind, g.heading)}<span class="count"
-											>{g.items.length}</span
-										>
+										<k.icon size={13} />{kindLabel(g.kind, g.heading)}<span class="count">
+											{g.items.length}
+										</span>
 									</h3>
 									<ul>
 										{#each g.items as it, ii (ii)}
@@ -416,20 +416,20 @@
 			{/if}
 			<div class="links">
 				{#if !upToDate && !u.relaunchNeeded}
-					<button class="icon text" disabled={busy} onclick={close}
-						>{m.settings_updates_whats_new_remind_later()}</button
-					>
-					<button class="icon text" disabled={busy} onclick={u.skipVersion}
-						>{m.settings_updates_whats_new_skip_version()}</button
-					>
+					<button class="icon text" disabled={busy} onclick={close}>
+						{m.settings_updates_whats_new_remind_later()}
+					</button>
+					<button class="icon text" disabled={busy} onclick={u.skipVersion}>
+						{m.settings_updates_whats_new_skip_version()}
+					</button>
 					<span class="grow"></span>
 				{/if}
-				<button class="icon text" onclick={() => api.openUrl(CHANGELOG_URL)}
-					>{m.settings_updates_full_changelog()}</button
-				>
-				<button class="icon text" onclick={() => api.openUrl(hero ? hero.url : REPO_URL)}
-					>{m.settings_updates_whats_new_view_github()}</button
-				>
+				<button class="icon text" onclick={() => api.openUrl(CHANGELOG_URL)}>
+					{m.settings_updates_full_changelog()}
+				</button>
+				<button class="icon text" onclick={() => api.openUrl(hero ? hero.url : REPO_URL)}>
+					{m.settings_updates_whats_new_view_github()}
+				</button>
 			</div>
 		</footer>
 	</div>

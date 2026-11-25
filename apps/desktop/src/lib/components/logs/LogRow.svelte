@@ -40,8 +40,8 @@
 	>
 		{#if showTime}<span class="ts">{hms(l.ts)}</span>{/if}
 		{#if showService}<span class="svc" style="--svc:{svcColor(l.name)}">{l.name}</span>{/if}
-		<span class="txt"
-			>{#each segments(l, matcher, current) as p, i (i)}{#if p.link}<span
+		<span class="txt">
+			{#each segments(l, matcher, current) as p, i (i)}{#if p.link}<span
 						class="link"
 						class:hit={p.hit === 1}
 						class:cur={p.hit === 2}
@@ -52,11 +52,13 @@
 						role="link"
 						tabindex="-1"
 						onclick={(e) => onlink(e, p, l)}
-						onkeydown={() => {}}>{p.text}</span
-					>{:else if p.hit}<mark class:cur={p.hit === 2} style={p.css}>{p.text}</mark>{:else if p.css}<span
-						style={p.css}>{p.text}</span
-					>{:else}{p.text}{/if}{/each}</span
-		>
+						onkeydown={() => {}}
+					>
+						{p.text}
+					</span>{:else if p.hit}<mark class:cur={p.hit === 2} style={p.css}>
+						{p.text}
+					</mark>{:else if p.css}<span style={p.css}>{p.text}</span>{:else}{p.text}{/if}{/each}
+		</span>
 	</div>
 {/if}
 

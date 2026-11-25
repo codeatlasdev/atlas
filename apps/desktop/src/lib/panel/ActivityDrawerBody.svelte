@@ -113,8 +113,9 @@
 							<span
 								class="count"
 								title={m.panel_activity_events_over({ count: r.count, span: span(r.from, r.ts) })}
-								>×{r.count}</span
 							>
+								×{r.count}
+							</span>
 						{/if}
 						{#if r.detail}<span class="detail" title={r.detail}>{r.detail}</span>{/if}
 						<span class="time mono">{clock(r.ts)}</span>

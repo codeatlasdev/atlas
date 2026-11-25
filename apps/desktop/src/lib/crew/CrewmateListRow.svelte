@@ -118,15 +118,15 @@
 							{/if}
 						</span>
 					{/if}
-					<span class="preview" class:bold={unread}
-						>{crewmate.last?.text ??
+					<span class="preview" class:bold={unread}>
+						{crewmate.last?.text ??
 							(crewmate.role
 								? (tag && crewmate.role.startsWith(tag + ":")
 										? crewmate.role.slice(tag.length + 1).trimStart()
 										: crewmate.role
 									).slice(0, 80)
-								: "")}</span
-					>
+								: "")}
+					</span>
 				{/if}
 				<ModeBadge mode={modeOf(crewmate)} showLabel={false} size={11} />
 				{#if unread}
@@ -134,12 +134,14 @@
 				{:else if crewmate.state === "needs_you"}
 					<span
 						class="crew-badge needs-badge"
-						aria-label={m.crew_workspace_crewmate_list_row_needs_your_attention()}>!</span
+						aria-label={m.crew_workspace_crewmate_list_row_needs_your_attention()}
 					>
+						!
+					</span>
 				{/if}
 			</div>
-		</div></button
-	>
+		</div>
+	</button>
 
 	<!-- context menu, shown on row hover -->
 	{#if onContextAction}
@@ -151,8 +153,10 @@
 				onclick={(e) => {
 					e.stopPropagation();
 					menuOpen = !menuOpen;
-				}}><Ellipsis size={14} /></button
+				}}
 			>
+				<Ellipsis size={14} />
+			</button>
 			{#if menuOpen}
 				<div class="menu-dropdown" role="menu">
 					{#if onFavorite}
@@ -170,12 +174,12 @@
 								: m.crew_workspace_crewmate_list_row_make_first_mate()}
 						</button>
 					{/if}
-					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("profile")}
-						>{m.crew_workspace_crewmate_list_row_profile()}</button
-					>
-					<button role="menuitem" class="menu-item danger" onclick={() => handleContextAction("delete")}
-						>{m.common_action_delete()}</button
-					>
+					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("profile")}>
+						{m.crew_workspace_crewmate_list_row_profile()}
+					</button>
+					<button role="menuitem" class="menu-item danger" onclick={() => handleContextAction("delete")}>
+						{m.common_action_delete()}
+					</button>
 				</div>
 			{/if}
 		</div>

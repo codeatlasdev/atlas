@@ -99,9 +99,10 @@
 			<span class="chip mono">{u.info?.app.version ?? "—"}</span>
 			<span class="chip">{channelLabel}</span>
 			{#if u.release}
-				<button class="link" onclick={() => api.openUrl(u.release!.url)}
-					>{m.settings_updates_release_on_github()} <ExternalLink size={11} /></button
-				>
+				<button class="link" onclick={() => api.openUrl(u.release!.url)}>
+					{m.settings_updates_release_on_github()}
+					<ExternalLink size={11} />
+				</button>
 			{/if}
 		</p>
 	</div>
@@ -140,9 +141,10 @@
 			/>
 			{m.settings_updates_auto_label()}
 		</label>
-		<button class="link" onclick={() => api.openUrl(CHANGELOG_URL)}
-			>{m.settings_updates_full_changelog()} <ExternalLink size={11} /></button
-		>
+		<button class="link" onclick={() => api.openUrl(CHANGELOG_URL)}>
+			{m.settings_updates_full_changelog()}
+			<ExternalLink size={11} />
+		</button>
 	</div>
 </div>
 
@@ -155,9 +157,9 @@
 			{m.crew_onboarding_connect_step_copy_command()}
 		</Button>
 		{#if managed.installable}
-			<Button disabled={!!u.running} onclick={u.installPackage}
-				>{m.settings_updates_install_now_password()}</Button
-			>
+			<Button disabled={!!u.running} onclick={u.installPackage}>
+				{m.settings_updates_install_now_password()}
+			</Button>
 		{/if}
 	</Alert>
 {/if}
@@ -191,9 +193,9 @@
 		title={u.info?.cli.path ? tilde(u.info.cli.path) : undefined}
 		mono
 	>
-		{#snippet badges()}{#if u.info?.cli.linked_to}<span class="tag info"
-					>{m.settings_updates_tag_linked()}</span
-				>{/if}{/snippet}
+		{#snippet badges()}{#if u.info?.cli.linked_to}<span class="tag info">
+					{m.settings_updates_tag_linked()}
+				</span>{/if}{/snippet}
 		{#snippet version()}
 			{u.info?.cli.version ?? "—"}
 			{#if u.cliBehind && !u.info?.cli.linked_to}<ArrowRight size={12} /><b>{u.release?.version}</b>{/if}
@@ -207,8 +209,11 @@
 		mono
 	>
 		{#snippet badges()}
-			{#if u.info?.app.dev}<span class="tag warn">{m.settings_general_nav_dev()}</span
-				>{:else if u.info?.app.linked_to}<span class="tag info">{m.settings_updates_tag_linked()}</span>{/if}
+			{#if u.info?.app.dev}<span class="tag warn">
+					{m.settings_general_nav_dev()}
+				</span>{:else if u.info?.app.linked_to}<span class="tag info">
+					{m.settings_updates_tag_linked()}
+				</span>{/if}
 		{/snippet}
 		{#snippet version()}
 			{u.info?.app.version ?? "—"}
@@ -234,12 +239,14 @@
 		<div class="devtitle"><FlaskConical size={14} /> {m.settings_updates_dev_link_title()}</div>
 		<p>{m.settings_updates_dev_link_body()}</p>
 		<div class="cmds">
-			<button class="cmd mono" onclick={() => copy(LINK_CMD)}
-				><Kbd>{m.settings_updates_dev_rebuild()}</Kbd> {LINK_CMD}</button
-			>
-			<button class="cmd mono" onclick={() => copy(DEV_CMD)}
-				><Kbd>{m.settings_updates_dev_hot_reload()}</Kbd> {DEV_CMD}</button
-			>
+			<button class="cmd mono" onclick={() => copy(LINK_CMD)}>
+				<Kbd>{m.settings_updates_dev_rebuild()}</Kbd>
+				{LINK_CMD}
+			</button>
+			<button class="cmd mono" onclick={() => copy(DEV_CMD)}>
+				<Kbd>{m.settings_updates_dev_hot_reload()}</Kbd>
+				{DEV_CMD}
+			</button>
 		</div>
 	</div>
 {/if}

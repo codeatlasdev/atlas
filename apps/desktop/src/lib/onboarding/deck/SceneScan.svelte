@@ -17,16 +17,16 @@
 		{#each { length: COLS * ROWS } as _, i (i)}
 			{@const k = FOUND.indexOf(i)}
 			<span class="dir" class:hit={k >= 0 && beats.n > k}>
-				<svg viewBox="0 0 24 20"
-					><path d="M2 4a2 2 0 0 1 2-2h5l2 2.5h9a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z" /></svg
-				>
+				<svg viewBox="0 0 24 20">
+					<path d="M2 4a2 2 0 0 1 2-2h5l2 2.5h9a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z" />
+				</svg>
 			</span>
 		{/each}
 	</div>
 	<span class="sweep" class:run={beats.n > 0 && beats.n < beats.last}></span>
-	<span class="count" class:on={beats.n > 0}
-		>{m.onboarding_scene_scan_found({ count: Math.min(beats.n, FOUND.length) })}</span
-	>
+	<span class="count" class:on={beats.n > 0}>
+		{m.onboarding_scene_scan_found({ count: Math.min(beats.n, FOUND.length) })}
+	</span>
 </div>
 
 <style>

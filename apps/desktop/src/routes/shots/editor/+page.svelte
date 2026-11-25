@@ -749,8 +749,10 @@
 						role="radio"
 						aria-checked={textSize === t.size}
 						aria-label={m.capture_editor_page_text_size_label({ label: t.label })}
-						onclick={() => pickTextSize(t.size)}>{t.label}</button
+						onclick={() => pickTextSize(t.size)}
 					>
+						{t.label}
+					</button>
 				{/each}
 			</div>
 			<div class="group">
@@ -759,8 +761,10 @@
 					class:on={weight === "bold"}
 					aria-label={m.capture_editor_page_bold()}
 					aria-pressed={weight === "bold"}
-					onclick={() => pickWeight(weight === "bold" ? "regular" : "bold")}><Bold size={14} /></button
+					onclick={() => pickWeight(weight === "bold" ? "regular" : "bold")}
 				>
+					<Bold size={14} />
+				</button>
 			</div>
 			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_text_background()}>
 				{#each TEXT_BGS as { value: b, label } (b)}
@@ -770,8 +774,10 @@
 						role="radio"
 						aria-checked={bg === b}
 						aria-label={m.capture_editor_page_text_background_label({ label })}
-						onclick={() => pickBg(b)}>{label}</button
+						onclick={() => pickBg(b)}
 					>
+						{label}
+					</button>
 				{/each}
 			</div>
 		{/if}
@@ -782,22 +788,28 @@
 				aria-label={m.common_action_undo()}
 				title={m.capture_editor_page_undo_tip({ key: kbd("cmd-z") })}
 				disabled={!canUndo(doc)}
-				onclick={() => (doc = undo(doc))}><Undo2 size={16} /></button
+				onclick={() => (doc = undo(doc))}
 			>
+				<Undo2 size={16} />
+			</button>
 			<button
 				class="tool"
 				aria-label={m.capture_editor_page_redo()}
 				title={m.capture_editor_page_redo_tip({ key: kbd("cmd-shift-z") })}
 				disabled={!canRedo(doc)}
-				onclick={() => (doc = redo(doc))}><Redo2 size={16} /></button
+				onclick={() => (doc = redo(doc))}
 			>
+				<Redo2 size={16} />
+			</button>
 			{#if doc.crop}
 				<button
 					class="chip"
 					aria-label={m.capture_editor_page_remove_crop()}
 					onclick={() => (doc = setCrop(doc, null))}
-					><Crop size={14} /> {m.capture_editor_page_reset_crop()}</button
 				>
+					<Crop size={14} />
+					{m.capture_editor_page_reset_crop()}
+				</button>
 			{/if}
 		</div>
 
@@ -809,14 +821,18 @@
 				aria-pressed={beautify.on}
 				aria-expanded={beautifyOpen}
 				title={m.capture_editor_page_beautify_background_padding_rounded_corners()}
-				onclick={toggleBeautify}><Sparkles size={14} /> {m.capture_editor_page_beautify()}</button
+				onclick={toggleBeautify}
 			>
-			<button class="chip" aria-label={m.capture_editor_page_fit_to_window()} onclick={fit}
-				><Maximize size={14} /> {m.capture_editor_page_fit()}</button
-			>
-			<button class="chip" aria-label={m.capture_editor_page_actual_size_100()} onclick={actualSize}
-				>100%</button
-			>
+				<Sparkles size={14} />
+				{m.capture_editor_page_beautify()}
+			</button>
+			<button class="chip" aria-label={m.capture_editor_page_fit_to_window()} onclick={fit}>
+				<Maximize size={14} />
+				{m.capture_editor_page_fit()}
+			</button>
+			<button class="chip" aria-label={m.capture_editor_page_actual_size_100()} onclick={actualSize}>
+				100%
+			</button>
 			<span class="dim" aria-live="polite">{Math.round(view.zoom * 100)}%</span>
 		</div>
 	</header>
@@ -857,8 +873,10 @@
 						role="radio"
 						aria-checked={beautify.padding === v}
 						aria-label={m.capture_editor_page_padding_v_pixels({ v })}
-						onclick={() => setBeautify({ padding: v })}>{v}</button
+						onclick={() => setBeautify({ padding: v })}
 					>
+						{v}
+					</button>
 				{/each}
 			</div>
 			<div class="group" role="radiogroup" aria-label={m.capture_editor_page_corner_radius()}>
@@ -870,8 +888,10 @@
 						role="radio"
 						aria-checked={beautify.radius === v}
 						aria-label={m.capture_editor_page_corner_radius_v_pixels({ v })}
-						onclick={() => setBeautify({ radius: v })}>{v}</button
+						onclick={() => setBeautify({ radius: v })}
 					>
+						{v}
+					</button>
 				{/each}
 			</div>
 			<div class="group">
@@ -880,8 +900,10 @@
 					class:on={beautify.shadow}
 					aria-label={m.capture_editor_page_shadow()}
 					aria-pressed={beautify.shadow}
-					onclick={() => setBeautify({ shadow: !beautify.shadow })}>{m.capture_editor_page_shadow()}</button
+					onclick={() => setBeautify({ shadow: !beautify.shadow })}
 				>
+					{m.capture_editor_page_shadow()}
+				</button>
 			</div>
 		</section>
 	{/if}
@@ -955,45 +977,55 @@
 	{/if}
 
 	<footer class="foot">
-		<span class="dim"
-			>{dirty
+		<span class="dim">
+			{dirty
 				? m.capture_editor_page_size_px_edited({ w: layout.out.w, h: layout.out.h })
-				: m.capture_editor_page_size_px({ w: layout.out.w, h: layout.out.h })}</span
-		>
+				: m.capture_editor_page_size_px({ w: layout.out.w, h: layout.out.h })}
+		</span>
 		{#if confirmClose}
 			<div class="group" role="alertdialog" aria-label={m.capture_editor_page_discard_edits()}>
 				<span>{m.capture_editor_page_discard_your_edits()}</span>
 				<button class="chip danger" onclick={closeWindow}>{m.capture_discard()}</button>
-				<button class="chip" onclick={() => (confirmClose = false)}
-					>{m.capture_editor_page_keep_editing()}</button
-				>
+				<button class="chip" onclick={() => (confirmClose = false)}>
+					{m.capture_editor_page_keep_editing()}
+				</button>
 			</div>
 		{:else}
 			<div class="group">
-				<button class="chip" aria-label={m.common_action_cancel()} onclick={requestClose}
-					><X size={14} /> {m.common_action_cancel()}</button
-				>
+				<button class="chip" aria-label={m.common_action_cancel()} onclick={requestClose}>
+					<X size={14} />
+					{m.common_action_cancel()}
+				</button>
 				<button
 					class="chip"
 					aria-label={m.capture_editor_page_copy_to_clipboard()}
 					title={m.capture_editor_page_copy_tip({ key: kbd("cmd-c") })}
 					disabled={!loaded || busy}
-					onclick={() => done("copy")}><Copy size={14} /> {m.common_action_copy()}</button
+					onclick={() => done("copy")}
 				>
+					<Copy size={14} />
+					{m.common_action_copy()}
+				</button>
 				<button
 					class="chip"
 					aria-label={m.capture_editor_page_save_a_copy()}
 					title={m.capture_editor_page_save_copy_tip({ key: kbd("cmd-s") })}
 					disabled={!loaded || busy}
-					onclick={() => done("file")}><Save size={14} /> {m.common_action_save()}</button
+					onclick={() => done("file")}
 				>
+					<Save size={14} />
+					{m.common_action_save()}
+				</button>
 				<button
 					class="chip primary"
 					aria-label={m.capture_editor_page_save_and_copy()}
 					title={m.capture_editor_page_save_and_copy_tip({ key: kbd("cmd-enter") })}
 					disabled={!loaded || busy}
-					onclick={() => done("both")}><Check size={14} /> {m.capture_editor_page_save_and_copy()}</button
+					onclick={() => done("both")}
 				>
+					<Check size={14} />
+					{m.capture_editor_page_save_and_copy()}
+				</button>
 			</div>
 		{/if}
 	</footer>

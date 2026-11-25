@@ -19,9 +19,9 @@
 <div class="gh-flow-block">
 	<p class="gh-flow-label">
 		{m.crew_workspace_github_device_flow_enter_code_at()}
-		<a href={flow.verification_uri} target="_blank" rel="noreferrer" class="text-link"
-			>{flow.verification_uri}</a
-		>
+		<a href={flow.verification_uri} target="_blank" rel="noreferrer" class="text-link">
+			{flow.verification_uri}
+		</a>
 	</p>
 	<div class="gh-code-row">
 		<code class="gh-code">{flow.user_code}</code>

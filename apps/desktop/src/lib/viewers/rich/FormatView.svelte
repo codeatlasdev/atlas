@@ -36,11 +36,11 @@
 				<div class="rv-title">
 					<Ban size={18} />
 					<h1>{name}</h1>
-					<span class="rv-ver"
-						>{m.viewers_files_format_view_rules_count({
+					<span class="rv-ver">
+						{m.viewers_files_format_view_rules_count({
 							count: ignore.reduce((n, s) => n + s.rules.length, 0),
-						})}</span
-					>
+						})}
+					</span>
 				</div>
 			</header>
 			{#each ignore as s, i (i)}
@@ -55,18 +55,20 @@
 									title={r.negated
 										? m.viewers_files_format_view_keep_tip()
 										: m.viewers_files_format_view_ignore_tip()}
-									>{r.negated
-										? m.viewers_files_format_view_ignore_keep()
-										: m.viewers_files_format_view_ignore_ignore()}</span
 								>
+									{r.negated
+										? m.viewers_files_format_view_ignore_keep()
+										: m.viewers_files_format_view_ignore_ignore()}
+								</span>
 								<span class="rv-k">{r.pattern}</span>
 								{#if r.dirOnly}<span class="rv-chip">{m.viewers_files_format_view_directory()}</span>{/if}
-								{#if r.anchored}<span class="rv-chip">{m.viewers_files_format_view_repo_root_only()}</span
-									>{/if}
+								{#if r.anchored}<span class="rv-chip">
+										{m.viewers_files_format_view_repo_root_only()}
+									</span>{/if}
 								<span class="rv-v"></span>
-								<button class="rv-btn" onclick={() => ctx.toSource(r.line)}
-									>{m.viewers_devops_line({ line: r.line })}</button
-								>
+								<button class="rv-btn" onclick={() => ctx.toSource(r.line)}>
+									{m.viewers_devops_line({ line: r.line })}
+								</button>
 							</div>
 						{/each}
 					</div>
@@ -88,8 +90,9 @@
 						<button
 							class="rv-chip acc link"
 							onclick={() => api.openUrl(`https://spdx.org/licenses/${license.spdx}.html`)}
-							>{m.viewers_files_format_view_spdx_page()}</button
 						>
+							{m.viewers_files_format_view_spdx_page()}
+						</button>
 					{/if}
 				</div>
 			</header>
@@ -99,19 +102,19 @@
 				<div class="rv-title">
 					<Users size={18} />
 					<h1>{name}</h1>
-					<span class="rv-ver"
-						>{m.viewers_files_format_view_owners_summary({
+					<span class="rv-ver">
+						{m.viewers_files_format_view_owners_summary({
 							rules: owners.rules.length,
 							owners: owners.owners.size,
-						})}</span
-					>
+						})}
+					</span>
 				</div>
 				<div class="rv-facts">
 					{#each owners.owners as [o, n] (o)}
 						{@const u = ownerUrl(o)}
-						{#if u}<button class="rv-chip acc link" onclick={() => api.openUrl(u)}
-								>{o} <span class="rv-note">{n}</span></button
-							>
+						{#if u}<button class="rv-chip acc link" onclick={() => api.openUrl(u)}>
+								{o} <span class="rv-note">{n}</span>
+							</button>
 						{:else}<span class="rv-chip">{o} <span class="rv-note">{n}</span></span>{/if}
 					{/each}
 				</div>
@@ -127,11 +130,12 @@
 							<span class="rv-k">{r.pattern}</span>
 							<span class="rv-v"></span>
 							{#each r.owners as o (o)}<span class="rv-chip mono">{o}</span>{/each}
-							{#if !r.owners.length}<span class="rv-chip warn">{m.viewers_files_format_view_no_owner()}</span
-								>{/if}
-							<button class="rv-btn" onclick={() => ctx.toSource(r.line)}
-								>{m.viewers_devops_line({ line: r.line })}</button
-							>
+							{#if !r.owners.length}<span class="rv-chip warn">
+									{m.viewers_files_format_view_no_owner()}
+								</span>{/if}
+							<button class="rv-btn" onclick={() => ctx.toSource(r.line)}>
+								{m.viewers_devops_line({ line: r.line })}
+							</button>
 						</div>
 					{/each}
 				</div>
@@ -152,9 +156,9 @@
 						{#each s.props as p (p.line)}
 							<div class="rv-row">
 								<span class="rv-k">{p.key}</span>
-								<span class="rv-chip mono" class:ok={p.value === "true"} class:bad={p.value === "false"}
-									>{p.value}</span
-								>
+								<span class="rv-chip mono" class:ok={p.value === "true"} class:bad={p.value === "false"}>
+									{p.value}
+								</span>
 								<span class="rv-note">{editorconfigDoc(p.key)}</span>
 							</div>
 						{/each}
@@ -178,8 +182,10 @@
 							class="rv-btn run"
 							title={m.viewers_files_package_view_run_in_terminal()}
 							onclick={() => runInTerminal(ctx.worktreeId, ctx.path, ["sh", "-c", p.command], p.name)}
-							><Play size={11} /> {m.viewers_devops_make_view_run()}</button
 						>
+							<Play size={11} />
+							{m.viewers_devops_make_view_run()}
+						</button>
 						<Copy text={p.command} label={m.viewers_devops_copy_command()} />
 					</div>
 				{:else}

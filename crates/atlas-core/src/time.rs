@@ -20,7 +20,7 @@ struct Civil {
 
 impl Civil {
     fn of(ts: Timestamp, tz: &TimeZone) -> Self {
-        let z = ts.to_zoned(tz.clone());
+        let z = ts.to_zoned_datetime(tz.clone());
         let (d, t) = (z.date(), z.time());
         Self {
             year: i32::from(d.year()),
@@ -152,7 +152,7 @@ pub fn parse_utc_compact(s: &str) -> Option<SystemTime> {
         return None;
     }
     let dt = civil::DateTime::strptime("%Y%m%d%H%M%S", s).ok()?;
-    Some(dt.to_zoned(TimeZone::UTC).ok()?.timestamp().into())
+    SystemTime::try_from(dt.to_zoned_datetime(TimeZone::UTC).ok()?.timestamp()).ok()
 }
 
 /// `2026-11-17`: the UTC day of `at`.
@@ -199,7 +199,7 @@ pub fn local_secs_of_day(ms: u64) -> u32 {
     let Ok(ts) = Timestamp::from_millisecond(ms as i64) else {
         return 0;
     };
-    let t = ts.to_zoned(TimeZone::system()).time();
+    let t = ts.to_zoned_datetime(TimeZone::system()).time();
     u32::try_from(i32::from(t.hour()) * 3600 + i32::from(t.minute()) * 60 + i32::from(t.second()))
         .unwrap_or(0)
 }
@@ -210,7 +210,7 @@ pub fn local_day_second_ms(now_ms: u64, secs: u32) -> Option<u64> {
     let tz = TimeZone::system();
     let day = Timestamp::from_millisecond(now_ms as i64)
         .ok()?
-        .to_zoned(tz.clone())
+        .to_zoned_datetime(tz.clone())
         .date();
     if secs >= 86_400 {
         return None;
@@ -221,7 +221,7 @@ pub fn local_day_second_ms(now_ms: u64, secs: u32) -> Option<u64> {
         (secs % 60) as i8,
         0,
     );
-    let ambiguous = tz.to_ambiguous_zoned(day.to_datetime(clock));
+    let ambiguous = tz.to_ambiguous_zoned_datetime(day.to_datetime(clock));
     if matches!(ambiguous.offset(), AmbiguousOffset::Gap { .. }) {
         return None;
     }
@@ -553,7 +553,7 @@ mod tests {
         let offset = |secs| {
             Timestamp::from_second(secs)
                 .unwrap()
-                .to_zoned(berlin.clone())
+                .to_zoned_datetime(berlin.clone())
                 .offset()
                 .seconds()
         };

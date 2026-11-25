@@ -27,7 +27,7 @@ default-members = [
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.100"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/codeatlasdev/atlas"
 homepage = "https://atlas.codeatlas.com.br"
@@ -36,7 +36,7 @@ keywords = ["dev-environment", "terminal", "tui", "process-manager", "ai-agents"
 categories = ["development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
-tokio = { version = "1.53", features = ["full"] }
+tokio = { version = "1.54", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_norway = "0.9"
@@ -44,12 +44,12 @@ clap = { version = "4.6", features = ["derive", "string"] }
 tracing = "0.1"
 thiserror = "2.0"
 anyhow = "1.0"
-# Dates, times and time zones (replaces chrono + chrono-tz, unmaintained: RUSTSEC-2026-0543/0555, #540). croner 4 reads
-# jiff 0.2 (its `jiff` feature), so this stays on 0.2 until croner moves to jiff 1. `jiff-tzdb` is the zone database
-# bundled in the binary, which `atlas_core::time::zone` reads: like chrono-tz, a named zone does not depend on the
-# machine's tzdata (a Ubuntu 24.04 server has none of `US/Pacific`, `EST5EDT`, `Zulu` without `tzdata-legacy`).
-jiff = "0.2"
-jiff-tzdb = "0.1"
+# Dates, times and time zones (replaces chrono + chrono-tz, unmaintained: RUSTSEC-2026-0543/0555, #540). croner 5
+# (atlas-host, its `jiff` feature) reads jiff 1, the same line as here. `jiff-tzdb` is the zone database bundled in the
+# binary, which `atlas_core::time::zone` reads: like chrono-tz, a named zone does not depend on the machine's tzdata (a
+# Ubuntu 24.04 server has none of `US/Pacific`, `EST5EDT`, `Zulu` without `tzdata-legacy`).
+jiff = "1.0"
+jiff-tzdb = "1.0"
 semver = "1.0"
 dirs = "7"
 tempfile = "3.27"
@@ -57,7 +57,7 @@ crossterm = "0.29"
 libc = "0.2"
 base64 = "0.23"
 parking_lot = "0.13"
-notify = "8"
+notify = "9"
 flate2 = "1.1"
 
 [workspace.lints.rust]

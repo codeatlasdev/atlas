@@ -139,22 +139,22 @@
 	<div class="actions">
 		{#if installed}
 			{#if canUninstall(entry)}
-				<Button size="sm" variant="outlined" disabled={busy} onclick={oninstall}
-					>{m.settings_editor_server_row_update()}</Button
-				>
-				<Button size="sm" variant="outlined" disabled={busy} onclick={onuninstall}
-					>{m.settings_editor_server_row_uninstall()}</Button
-				>
+				<Button size="sm" variant="outlined" disabled={busy} onclick={oninstall}>
+					{m.settings_editor_server_row_update()}
+				</Button>
+				<Button size="sm" variant="outlined" disabled={busy} onclick={onuninstall}>
+					{m.settings_editor_server_row_uninstall()}
+				</Button>
 			{/if}
 		{:else}
-			<Button size="sm" variant="filled" disabled={busy || !!blocked} loading={busy} onclick={oninstall}
-				>{m.settings_editor_server_row_install()}</Button
-			>
+			<Button size="sm" variant="filled" disabled={busy || !!blocked} loading={busy} onclick={oninstall}>
+				{m.settings_editor_server_row_install()}
+			</Button>
 		{/if}
 		{#if running}
-			<Button size="sm" variant="outlined" disabled={busy} onclick={onrestart}
-				>{m.settings_editor_server_row_restart()}</Button
-			>
+			<Button size="sm" variant="outlined" disabled={busy} onclick={onrestart}>
+				{m.settings_editor_server_row_restart()}
+			</Button>
 		{/if}
 		<Button size="sm" variant="ghost" onclick={onlog}>{m.settings_editor_server_row_open_log()}</Button>
 		<span class="grow"></span>

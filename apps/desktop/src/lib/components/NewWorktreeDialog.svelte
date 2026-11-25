@@ -168,12 +168,12 @@
 		<button type="submit" hidden aria-hidden="true"></button>
 	</form>
 	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (worktrees.newDialog.open = false)}
-			>{m.common_action_cancel()}</Button
-		>
-		<Button disabled={!repoId || repoId === ADD || busy} onclick={create}
-			>{m.git_create_pr_dialog_create()}</Button
-		>
+		<Button variant="ghost" onclick={() => (worktrees.newDialog.open = false)}>
+			{m.common_action_cancel()}
+		</Button>
+		<Button disabled={!repoId || repoId === ADD || busy} onclick={create}>
+			{m.git_create_pr_dialog_create()}
+		</Button>
 	{/snippet}
 </Dialog>
 

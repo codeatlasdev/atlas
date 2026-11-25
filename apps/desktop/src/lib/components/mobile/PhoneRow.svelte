@@ -91,11 +91,13 @@
 		variant="ghost"
 		tone="neutral"
 		aria-expanded={showActivity}
-		onclick={() => (showActivity = !showActivity)}>{m.mobile_phone_row_activity()}</Button
+		onclick={() => (showActivity = !showActivity)}
 	>
-	<Button size="sm" variant="ghost" tone="neutral" onclick={() => (unpairing = true)}
-		>{m.mobile_phone_row_unpair()}</Button
-	>
+		{m.mobile_phone_row_activity()}
+	</Button>
+	<Button size="sm" variant="ghost" tone="neutral" onclick={() => (unpairing = true)}>
+		{m.mobile_phone_row_unpair()}
+	</Button>
 	{#snippet below()}
 		<div class="access">
 			<span class="level" data-kind={level.kind}>{level.label}</span>

@@ -181,8 +181,10 @@
 			size="sm"
 			variant="outlined"
 			disabled={!hasCustom(pref) && !argsDraft && !initDraft && !settingsDraft}
-			onclick={reset}>{m.settings_editor_custom_reset()}</Button
+			onclick={reset}
 		>
+			{m.settings_editor_custom_reset()}
+		</Button>
 		<span class="note">{m.settings_editor_custom_apply_note()}</span>
 	</div>
 </div>

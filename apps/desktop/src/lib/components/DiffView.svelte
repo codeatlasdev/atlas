@@ -173,9 +173,9 @@
 		{#if !only}
 			<div class="toolbar">
 				<select bind:value={curMode}>
-					<option value="base"
-						>{base ? m.git_diff_view_vs_base_ref({ base }) : m.git_diff_view_vs_base()}</option
-					>
+					<option value="base">
+						{base ? m.git_diff_view_vs_base_ref({ base }) : m.git_diff_view_vs_base()}
+					</option>
 					<option value="working">{m.git_diff_view_unstaged()}</option>
 					<option value="staged">{m.git_diff_view_staged()}</option>
 				</select>
@@ -201,19 +201,21 @@
 				{#if open.length}
 					<DropdownMenu align="end">
 						{#snippet trigger()}
-							<span class="send"><Send size={12} /> {m.git_diff_view_send_notes({ count: open.length })}</span
-							>
+							<span class="send">
+								<Send size={12} />
+								{m.git_diff_view_send_notes({ count: open.length })}
+							</span>
 						{/snippet}
 						{#each agents.tabsIn(worktreeId) as t (t.id)}
-							<DropdownMenuItem onclick={() => sendTo(t.id)}
-								>{(t.pty && ws.titles[t.pty]) || t.label}</DropdownMenuItem
-							>
+							<DropdownMenuItem onclick={() => sendTo(t.id)}>
+								{(t.pty && ws.titles[t.pty]) || t.label}
+							</DropdownMenuItem>
 						{/each}
-						<DropdownMenuItem onclick={() => sendTo(null)}
-							>{m.git_diff_view_new_defaultagent_session({
+						<DropdownMenuItem onclick={() => sendTo(null)}>
+							{m.git_diff_view_new_defaultagent_session({
 								defaultAgent: agents.defaultAgent,
-							})}</DropdownMenuItem
-						>
+							})}
+						</DropdownMenuItem>
 					</DropdownMenu>
 				{/if}
 			</div>
@@ -254,11 +256,9 @@
 							<header>
 								<span class="mono">{r.f.old_path ? `${r.f.old_path} → ` : ""}{r.f.path}</span>
 								<span class="dim">{statusText(r.f.status)}</span>
-								<button class="act" onclick={() => stage(r.f)}
-									>{curMode === "staged"
-										? m.git_diff_view_unstage_file()
-										: m.git_diff_view_stage_file()}</button
-								>
+								<button class="act" onclick={() => stage(r.f)}>
+									{curMode === "staged" ? m.git_diff_view_unstage_file() : m.git_diff_view_stage_file()}
+								</button>
 							</header>
 						{:else if r.kind === "binary"}
 							{#if IMAGE.test(r.f.path)}

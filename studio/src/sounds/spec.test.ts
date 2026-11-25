@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { CATEGORIES } from "../../../apps/desktop/src/lib/sound/policy.ts";
-import { EARCONS, FAMILY, capFade, decayDb, isCurrentTake, passes, pickBest, promptFor, takeName, type Stats } from "./spec.ts";
+import { CATEGORIES } from "../../../apps/desktop/src/lib/sound/categories.ts";
+import { EARCONS, EARCON_LIST, FAMILY, capFade, decayDb, isCurrentTake, passes, pickBest, promptFor, takeName, type Stats } from "./spec.ts";
 
 const ok = (over: Partial<Stats> = {}): Stats => ({
 	duration: 0.3,
@@ -63,7 +63,7 @@ describe("passes: a candidate must meet the spec before it is considered", () =>
 	test("rejects a late attack (leading silence would feel laggy)", () =>
 		expect(passes(e, ok({ silentHead: 0.09 }))).toMatchObject({ ok: false, why: "late-attack" }));
 	test("targets sit inside the accepted brightness window for every earcon", () => {
-		for (const [id, x] of Object.entries(EARCONS)) expect(passes(x, ok({ centroidHz: x.targetCentroidHz, duration: Math.max(x.maxSeconds / 2, ("minSeconds" in x ? x.minSeconds : 0) + 0.1) })).ok, id).toBe(true);
+		for (const [id, x] of Object.entries(EARCON_LIST)) expect(passes(x, ok({ centroidHz: x.targetCentroidHz, duration: Math.max(x.maxSeconds / 2, (x.minSeconds ?? 0) + 0.1) })).ok, id).toBe(true);
 	});
 });
 

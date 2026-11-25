@@ -58,9 +58,9 @@
 	{/snippet}
 	{#each items as item, i (item.label)}
 		{#if i > 0 && item.group !== items[i - 1].group}<DropdownMenuSeparator />{/if}
-		<DropdownMenuItem variant={item.destructive ? "destructive" : "default"} onclick={item.run}
-			>{item.label}</DropdownMenuItem
-		>
+		<DropdownMenuItem variant={item.destructive ? "destructive" : "default"} onclick={item.run}>
+			{item.label}
+		</DropdownMenuItem>
 	{/each}
 </DropdownMenu>
 

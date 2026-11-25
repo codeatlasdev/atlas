@@ -52,8 +52,7 @@ tempfile = { workspace = true }
 futures-util = "0.3"
 url = "2"
 
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
-cpal = "0.17"
+cpal = "0.18"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -74,16 +73,20 @@ dispatch2 = "0.3"
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVSpeechSynthesis"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# Already in the graph through wry/gtk (same 0.18 line); used to ask the session bus whether a StatusNotifier host
+# Already in the graph through wry/gtk; used to ask the session bus whether a StatusNotifier host
 # exists (tray.rs), because a tray icon with no host is silently invisible.
 gio = "0.22"
 # Same versions wry already resolves: WebKitGTK's `web-process-terminated` and a native dialog when the page
-# cannot show anything (webview_guard.rs).
+# cannot show anything (webview_guard.rs). HOLD (latest webkit2gtk 3.0.0, gtk 0.19.0): tauri-runtime-wry 2.12.5 pins
+# `webkit2gtk =2.0`, wry 0.57.3 pins `webkit2gtk =2.0.2` and both want `gtk ^0.18`; a newer one here would link a second
+# set of GTK types next to the ones the window is built from, and the Linux build would not compile.
 webkit2gtk = "2.0"
 gtk = "0.18"
 # The native terminal on Wayland (term/linux): a wl_subsurface of GDK's own window (the wl_display and toplevel surface
 # come from libgdk-3's gdk_wayland_* calls), its wgpu/Vulkan surface, the fractional scale of the toplevel.
 # gdkwayland-sys is already in the graph through tao; the wayland-* crates are new (docs/supply-chain.md).
+# HOLD (latest 0.19.0): tauri-runtime-wry 2.12.5 requires `tao ^0.37`, which uses gdkwayland-sys ^0.18 (tao 0.38 moved to 0.19
+# with gtk 0.19); it moves with gtk, when tauri's wry runtime does.
 gdkwayland-sys = "0.18"
 # `system` = libwayland (GDK's own connection is wrapped, not a second socket); `dlopen`: libwayland-client is loaded at run
 # time, so a machine without it falls back to xterm.js instead of failing to start.
@@ -101,6 +104,9 @@ tauri-plugin-single-instance = "2"
 [target.'cfg(windows)'.dependencies]
 # Same versions tauri/wry already resolve; used by webview_win.rs (WebView2 settings, MemoryUsageTargetLevel) and
 # browser_keys_win.rs (accelerator keys of the embedded browser, modifier state through GetKeyState).
+# HOLD (windows-core latest 0.100.0; windows and webview2-com are already at their latest, 0.62.2 and 0.39.1): webview2-com
+# 0.39.1, wry and tauri need `windows ^0.62` and `windows-core ^0.62`; their COM traits (`Interface::cast`) are per version,
+# so a lone bump breaks the Windows build (#156). They move together when webview2-com does.
 webview2-com = "0.39"
 windows-core = "0.62"
 windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Media_Speech", "Win32_System_Com"] }

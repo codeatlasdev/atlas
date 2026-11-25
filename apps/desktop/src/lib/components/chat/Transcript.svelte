@@ -36,8 +36,8 @@
 		{#if it.kind === "user"}
 			<div class="msg user ca-selectable">
 				{it.text}{#if it.images}<span class="dim">
-						· {m.workbench_chat_images({ count: it.images })}</span
-					>{/if}
+						· {m.workbench_chat_images({ count: it.images })}
+					</span>{/if}
 			</div>
 		{:else if it.kind === "assistant"}
 			<div class="msg assistant">
@@ -95,9 +95,9 @@
 							}}
 						/>
 					{/if}
-					<button class="cancel" onclick={() => onanswer(u, undefined)}
-						>{m.crew_chat_ask_card_dismiss()}</button
-					>
+					<button class="cancel" onclick={() => onanswer(u, undefined)}>
+						{m.crew_chat_ask_card_dismiss()}
+					</button>
 				</div>
 			{/each}
 		</div>

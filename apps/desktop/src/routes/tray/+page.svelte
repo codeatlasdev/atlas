@@ -219,9 +219,9 @@
 			</span>
 		</button>
 		<span class="side">
-			{#if urgent}<span class="verb"
-					>{a.state === "blocked" ? m.tray_page_verb_approval() : m.tray_page_verb_reply()}</span
-				>{/if}
+			{#if urgent}<span class="verb">
+					{a.state === "blocked" ? m.tray_page_verb_approval() : m.tray_page_verb_reply()}
+				</span>{/if}
 			<ChevronRight size={13} />
 		</span>
 	</li>
@@ -241,9 +241,9 @@
 			aria-label={m.tray_page_open_target({ target: label ? `${p.name}, ${label}` : title })}
 		>
 			{#if nested}<i class="dot {tone(p)}" aria-hidden="true"></i>{:else}{@render tile(p.icon)}{/if}
-			<span class="name"
-				>{label ?? title}{#if !nested && p.running}<i class="dot {tone(p)}"></i>{/if}</span
-			>
+			<span class="name">
+				{label ?? title}{#if !nested && p.running}<i class="dot {tone(p)}"></i>{/if}
+			</span>
 			{#if !nested && p.branch}<span class="kind">{p.branch}</span>{/if}
 		</button>
 		<span class="side acts">
@@ -294,15 +294,17 @@
 					{#each MARK_GRADIENT.stops as s (s.offset)}<stop offset={s.offset} stop-color={s.color} />{/each}
 				</linearGradient>
 			</defs>
-			<g fill="url(#mk)"
-				>{#each MARK as t (t.id)}<path d={t.d} />{/each}</g
-			>
+			<g fill="url(#mk)">
+				{#each MARK as t (t.id)}<path d={t.d} />{/each}
+			</g>
 		</svg>
-		<span class="state {summary.tone}" role="status" title={summary.text}
-			><i class="dot {summary.tone}" class:live={summary.tone === "fail" || summary.tone === "warn"}></i><span
-				class="text">{summary.text}</span
-			></span
-		>
+		<span class="state {summary.tone}" role="status" title={summary.text}>
+			<i class="dot {summary.tone}" class:live={summary.tone === "fail" || summary.tone === "warn"}></i><span
+				class="text"
+			>
+				{summary.text}
+			</span>
+		</span>
 		<div class="tools">
 			<button
 				class="icon"
@@ -404,16 +406,16 @@
 							>
 								{@render tile(p.icon)}
 								<span class="lines">
-									<span class="name"
-										>{p.name}{#if p.branch}<span class="kind">{p.branch}</span>{/if}</span
-									>
+									<span class="name">
+										{p.name}{#if p.branch}<span class="kind">{p.branch}</span>{/if}
+									</span>
 									<span class="sub {head.state}" title={upLine(p)}>
-										<span class="bar" aria-hidden="true"
-											>{#each p.services as s (s.name)}<i
+										<span class="bar" aria-hidden="true">
+											{#each p.services as s (s.name)}<i
 													class="seg {serviceTone(s.state)}"
 													title={m.tray_page_service_state({ name: s.name, state: stateLabel(s.state) })}
-												></i>{/each}</span
-										>{head.text}
+												></i>{/each}
+										</span>{head.text}
 									</span>
 								</span>
 							</button>
@@ -425,15 +427,19 @@
 										disabled={busy[`${p.id}:restart`]}
 										onclick={() => restartFailed(p)}
 										aria-label={m.tray_page_restart_failed_of({ name: p.name })}
-										title={m.tray_page_restart_failed()}><RotateCcw size={12} /></button
+										title={m.tray_page_restart_failed()}
 									>
+										<RotateCcw size={12} />
+									</button>
 									<button
 										class="mini"
 										data-nav
 										onclick={() => send({ kind: "logs", id: p.id, service: failed[0]! })}
 										aria-label={m.tray_page_logs_of({ name: failed[0]! })}
-										title={m.tray_page_logs()}><FileText size={12} /></button
+										title={m.tray_page_logs()}
 									>
+										<FileText size={12} />
+									</button>
 								{/if}
 								<button
 									class="mini"
@@ -441,8 +447,10 @@
 									disabled={busy[p.id]}
 									onclick={() => toggleStack(p.id, true)}
 									aria-label={m.tray_page_stop_name({ name: p.name })}
-									title={m.tray_page_stop()}><Square size={12} /></button
+									title={m.tray_page_stop()}
 								>
+									<Square size={12} />
+								</button>
 							</span>
 						</li>
 					{/each}

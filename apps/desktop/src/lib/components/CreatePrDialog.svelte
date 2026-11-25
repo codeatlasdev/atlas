@@ -82,9 +82,9 @@
 	{#if pr.ghUnusable}
 		{#if pr.auth === "not-installed"}
 			<p><Rich parts={m.git_create_pr_dialog_cli_not_installed.parts()} tags={{ code: "code" }} /></p>
-			<Button onclick={() => api.openUrl("https://cli.github.com")}
-				>{m.git_create_pr_dialog_install_github_cli()}</Button
-			>
+			<Button onclick={() => api.openUrl("https://cli.github.com")}>
+				{m.git_create_pr_dialog_install_github_cli()}
+			</Button>
 		{:else}
 			<p>{m.git_create_pr_dialog_github_cli_is_not_signed()}</p>
 			<Button onclick={signIn}>{m.git_create_pr_dialog_sign_in_with_gh()}</Button>

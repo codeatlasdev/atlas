@@ -32,21 +32,22 @@
 	title={h.reasonText || undefined}
 >
 	{#snippet badges()}
-		{#if h.idleArmed}<span class="tag info">{m.settings_host_badge_restarts_when_idle()}</span
-			>{:else if h.deferred}<span class="tag warn">{m.settings_host_badge_postponed()}</span>{/if}
+		{#if h.idleArmed}<span class="tag info">
+				{m.settings_host_badge_restarts_when_idle()}
+			</span>{:else if h.deferred}<span class="tag warn">{m.settings_host_badge_postponed()}</span>{/if}
 		{#if busy}<Spinner size={12} />{/if}
 	{/snippet}
 	{#snippet action()}
 		{#if waiting && h.idleArmed}
 			<Button size="sm" variant="ghost" onclick={postponeHost}>{m.settings_host_action_dont_wait()}</Button>
 		{:else if waiting}
-			<Button size="sm" variant="outlined" onclick={openHostPrompt}
-				>{m.settings_host_action_restart_confirm()}</Button
-			>
+			<Button size="sm" variant="outlined" onclick={openHostPrompt}>
+				{m.settings_host_action_restart_confirm()}
+			</Button>
 		{:else if h.skew === "needsRestart" && !busy}
-			<Button size="sm" variant="outlined" onclick={h.ptys.length ? openHostPrompt : restartHost}
-				>{h.ptys.length ? m.settings_host_action_restart_confirm() : m.settings_host_action_restart()}</Button
-			>
+			<Button size="sm" variant="outlined" onclick={h.ptys.length ? openHostPrompt : restartHost}>
+				{h.ptys.length ? m.settings_host_action_restart_confirm() : m.settings_host_action_restart()}
+			</Button>
 		{/if}
 	{/snippet}
 </Tile>

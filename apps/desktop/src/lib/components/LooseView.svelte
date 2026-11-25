@@ -38,8 +38,10 @@
 					role="tab"
 					aria-selected={f === loose.active}
 					title={tilde(f)}
-					onclick={() => loose.open(f)}>{baseName(f)}</button
+					onclick={() => loose.open(f)}
 				>
+					{baseName(f)}
+				</button>
 				<button
 					type="button"
 					class="x"
@@ -55,12 +57,12 @@
 	{#if loose.active}
 		{@const f = loose.active}
 		<span class="where" title={dirOf(f)}>{tilde(dirOf(f))}</span>
-		<Button variant="ghost" size="sm" disabled={busy} onclick={() => openFolder(f, false)}
-			>{m.workbench_loose_view_open_folder()}</Button
-		>
-		<Button size="sm" disabled={busy} onclick={() => openFolder(f, true)}
-			>{m.workbench_loose_view_open_as_project()}</Button
-		>
+		<Button variant="ghost" size="sm" disabled={busy} onclick={() => openFolder(f, false)}>
+			{m.workbench_loose_view_open_folder()}
+		</Button>
+		<Button size="sm" disabled={busy} onclick={() => openFolder(f, true)}>
+			{m.workbench_loose_view_open_as_project()}
+		</Button>
 	{/if}
 </header>
 <div class="rule"></div>

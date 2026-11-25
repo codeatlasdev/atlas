@@ -64,12 +64,12 @@
 				<span class="rv-ver">{m.viewers_devops_env_view_variables_count({ count: vars.length })}</span>
 			</div>
 			<div class="rv-facts">
-				{#if doc.duplicates.size}<span class="rv-chip warn"
-						>{m.viewers_devops_env_view_duplicated({ count: doc.duplicates.size })}</span
-					>{/if}
-				{#if invalid.length}<span class="rv-chip bad"
-						>{m.viewers_devops_env_view_error_lines_count({ count: invalid.length })}</span
-					>{/if}
+				{#if doc.duplicates.size}<span class="rv-chip warn">
+						{m.viewers_devops_env_view_duplicated({ count: doc.duplicates.size })}
+					</span>{/if}
+				{#if invalid.length}<span class="rv-chip bad">
+						{m.viewers_devops_env_view_error_lines_count({ count: invalid.length })}
+					</span>{/if}
 				{#if diff && !diff.missing.length && !diff.extra.length}
 					<span class="rv-chip ok">{m.viewers_devops_env_view_matches({ name: example?.name ?? "" })}</span>
 				{/if}
@@ -129,8 +129,9 @@
 								class:masked={!shown(e)}
 								title={shown(e) ? e.value : ""}
 							>
-								{#if e.value === ""}<i class="empty">{m.viewers_devops_env_view_empty()}</i
-									>{:else if shown(e)}{e.value}{:else}{mask(e.value)}{/if}
+								{#if e.value === ""}<i class="empty">
+										{m.viewers_devops_env_view_empty()}
+									</i>{:else if shown(e)}{e.value}{:else}{mask(e.value)}{/if}
 							</span>
 							{#if e.comment}<span class="rv-note">{e.comment}</span>{/if}
 							{#if dup(e.key)}
@@ -140,8 +141,10 @@
 									title={m.viewers_devops_env_view_also_defined({
 										count: others.length,
 										lines: others.join(", "),
-									})}>{m.viewers_devops_env_view_duplicate()}</span
+									})}
 								>
+									{m.viewers_devops_env_view_duplicate()}
+								</span>
 							{/if}
 							{#if looksSecret(e.key)}<span class="rv-chip">{m.viewers_devops_env_view_secret()}</span>{/if}
 							<button
@@ -174,9 +177,9 @@
 							<TriangleAlert size={13} />
 							<span class="rv-v">{e.raw}</span>
 							<span class="rv-note">{e.reason}</span>
-							<button class="rv-btn" onclick={() => ctx.toSource(e.line)}
-								>{m.viewers_devops_line({ line: e.line })}</button
-							>
+							<button class="rv-btn" onclick={() => ctx.toSource(e.line)}>
+								{m.viewers_devops_line({ line: e.line })}
+							</button>
 						</div>
 					{/if}
 				{:else}

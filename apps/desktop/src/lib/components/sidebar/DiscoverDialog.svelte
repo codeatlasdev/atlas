@@ -135,9 +135,9 @@
 		{#if discovery.running}
 			<Spinner size={12} />
 			<span>{scanningLine(discovery.dirs, discovery.elapsedMs, split.projects.length)}</span>
-			<span class="cur mono" dir="rtl" title={discovery.current}
-				><bdi dir="ltr">{tilde(discovery.current)}</bdi></span
-			>
+			<span class="cur mono" dir="rtl" title={discovery.current}>
+				<bdi dir="ltr">{tilde(discovery.current)}</bdi>
+			</span>
 			<Button size="sm" variant="ghost" onclick={() => discovery.cancel()}>{m.common_action_cancel()}</Button>
 		{:else if discovery.error}
 			<TriangleAlert size={13} /> <span>{discovery.error}</span>
@@ -151,9 +151,9 @@
 						amount: formatNumber(discovery.done.unreadable),
 					})}{/if}
 			</span>
-			<Button size="sm" variant="ghost" onclick={() => discovery.start()}
-				>{m.onboarding_phases_scan_again()}</Button
-			>
+			<Button size="sm" variant="ghost" onclick={() => discovery.start()}>
+				{m.onboarding_phases_scan_again()}
+			</Button>
 		{/if}
 	</div>
 
@@ -180,9 +180,10 @@
 	</div>
 
 	{#snippet actions()}
-		<Button variant="ghost" onclick={addRoot}
-			><FolderPlus size={13} /> {m.sidebar_discover_dialog_add_root()}</Button
-		>
+		<Button variant="ghost" onclick={addRoot}>
+			<FolderPlus size={13} />
+			{m.sidebar_discover_dialog_add_root()}
+		</Button>
 		<span class="spacer"></span>
 		<Button variant="ghost" onclick={() => discovery.close()}>{m.common_action_close()}</Button>
 		<Button disabled={!picked.length} onclick={addSelected}>
@@ -230,12 +231,12 @@
 					{/if}
 					{#if move}
 						<div class="move">
-							<span
-								><Rich
+							<span>
+								<Rich
 									parts={m.sidebar_discover_dialog_moved_copy.parts({ name: move.name })}
 									tags={{ b: "strong" }}
-								/></span
-							>
+								/>
+							</span>
 							<Button size="sm" onclick={() => relink(f)}>{m.shell_home_missing_project_relink()}</Button>
 						</div>
 					{/if}
@@ -247,8 +248,10 @@
 						variant="ghost"
 						title={m.sidebar_discover_dialog_init_title()}
 						disabled={!!store.busy[`init:${f.path}`]}
-						onclick={() => init(f)}>{m.sidebar_discover_dialog_create_atlas_yaml()}</Button
+						onclick={() => init(f)}
 					>
+						{m.sidebar_discover_dialog_create_atlas_yaml()}
+					</Button>
 				{/if}
 			</div>
 		{/each}

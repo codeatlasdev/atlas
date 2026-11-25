@@ -80,7 +80,7 @@ Every command, the gate and the CI design: [docs/contributing.md](docs/contribut
 ### Platforms and toolchain
 
 - Atlas Desktop and the CLI build and are tested on macOS (Apple silicon), Linux (x64) and Windows (x64); CI runs the whole workspace on all three. The native GPU terminal, agent instances, Atlas Lab and the mirror are macOS only (Linux and Windows terminals use xterm.js). Per-OS setup: [docs/contributing.md](docs/contributing.md#set-up).
-- **MSRV policy:** the Rust version is pinned in `rust-toolchain.toml` and `rust-version` in `Cargo.toml` is the same version (currently 1.99). We only support building with that toolchain or newer stable; bumping it is a normal change, called out in the changelog.
+- **MSRV policy:** the Rust version is pinned in `rust-toolchain.toml` and `rust-version` in `Cargo.toml` is the same version (currently 1.100). We only support building with that toolchain or newer stable; bumping it is a normal change, called out in the changelog.
 
 ## Developer Certificate of Origin (DCO)
 

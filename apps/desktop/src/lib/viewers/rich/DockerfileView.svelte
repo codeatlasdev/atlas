@@ -60,17 +60,17 @@
 			<div class="rv-title">
 				<Layers size={18} />
 				<h1>{ctx.path.split("/").pop()}</h1>
-				<span class="rv-ver"
-					>{m.viewers_devops_dockerfile_view_stages_count({ count: doc.stages.length })}</span
-				>
+				<span class="rv-ver">
+					{m.viewers_devops_dockerfile_view_stages_count({ count: doc.stages.length })}
+				</span>
 			</div>
 			<div class="rv-facts">
-				{#each [...new Set(doc.ports.map((p) => p.port))] as p (p)}<span class="rv-chip info mono"
-						>{`EXPOSE ${p}`}</span
-					>{/each}
-				{#if doc.warnings.length}<span class="rv-chip warn"
-						>{m.viewers_devops_dockerfile_view_warnings_count({ count: doc.warnings.length })}</span
-					>{/if}
+				{#each [...new Set(doc.ports.map((p) => p.port))] as p (p)}<span class="rv-chip info mono">
+						{`EXPOSE ${p}`}
+					</span>{/each}
+				{#if doc.warnings.length}<span class="rv-chip warn">
+						{m.viewers_devops_dockerfile_view_warnings_count({ count: doc.warnings.length })}
+					</span>{/if}
 			</div>
 		</header>
 
@@ -101,19 +101,21 @@
 							onclick={() => (active = s.index)}
 						>
 							<span class="dot"></span>
-							<span class="nm"
-								>{s.name ?? m.viewers_devops_dockerfile_view_stage_default({ index: s.index })}</span
-							>
+							<span class="nm">
+								{s.name ?? m.viewers_devops_dockerfile_view_stage_default({ index: s.index })}
+							</span>
 							<span class="im">{s.image}</span>
-							<span class="rv-note"
-								>{m.viewers_devops_dockerfile_view_steps_count({ count: s.instructions.length })}</span
-							>
-							{#if s.index === doc.stages.length - 1}<span class="rv-chip acc"
-									>{m.viewers_devops_dockerfile_view_final()}</span
-								>{/if}
+							<span class="rv-note">
+								{m.viewers_devops_dockerfile_view_steps_count({ count: s.instructions.length })}
+							</span>
+							{#if s.index === doc.stages.length - 1}<span class="rv-chip acc">
+									{m.viewers_devops_dockerfile_view_final()}
+								</span>{/if}
 							{#if ref.tag === "latest" || (!ref.tag && !ref.digest && s.image !== "scratch" && !doc.stages.some((o) => o.name === s.image))}<span
-									class="rv-chip warn">{m.viewers_devops_dockerfile_view_unpinned()}</span
-								>{/if}
+									class="rv-chip warn"
+								>
+									{m.viewers_devops_dockerfile_view_unpinned()}
+								</span>{/if}
 						</button>
 					{/each}
 				</div>
@@ -133,9 +135,10 @@
 						{#if stage.platform}<span class="rv-chip">{stage.platform}</span>{/if}
 						<span class="rv-v"></span>
 						{#if base.url}
-							<button class="rv-btn" onclick={() => api.openUrl(base.url!)}
-								><ExternalLink size={11} /> {m.viewers_devops_dockerfile_view_registry()}</button
-							>
+							<button class="rv-btn" onclick={() => api.openUrl(base.url!)}>
+								<ExternalLink size={11} />
+								{m.viewers_devops_dockerfile_view_registry()}
+							</button>
 						{/if}
 					</div>
 				</div>
@@ -195,9 +198,9 @@
 						{#each doc.warnings as w (w.line + w.message)}
 							<div class="rv-row warn">
 								<span class="rv-v wrap">{w.message}</span>
-								<button class="rv-btn" onclick={() => ctx.toSource(w.line)}
-									>{m.viewers_devops_line({ line: w.line })}</button
-								>
+								<button class="rv-btn" onclick={() => ctx.toSource(w.line)}>
+									{m.viewers_devops_line({ line: w.line })}
+								</button>
 							</div>
 						{/each}
 					</div>

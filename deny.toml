@@ -4,7 +4,6 @@ version = 2
 # cannot upgrade them ourselves. Re-evaluate when bumping tauri or iroh.
 ignore = [
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via glib-macros (tauri -> tray-icon -> gtk, Linux-only); no fix available upstream" },
-    { id = "RUSTSEC-2024-0436", reason = "paste via netlink-packet-core (iroh -> netwatch); no safe upgrade, cannot change iroh's transitive deps" },
     { id = "RUSTSEC-2026-0543", reason = "chrono via wmi (iroh -> netwatch -> wmi, Windows only; wmi enables its `chrono` feature by default and netwatch 0.20 depends on chrono itself); Atlas's own code is on jiff since #540, so only an iroh/netwatch/wmi release can drop it" },
     { id = "RUSTSEC-2026-0370", reason = "zvariant via zbus 5 (tauri-plugin-notification -> notify-rust, Linux-only); unmaintained notice, no newer notify-rust on zbus 6 yet" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names via zbus 5 (tauri-plugin-notification -> notify-rust, Linux-only); same as above" },
@@ -26,6 +25,8 @@ allow = [
     "MPL-2.0",
     "CC0-1.0",
     "CDLA-Permissive-2.0",
+    # xxhash-rust (notify 9): Boost, permissive and OSI approved.
+    "BSL-1.0",
 ]
 
 [bans]

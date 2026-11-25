@@ -155,9 +155,9 @@
 				style="display:inline;vertical-align:middle;margin-right:4px"
 			/>{m.crew_onboarding_engine_sign_in_use_your_own_provider()}
 		</button>
-		<button class="text-link" onclick={() => ob.recheckSignin()} style="font-size:12px"
-			>{m.crew_onboarding_check_again()}</button
-		>
+		<button class="text-link" onclick={() => ob.recheckSignin()} style="font-size:12px">
+			{m.crew_onboarding_check_again()}
+		</button>
 	{:else}
 		<button class="text-link" onclick={() => ob.closeProviderMode()} style="font-size:12px;margin-top:8px">
 			{m.crew_onboarding_engine_sign_in_use_direct_key_instead()}

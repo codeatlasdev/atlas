@@ -1,15 +1,19 @@
 version: 2
+# Every dependency manifest of the repo is listed here; `bun run deps:outdated` reports the same set locally
+# (docs/contributing.md, "Updating dependencies"). Per ecosystem: one grouped PR a week for minor and patch updates,
+# one PR per major (a major usually needs code changes and its own review).
 # cooldown: a new version waits 7 days before a PR, so a compromised or yanked release is usually caught
 # upstream before it reaches us (zizmor dependabot-cooldown).
 updates:
+  # The workspace and the phone app's native crate (its own cargo workspace, apps/mobile/native).
   - package-ecosystem: cargo
-    directory: /
+    directories: ["/", "/apps/mobile/native"]
     schedule: { interval: weekly }
     cooldown: { default-days: 7 }
     groups:
       cargo-minor-patch:
         update-types: [minor, patch]
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     commit-message: { prefix: "chore(deps)" }
     # windows/windows-core must be the exact versions webview2-com (via tauri/wry) builds on: their COM traits
     # (`Interface::cast`) are per-version, so a lone bump breaks the Windows build (#156). They move with webview2-com.
@@ -18,26 +22,51 @@ updates:
         update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: "windows-core"
         update-types: [version-update:semver-major, version-update:semver-minor]
-  - package-ecosystem: npm
-    directory: /apps/desktop
+  # Every bun project (bun.lock): the root, the desktop frontend, the website, the film studio, the i18n tooling.
+  - package-ecosystem: bun
+    directories: ["/", "/apps/desktop", "/site", "/studio", "/scripts/i18n"]
     schedule: { interval: weekly }
     cooldown: { default-days: 7 }
     groups:
-      desktop-minor-patch:
+      bun-minor-patch:
         update-types: [minor, patch]
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     commit-message: { prefix: "chore(deps)" }
-  - package-ecosystem: npm
-    directory: /site
+  # Atlas Mobile: Dart packages and the store tooling (fastlane, cocoapods).
+  - package-ecosystem: pub
+    directory: /apps/mobile
     schedule: { interval: weekly }
     cooldown: { default-days: 7 }
     groups:
-      site-minor-patch:
+      pub-minor-patch:
         update-types: [minor, patch]
-    open-pull-requests-limit: 5
     commit-message: { prefix: "chore(deps)" }
+  - package-ecosystem: bundler
+    directory: /apps/mobile
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    groups:
+      bundler-minor-patch:
+        update-types: [minor, patch]
+    commit-message: { prefix: "chore(deps)" }
+  # The push relay: its Go module and its builder image (the image's Go minor must match go.mod's `go` line).
+  - package-ecosystem: gomod
+    directory: /services/push-relay
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    groups:
+      gomod-minor-patch:
+        update-types: [minor, patch]
+    commit-message: { prefix: "chore(deps)" }
+  - package-ecosystem: docker
+    directory: /services/push-relay
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    commit-message: { prefix: "chore(deps)" }
+  # Workflows and the composite actions under .github/actions (`/` alone covers only .github/workflows, which left the
+  # composite actions' pins behind the workflows' ones).
   - package-ecosystem: github-actions
-    directory: /
+    directories: ["/", "/.github/actions/*"]
     schedule: { interval: weekly }
     cooldown: { default-days: 7 }
     groups:

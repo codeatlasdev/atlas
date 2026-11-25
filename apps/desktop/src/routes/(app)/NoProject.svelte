@@ -31,9 +31,9 @@
 		<Alert severity="error" title={m.shell_home_no_project_error_title()}>
 			<div class="err">
 				<span>{store.listError}</span>
-				<Button size="sm" variant="glass" onclick={() => store.refresh()}
-					>{m.shell_home_no_project_retry()}</Button
-				>
+				<Button size="sm" variant="glass" onclick={() => store.refresh()}>
+					{m.shell_home_no_project_retry()}
+				</Button>
 			</div>
 		</Alert>
 	{:else if store.projects.length === 0}

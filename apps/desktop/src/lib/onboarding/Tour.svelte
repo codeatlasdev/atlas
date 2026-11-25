@@ -163,12 +163,12 @@
 					{#each steps as s, i (s.id)}<span class:on={i === index} class:seen={i < index}></span>{/each}
 				</div>
 				<button class="skip" data-testid="tour-skip" onclick={skip}>{m.onboarding_tour_skip()}</button>
-				<Button variant="ghost" size="sm" data-testid="tour-back" disabled={index === 0} onclick={back}
-					>{m.common_action_back()}</Button
-				>
-				<Button size="sm" data-testid="tour-next" onclick={next}
-					>{index + 1 === steps.length ? m.common_action_done() : m.onboarding_tour_next()}</Button
-				>
+				<Button variant="ghost" size="sm" data-testid="tour-back" disabled={index === 0} onclick={back}>
+					{m.common_action_back()}
+				</Button>
+				<Button size="sm" data-testid="tour-next" onclick={next}>
+					{index + 1 === steps.length ? m.common_action_done() : m.onboarding_tour_next()}
+				</Button>
 			</div>
 		</div>
 	</div>

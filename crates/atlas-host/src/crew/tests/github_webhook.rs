@@ -819,9 +819,11 @@ async fn the_poll_takes_over_when_the_hook_fails_and_skips_what_the_webhook_hand
         mention("e-new", 201, last_ok + 60),
         mention("e-old", 200, last_ok - 60),
     ];
-    std::fs::write(
-        rig.dir.join("github-webhook.json"),
-        serde_json::to_vec(&json!({
+    // Atomically, as hostd writes it: the poll reads this file on every tick, and a truncated one reads as the default
+    // state (not failing, last_ok 0), so the poll took over with no cutoff and answered comment 200 (flaked under load).
+    crate::paths::write_private(
+        &rig.dir.join("github-webhook.json"),
+        &serde_json::to_vec(&json!({
             "synced_url": URL, "verified": {"7": last_ok}, "last_ok": last_ok,
             "failing": true, "healthy_since": last_ok - 3600
         }))

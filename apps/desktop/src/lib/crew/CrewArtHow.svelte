@@ -161,9 +161,9 @@
 							<code>git push origin main</code>
 							<div class="ask-btns">
 								<span class="btn">{m.crew_chat_approval_prompt_deny()}</span>
-								<span class="btn primary" style:transform="scale({1 - tap * 0.08})"
-									>{m.crew_chat_approval_prompt_allow()}</span
-								>
+								<span class="btn primary" style:transform="scale({1 - tap * 0.08})">
+									{m.crew_chat_approval_prompt_allow()}
+								</span>
 							</div>
 						</div>
 					{:else if allowed}

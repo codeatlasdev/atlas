@@ -61,9 +61,9 @@
 		{#if view?.phase === "checking"}
 			<span class="state"><Spinner size={12} /> {m.crew_settings_browsers_row_asking_the_server()}</span>
 		{:else if view?.phase === "ready"}
-			<span class="state ok" role="status"
-				>{m.crew_settings_browsers_row_installed_chromium_and_webkit_are()}</span
-			>
+			<span class="state ok" role="status">
+				{m.crew_settings_browsers_row_installed_chromium_and_webkit_are()}
+			</span>
 		{:else if view?.phase === "missing"}
 			{#if nodeLine}
 				<p class="node" role="alert">

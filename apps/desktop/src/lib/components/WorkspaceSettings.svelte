@@ -208,9 +208,9 @@
 			label={c.name}
 			description={m.settings_general_workspace_cleaned({ when: ago(c.at), branch: c.branch })}
 		>
-			<Button size="sm" variant="glass" onclick={() => restore(c)}
-				>{m.settings_general_workspace_restore()}</Button
-			>
+			<Button size="sm" variant="glass" onclick={() => restore(c)}>
+				{m.settings_general_workspace_restore()}
+			</Button>
 		</Row>
 	{/each}
 </Group>
@@ -229,8 +229,10 @@
 			size="sm"
 			variant="destructive"
 			disabled={!Object.values(picked).some(Boolean)}
-			onclick={deleteSelected}>{m.settings_general_workspace_delete_selected()}</Button
+			onclick={deleteSelected}
 		>
+			{m.settings_general_workspace_delete_selected()}
+		</Button>
 	</Row>
 	{#each linked as p (p.id)}
 		{@const s = stats[p.id]}

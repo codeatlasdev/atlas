@@ -43,9 +43,9 @@
 			<header>
 				<button class="head" onclick={() => corner.toggleChecklist()} aria-expanded={open}>
 					<span class="ring" style:--pct="{(p.done / p.total) * 100}%"></span>
-					<span class="title"
-						>{p.all ? m.onboarding_checklist_all_set() : m.onboarding_checklist_getting_started()}</span
-					>
+					<span class="title">
+						{p.all ? m.onboarding_checklist_all_set() : m.onboarding_checklist_getting_started()}
+					</span>
 					<span class="count">{p.done}/{p.total}</span>
 					<ChevronDown size={13} class="chev" />
 				</button>
@@ -69,9 +69,9 @@
 								disabled={done}
 								onclick={() => c.command && runCommand(c.command)}
 							>
-								<span class="box"
-									>{#if done}<Check size={10} strokeWidth={3} />{/if}</span
-								>
+								<span class="box">
+									{#if done}<Check size={10} strokeWidth={3} />{/if}
+								</span>
 								<span class="label">{c.label}</span>
 								{#if c.command && !done && shortcutFor(c.command)}<Kbd>{shortcutFor(c.command)}</Kbd>{/if}
 							</button>

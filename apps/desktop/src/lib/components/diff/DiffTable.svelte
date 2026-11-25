@@ -54,8 +54,9 @@
 					{/if}
 				</td>
 				<td class="code mono">
-					<span class="sign">{l.kind === "add" ? "+" : l.kind === "del" ? "-" : " "}</span
-					>{#if html !== undefined}{@html html}{:else}{l.text}{/if}
+					<span class="sign">
+						{l.kind === "add" ? "+" : l.kind === "del" ? "-" : " "}
+					</span>{#if html !== undefined}{@html html}{:else}{l.text}{/if}
 				</td>
 			</tr>
 			<DiffNotes {path} {side} line={no} cols={4} {comments} bind:draft {onsave} {onresolve} />

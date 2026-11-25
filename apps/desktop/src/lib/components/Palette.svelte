@@ -116,12 +116,14 @@
 					onmouseenter={() => (sel = i)}
 					onclick={(e) => run(i, e.shiftKey)}
 				>
-					{#if it.project}<span class="ico"><ProjectIcon id={it.project} size={18} /></span
-						>{:else if it.icon}<span class="ico">{@html it.icon}</span>{/if}
-					<span class="label"
-						>{#each highlight(q, it.label) as r, k (k)}{#if r.hit}<mark>{r.text}</mark
-								>{:else}{r.text}{/if}{/each}</span
-					>
+					{#if it.project}<span class="ico">
+							<ProjectIcon id={it.project} size={18} />
+						</span>{:else if it.icon}<span class="ico">{@html it.icon}</span>{/if}
+					<span class="label">
+						{#each highlight(q, it.label) as r, k (k)}{#if r.hit}<mark>
+									{r.text}
+								</mark>{:else}{r.text}{/if}{/each}
+					</span>
 					{#if it.description}<span class="desc" dir="rtl"><bdi dir="ltr">{it.description}</bdi></span>{/if}
 					{#if it.shortcut}<Kbd>{it.shortcut}</Kbd>{/if}
 				</button>

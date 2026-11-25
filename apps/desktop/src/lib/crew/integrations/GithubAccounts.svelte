@@ -24,18 +24,18 @@
 				<GithubDeviceFlow {flow} {polling} oncancel={() => githubCrew.stopPolling(server.key)} />
 			{:else if status?.login}
 				<!-- Connected -->
-				<span class="server-gh-login"
-					>{m.crew_chat_task_action_card_connected_as_login({ account: `@${status.login}` })}</span
-				>
-				<Button variant="ghost" size="sm" onclick={() => void githubCrew.logout(server.key)}
-					>{m.crew_workspace_github_accounts_disconnect()}</Button
-				>
+				<span class="server-gh-login">
+					{m.crew_chat_task_action_card_connected_as_login({ account: `@${status.login}` })}
+				</span>
+				<Button variant="ghost" size="sm" onclick={() => void githubCrew.logout(server.key)}>
+					{m.crew_workspace_github_accounts_disconnect()}
+				</Button>
 			{:else}
 				<!-- Not connected -->
 				<span class="server-gh-status-off">{m.crew_workspace_github_accounts_not_connected()}</span>
-				<Button variant="filled" size="sm" onclick={() => void githubCrew.startLogin(server.key)}
-					>{m.crew_chat_task_action_card_connect()}</Button
-				>
+				<Button variant="filled" size="sm" onclick={() => void githubCrew.startLogin(server.key)}>
+					{m.crew_chat_task_action_card_connect()}
+				</Button>
 			{/if}
 		</div>
 	{:else}

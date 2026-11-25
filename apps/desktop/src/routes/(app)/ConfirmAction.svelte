@@ -19,7 +19,9 @@
 				const v = pending.value;
 				pending.value = null;
 				if (v) runAction(v.id, v.target, true);
-			}}>{m.shell_home_confirm_action()}</Button
+			}}
 		>
+			{m.shell_home_confirm_action()}
+		</Button>
 	{/snippet}
 </Dialog>

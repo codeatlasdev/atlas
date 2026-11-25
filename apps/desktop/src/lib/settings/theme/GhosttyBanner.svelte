@@ -67,9 +67,9 @@
 				</span>
 			{/if}
 			<div class="actions">
-				<Button size="sm" disabled={!result || busy} loading={busy} onclick={use}
-					>{m.settings_theme_use_it()}</Button
-				>
+				<Button size="sm" disabled={!result || busy} loading={busy} onclick={use}>
+					{m.settings_theme_use_it()}
+				</Button>
 				<Button
 					size="sm"
 					variant="outlined"
@@ -81,9 +81,9 @@
 						? m.settings_theme_ghostty_banner_hide_preview()
 						: m.settings_theme_ghostty_banner_preview()}
 				</Button>
-				<Button size="sm" variant="ghost" onclick={() => themes.dismissGhosttyOffer()}
-					>{m.settings_theme_ghostty_banner_not_now()}</Button
-				>
+				<Button size="sm" variant="ghost" onclick={() => themes.dismissGhosttyOffer()}>
+					{m.settings_theme_ghostty_banner_not_now()}
+				</Button>
 			</div>
 			<button
 				class="x"

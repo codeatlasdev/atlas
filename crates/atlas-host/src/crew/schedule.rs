@@ -60,7 +60,7 @@ pub(crate) fn next_fire_after(cron: &Cron, since_s: u64, tz: Option<&str>) -> Op
     let zone = tz.and_then(atlas_core::time::zone).unwrap_or(TimeZone::UTC);
     let since = Timestamp::from_second(since_s as i64).unwrap_or_else(|_| Timestamp::now());
     let next = cron
-        .find_next_occurrence(&since.to_zoned(zone), false)
+        .find_next_occurrence(&since.to_zoned_datetime(zone), false)
         .ok()?;
     u64::try_from(next.timestamp().as_second()).ok()
 }

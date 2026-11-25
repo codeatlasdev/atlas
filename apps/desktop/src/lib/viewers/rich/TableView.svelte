@@ -80,26 +80,27 @@
 <div class="rv tv">
 	<div class="bar">
 		<Table2 size={14} />
-		<span class="rv-ver"
-			>{q
+		<span class="rv-ver">
+			{q
 				? m.viewers_files_table_view_rows_filtered({ count: rows.length, total: table.rows.length })
 				: m.viewers_files_table_view_rows({ count: rows.length })} · {m.viewers_files_table_view_columns({
 				count: cols,
-			})}</span
-		>
+			})}
+		</span>
 		{#if !table.header}<span class="rv-chip">{m.viewers_files_table_view_no_header()}</span>{/if}
-		{#if table.ragged}<span class="rv-chip warn"
-				><TriangleAlert size={10} /> {m.viewers_files_table_view_ragged({ count: table.ragged })}</span
-			>{/if}
-		<span class="rv-chip mono"
-			>{table.delimiter === "\t"
+		{#if table.ragged}<span class="rv-chip warn">
+				<TriangleAlert size={10} />
+				{m.viewers_files_table_view_ragged({ count: table.ragged })}
+			</span>{/if}
+		<span class="rv-chip mono">
+			{table.delimiter === "\t"
 				? m.viewers_files_table_view_delimiter_tab()
 				: table.delimiter === ","
 					? m.viewers_files_table_view_delimiter_comma()
 					: table.delimiter === ";"
 						? m.viewers_files_table_view_delimiter_semicolon()
-						: m.viewers_files_table_view_delimiter_pipe()}</span
-		>
+						: m.viewers_files_table_view_delimiter_pipe()}
+		</span>
 		<span class="sp"></span>
 		<label class="rv-search">
 			<Search size={12} />
@@ -156,8 +157,10 @@
 									role="gridcell"
 									tabindex="-1"
 									title={row[c] ?? ""}
-									onclick={() => (sel = { r, c })}>{row[c] ?? ""}</span
+									onclick={() => (sel = { r, c })}
 								>
+									{row[c] ?? ""}
+								</span>
 							{/each}
 						</div>
 					{/each}
@@ -170,9 +173,9 @@
 	</div>
 	{#if sel && rows[sel.r]}
 		<div class="foot">
-			<span class="rv-chip mono"
-				>{m.viewers_files_table_view_cell({ row: sel.r + 1, column: head[sel.c] })}</span
-			>
+			<span class="rv-chip mono">
+				{m.viewers_files_table_view_cell({ row: sel.r + 1, column: head[sel.c] })}
+			</span>
 			<span class="val">{rows[sel.r][sel.c] ?? ""}</span>
 			<Copy text={rows[sel.r][sel.c] ?? ""} label={m.viewers_files_table_view_copy_cell()} />
 			<Copy text={rows[sel.r].join(table.delimiter)} label={m.viewers_files_table_view_copy_row()} />

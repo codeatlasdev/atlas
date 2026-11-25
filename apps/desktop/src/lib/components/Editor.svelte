@@ -322,8 +322,10 @@
 				<button
 					class:on={wrap}
 					title={m.workbench_editor_word_wrap_key({ key: kbd("alt-z") })}
-					onclick={() => session.setWrap(!session.wrap)}><WrapText size={13} /></button
+					onclick={() => session.setWrap(!session.wrap)}
 				>
+					<WrapText size={13} />
+				</button>
 				<button
 					class:on={changes}
 					title={m.workbench_editor_changes_vs_head()}
@@ -385,12 +387,12 @@
 	{#if session.conflict}
 		<div class="banner" role="alert">
 			<span>{m.workbench_loose_editor_this_file_changed_on_disk()}</span>
-			<button onclick={() => void session.resolve("reload")}
-				>{m.workbench_loose_editor_load_from_disk()}</button
-			>
-			<button onclick={() => void session.resolve("keep")}
-				>{m.workbench_loose_editor_keep_my_version()}</button
-			>
+			<button onclick={() => void session.resolve("reload")}>
+				{m.workbench_loose_editor_load_from_disk()}
+			</button>
+			<button onclick={() => void session.resolve("keep")}>
+				{m.workbench_loose_editor_keep_my_version()}
+			</button>
 		</div>
 	{:else if session.deleted}
 		<div class="banner" role="alert">

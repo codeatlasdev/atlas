@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { analyzeSubject, checkEdgeClipping, checkSafeArea, overflow, safeRect } from "./checks-image.ts";
 import { field, paintWindow, plate } from "./fixtures.ts";
-import { checkContrast, checkTextSize, parseTesseractTsv, parseVisionLines } from "./ocr.ts";
+import { checkContrast, checkTextSize, parseTesseractTsv, parseVisionLines, withInk } from "./ocr.ts";
 import { contrastRatio, decode, luminance } from "./pixels.ts";
 import { PROFILES } from "./profiles.ts";
 
@@ -141,6 +141,17 @@ describe("text legibility and contrast", () => {
 		expect(d).toHaveLength(1);
 		expect(d[0]!.code).toBe("text/low-contrast");
 		expect(d[0]!.measured).toBeLessThan(3);
+	});
+
+	// Incident (`bun studio check`, 2026-11-24): tesseract 5.5.4 read "ibs" (4 px) and "Wry" (7 px) in the aurora
+	// gradient of film-poster.jpg, a file unchanged since it passed the lint in 1.5.0-alpha.13. Their "ink" stood out at
+	// 1.05:1 and 1.09:1, i.e. JPEG noise: nothing a viewer can see, so neither too small nor low contrast.
+	test("an OCR line with no ink that stands out (a gradient read as letters) is not text; faint but visible text still is", () => {
+		const img = field(400, 200);
+		plate(img, 20, 120, 300, 60, [70, 70, 70], [95, 95, 95]);
+		const ghost = { text: "ibs", rect: { x: 300, y: 20, w: 10, h: 4 }, conf: 0.9 };
+		const faint = { text: "faint text", rect: { x: 20, y: 120, w: 300, h: 60 }, conf: 0.9 };
+		expect(withInk(img, [ghost, faint])).toEqual([faint]);
 	});
 });
 

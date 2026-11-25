@@ -47,9 +47,9 @@
 				<TriangleAlert size={14} />
 				{m.viewers_devops_cannot_parse({ error: parsed.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
-					>{m.viewers_devops_open_as_source()}</button
-				>
+				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}>
+					{m.viewers_devops_open_as_source()}
+				</button>
 			</div>
 		{:else if model}
 			<header class="rv-head">
@@ -59,20 +59,22 @@
 					<span class="rv-ver">{m.viewers_devops_services_count({ count: model.services.length })}</span>
 				</div>
 				<div class="rv-facts">
-					{#if model.volumes.length}<span class="rv-chip"
-							><HardDrive size={10} />
-							{m.viewers_devops_compose_view_volumes_count({ count: model.volumes.length })}</span
-						>{/if}
-					{#if model.networks.length}<span class="rv-chip"
-							><Network size={10} /> {model.networks.join(", ")}</span
-						>{/if}
+					{#if model.volumes.length}<span class="rv-chip">
+							<HardDrive size={10} />
+							{m.viewers_devops_compose_view_volumes_count({ count: model.volumes.length })}
+						</span>{/if}
+					{#if model.networks.length}<span class="rv-chip">
+							<Network size={10} />
+							{model.networks.join(", ")}
+						</span>{/if}
 					<span class="sp"></span>
-					<button class="rv-btn run" onclick={() => run(["up"], "compose up")}
-						><Play size={11} /> {m.viewers_devops_compose_view_up()}</button
-					>
-					<button class="rv-btn" onclick={() => run(["ps"], "compose ps")}
-						>{m.viewers_devops_compose_view_status()}</button
-					>
+					<button class="rv-btn run" onclick={() => run(["up"], "compose up")}>
+						<Play size={11} />
+						{m.viewers_devops_compose_view_up()}
+					</button>
+					<button class="rv-btn" onclick={() => run(["ps"], "compose ps")}>
+						{m.viewers_devops_compose_view_status()}
+					</button>
 				</div>
 			</header>
 
@@ -92,8 +94,10 @@
 								class="node"
 								class:on={focus === n}
 								class:dim={dim(n)}
-								onclick={() => (focus = focus === n ? null : n)}>{n}</button
+								onclick={() => (focus = focus === n ? null : n)}
 							>
+								{n}
+							</button>
 							{#if i < model.order.length - 1}<ArrowRight size={11} class="arrow" />{/if}
 						{/each}
 					</div>
@@ -106,41 +110,47 @@
 					{#each model.services as s (s.name)}
 						<article class="card" class:dim={dim(s.name)} class:on={focus === s.name}>
 							<header>
-								<button class="nm" onclick={() => (focus = focus === s.name ? null : s.name)}>{s.name}</button
-								>
+								<button class="nm" onclick={() => (focus = focus === s.name ? null : s.name)}>
+									{s.name}
+								</button>
 								{#if s.healthcheck}<span
 										class="rv-chip ok"
-										title={m.viewers_devops_compose_view_has_healthcheck()}><HeartPulse size={10} /></span
-									>{/if}
+										title={m.viewers_devops_compose_view_has_healthcheck()}
+									>
+										<HeartPulse size={10} />
+									</span>{/if}
 								{#if s.restart}<span class="rv-chip">{s.restart}</span>{/if}
 								{#each s.profiles as p (p)}<span class="rv-chip info">{p}</span>{/each}
 							</header>
 							<div class="src">
 								{#if s.image}<span class="rv-chip mono"><Container size={10} /> {s.image}</span>{/if}
-								{#if s.build}<span class="rv-chip mono"
-										><Hammer size={10} /> {m.viewers_devops_compose_view_build({ build: s.build })}</span
-									>{/if}
+								{#if s.build}<span class="rv-chip mono">
+										<Hammer size={10} />
+										{m.viewers_devops_compose_view_build({ build: s.build })}
+									</span>{/if}
 							</div>
 							{#if s.command}<code class="cmd" title={s.command}>{s.command}</code>{/if}
 							{#if s.ports.length}
 								<div class="grp">
-									<span class="lbl">{m.viewers_devops_compose_view_ports()}</span
-									>{#each s.ports as p (p)}<span class="rv-chip info mono">{p}</span>{/each}
+									<span class="lbl">
+										{m.viewers_devops_compose_view_ports()}
+									</span>{#each s.ports as p (p)}<span class="rv-chip info mono">{p}</span>{/each}
 								</div>
 							{/if}
 							{#if s.volumes.length}
 								<div class="grp">
-									<span class="lbl">{m.viewers_devops_compose_view_volumes()}</span
-									>{#each s.volumes as v (v)}<span class="rv-chip mono">{v}</span>{/each}
+									<span class="lbl">
+										{m.viewers_devops_compose_view_volumes()}
+									</span>{#each s.volumes as v (v)}<span class="rv-chip mono">{v}</span>{/each}
 								</div>
 							{/if}
 							{#if s.env.length || s.envFiles.length}
 								<div class="grp">
 									<span class="lbl"><Variable size={10} /> {m.viewers_devops_compose_view_env()}</span>
 									{#each s.envFiles as f (f)}<span class="rv-chip acc mono">{f}</span>{/each}
-									{#each s.env.slice(0, 8) as e (e)}<span class="rv-chip mono" title={e}
-											>{e.split("=")[0]}</span
-										>{/each}
+									{#each s.env.slice(0, 8) as e (e)}<span class="rv-chip mono" title={e}>
+											{e.split("=")[0]}
+										</span>{/each}
 									{#if s.env.length > 8}<span class="rv-note">+{s.env.length - 8}</span>{/if}
 								</div>
 							{/if}
@@ -148,9 +158,9 @@
 								<div class="grp">
 									<span class="lbl">{m.viewers_devops_compose_view_waits_for()}</span>
 									{#each s.dependsOn as d (d.name)}
-										<span class="rv-chip" class:warn={model.unknownDeps.some((u) => u.dep === d.name)}
-											>{d.name}{d.condition ? ` · ${d.condition.replace("service_", "")}` : ""}</span
-										>
+										<span class="rv-chip" class:warn={model.unknownDeps.some((u) => u.dep === d.name)}>
+											{d.name}{d.condition ? ` · ${d.condition.replace("service_", "")}` : ""}
+										</span>
 									{/each}
 								</div>
 							{/if}

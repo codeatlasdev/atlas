@@ -89,8 +89,9 @@
 	});
 </script>
 
-{#snippet ansi(l: string)}{#each parseAnsi(l) as r, j (j)}<span style={css(r.style)}>{r.text}</span
-		>{/each}{/snippet}
+{#snippet ansi(l: string)}{#each parseAnsi(l) as r, j (j)}<span style={css(r.style)}>
+			{r.text}
+		</span>{/each}{/snippet}
 
 {#if setup.command}
 	<div class="strip" class:running class:failed data-setup={running ? "running" : (st?.state ?? "never")}>
@@ -137,9 +138,9 @@
 					{m.common_action_retry()}
 				</Button>
 			{:else}
-				<button class="link" disabled={running} onclick={run}
-					>{st ? m.onboarding_setup_row_run_again() : m.onboarding_setup_row_run_now()}</button
-				>
+				<button class="link" disabled={running} onclick={run}>
+					{st ? m.onboarding_setup_row_run_again() : m.onboarding_setup_row_run_now()}
+				</button>
 			{/if}
 		</div>
 		{#if failed && st?.reason}<div class="reason">{st.reason}</div>{/if}

@@ -127,9 +127,9 @@
 					>
 						<span class="title">{a.title}</span>
 						<span class="detail">{a.state ? agentStateLabel(a.state) : a.detail}</span>
-						<span class="num mono"
-							>{a.cpu != null ? `${Math.round(a.cpu)}%` : "–"} · {a.mem != null ? bytes(a.mem) : "–"}</span
-						>
+						<span class="num mono">
+							{a.cpu != null ? `${Math.round(a.cpu)}%` : "–"} · {a.mem != null ? bytes(a.mem) : "–"}
+						</span>
 					</DrawerRow>
 				{:else}
 					<div class="none">{m.panel_machine_drawer_no_terminals_running()}</div>
@@ -214,9 +214,9 @@
 				{#if hygiene.available}
 					<DrawerRow tone={hygiene.orphans ? "warn" : "ok"} disabled>
 						<span class="title">{m.panel_machine_orphans({ count: hygiene.orphans })}</span>
-						<span class="detail"
-							>{m.panel_machine_hygiene_detail({ live: hygiene.live, size: bytes(hygiene.freeable) })}</span
-						>
+						<span class="detail">
+							{m.panel_machine_hygiene_detail({ live: hygiene.live, size: bytes(hygiene.freeable) })}
+						</span>
 					</DrawerRow>
 					{#each hygiene.disk as d (d.name)}
 						<DrawerRow tone="off" disabled>

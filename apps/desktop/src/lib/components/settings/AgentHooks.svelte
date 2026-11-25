@@ -38,9 +38,9 @@
 			{#if a.state === "ok"}
 				<StatusChip status="success" label={m.settings_general_agent_hooks_on()} />
 			{:else}
-				<Button size="sm" disabled={busy === a.id} onclick={() => turnOn(a.id)}
-					>{m.settings_general_agent_hooks_turn_on()}</Button
-				>
+				<Button size="sm" disabled={busy === a.id} onclick={() => turnOn(a.id)}>
+					{m.settings_general_agent_hooks_turn_on()}
+				</Button>
 			{/if}
 		</Row>
 	{:else}

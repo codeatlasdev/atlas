@@ -101,8 +101,10 @@
 					onclick={(e) => {
 						e.stopPropagation();
 						b.run();
-					}}><b.icon size={b.size} /></button
+					}}
 				>
+					<b.icon size={b.size} />
+				</button>
 			{/snippet}
 		</Tooltip>
 	{/each}

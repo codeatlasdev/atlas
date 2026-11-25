@@ -1,7 +1,7 @@
 ---
 title: "Cadeia de suprimentos e proveniência"
 source: supply-chain.md
-source_sha: "1c9419c6be21ece686806727d1d79ea3d3394240"
+source_sha: "fe74337efbbf2caf46125d3d30e9da6c80b2838a"
 translation: machine
 ---
 
@@ -15,7 +15,7 @@ Esta página é a versão honesta de "quanto você pode confiar em um download d
 |---|---|---|
 | Política de dependências | `cargo deny check` (avisos do banco RustSec, licenças em uma lista de permitidas, crates duplicados e proibidos) roda no `bun run check`, no CI (job `cargo-deny`) e antes de toda versão. O único aviso ignorado tem um motivo escrito. | [`deny.toml`](https://github.com/codeatlasdev/atlas/blob/main/deny.toml) |
 | Entradas fixadas | `Cargo.lock` e `bun.lock` estão no repositório. O CI, o gate que toda versão roda primeiro (`bun run check`) e o build da versão usam `--locked`, o build do desktop usa `bun install --frozen-lockfile`, e a toolchain do Rust é fixada. | `Cargo.lock`, `rust-toolchain.toml` |
-| PRs de atualização | O Dependabot abre atualizações semanais e agrupadas para Cargo, os dois projetos npm e GitHub Actions, então uma mudança de dependência pendente é um pull request revisável. Uma versão nova espera 7 dias (`cooldown`) antes do pull request dela, então uma versão comprometida ou retirada costuma ser notada antes. | [`.github/dependabot.yml`](https://github.com/codeatlasdev/atlas/blob/main/.github/dependabot.yml) |
+| PRs de atualização | O Dependabot abre atualizações semanais para todo manifesto do repositório: Cargo (o workspace e o crate nativo do app de celular), os cinco projetos bun, Dart e Ruby (Atlas Mobile), o módulo Go e a imagem de build do push relay, e GitHub Actions (workflows e actions compostas). Atualizações minor e patch vêm agrupadas, um pull request por ecossistema, e cada major ganha o seu; os pins das actions vêm num único pull request. Uma versão nova espera 7 dias (`cooldown`) antes do pull request dela, então uma versão comprometida ou retirada costuma ser notada antes. O `bun run deps:outdated` mostra o mesmo conjunto localmente. | [`.github/dependabot.yml`](https://github.com/codeatlasdev/atlas/blob/main/.github/dependabot.yml) |
 | Actions fixadas | Todo `uses:` dos workflows é fixado em um SHA de commit completo, com a versão exata em um comentário (`# v7.0.1`). | `.github/workflows/*.yml`, `.github/actions/*` |
 | Auditoria de workflows | actionlint (sintaxe, expressões, shellcheck dos blocos `run:`) e [zizmor](https://docs.zizmor.sh) (injeção de template, persistência de credenciais, envenenamento de cache, permissões excessivas, actions não fixadas) rodam no `bun run check` e no job de CI `Workflow lint`. Toda supressão está em `.github/zizmor.yml` com o motivo. | `scripts/lint-workflows.sh` |
 | CI com privilégio mínimo | Todo workflow define `permissions: contents: read`; o job `Plan` soma `actions: read` e `pull-requests: read`, o job agregador `CI` não tem nenhuma, e só o job `publish` do `release.yml` sobe o nível (`contents: write`). Todo checkout usa `persist-credentials: false`. Pull requests de forks rodam com um token somente leitura e sem secrets; texto não confiável (o título do pull request) chega aos scripts só por `env`. | `.github/workflows/*.yml` |

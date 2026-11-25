@@ -63,9 +63,9 @@
 	{/key}
 
 	{#if onskip && w.phase !== "up"}
-		<button class="skip" data-testid={ACTIONS.skip} onclick={onskip}
-			>{m.onboarding_hero_skip_for_now()}</button
-		>
+		<button class="skip" data-testid={ACTIONS.skip} onclick={onskip}>
+			{m.onboarding_hero_skip_for_now()}
+		</button>
 	{/if}
 </div>
 

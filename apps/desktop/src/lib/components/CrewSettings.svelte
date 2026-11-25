@@ -302,9 +302,9 @@
 			label={m.settings_agents_crew_remove_server()}
 			description={m.settings_agents_crew_remove_hint()}
 		>
-			<Button size="sm" variant="ghost" onclick={() => doRemoveServer(h.key, h.name)}
-				>{m.common_action_remove()}</Button
-			>
+			<Button size="sm" variant="ghost" onclick={() => doRemoveServer(h.key, h.name)}>
+				{m.common_action_remove()}
+			</Button>
 		</Row>
 	</Group>
 
@@ -357,8 +357,10 @@
 			variant="ghost"
 			onclick={() => {
 				updates.open = false;
-			}}>{m.settings_agents_crew_open_workspace()}</Button
+			}}
 		>
+			{m.settings_agents_crew_open_workspace()}
+		</Button>
 	</Row>
 </Group>
 
@@ -392,8 +394,10 @@
 			onclick={() => {
 				updates.open = false;
 				replayCrewOnboarding();
-			}}>{m.settings_agents_crew_replay()}</Button
+			}}
 		>
+			{m.settings_agents_crew_replay()}
+		</Button>
 	</Row>
 </Group>
 

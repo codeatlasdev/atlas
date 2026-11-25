@@ -256,8 +256,9 @@
 						class="x inline"
 						aria-label={m.common_action_close()}
 						onclick={() => dispatch({ type: "textAction", id: c.id, name: "close" })}
-						><X size={12} aria-hidden="true" /></button
 					>
+						<X size={12} aria-hidden="true" />
+					</button>
 				</div>
 				<div class="text">
 					{#if c.empty}
@@ -267,34 +268,38 @@
 					{/if}
 				</div>
 				{#if c.copied}
-					<span class="badge inline" role="status"
-						><Check size={12} aria-hidden="true" /> {m.capture_quick_page_copied()}</span
-					>
+					<span class="badge inline" role="status">
+						<Check size={12} aria-hidden="true" />
+						{m.capture_quick_page_copied()}
+					</span>
 				{/if}
 				{#if c.error}
 					<p class="err" role="alert"><TriangleAlert size={12} aria-hidden="true" /> {c.error}</p>
 				{/if}
 				{#if !c.empty}
 					<div class="actions">
-						<button class="btn" onclick={() => actText(c.id, "copy")} disabled={c.busy}
-							><Copy size={12} aria-hidden="true" /> {m.capture_quick_page_copy_again()}</button
-						>
-						<button class="btn primary" onclick={() => actText(c.id, "send")} disabled={c.busy}
-							><Send size={12} aria-hidden="true" /> {m.capture_quick_page_send_to_agent()}</button
-						>
+						<button class="btn" onclick={() => actText(c.id, "copy")} disabled={c.busy}>
+							<Copy size={12} aria-hidden="true" />
+							{m.capture_quick_page_copy_again()}
+						</button>
+						<button class="btn primary" onclick={() => actText(c.id, "send")} disabled={c.busy}>
+							<Send size={12} aria-hidden="true" />
+							{m.capture_quick_page_send_to_agent()}
+						</button>
 					</div>
 				{/if}
 			{:else}
 				{@const Icon = icons[kindIcon(c.entry.kind) as keyof typeof icons]}
 				<div class="thumb" class:small={c.sheet === "gif"}>
 					<img src={c.thumb} alt={title(c.entry)} draggable="true" ondragstart={(ev) => onDragStart(ev, c)} />
-					<button class="x" aria-label={m.common_action_close()} onclick={() => act(c.id, "close")}
-						><X size={12} aria-hidden="true" /></button
-					>
+					<button class="x" aria-label={m.common_action_close()} onclick={() => act(c.id, "close")}>
+						<X size={12} aria-hidden="true" />
+					</button>
 					{#if c.copied}
-						<span class="badge" role="status"
-							><Check size={12} aria-hidden="true" /> {m.capture_quick_page_copied()}</span
-						>
+						<span class="badge" role="status">
+							<Check size={12} aria-hidden="true" />
+							{m.capture_quick_page_copied()}
+						</span>
 					{/if}
 				</div>
 				<div class="meta">
@@ -348,8 +353,10 @@
 							<button
 								class="btn"
 								onclick={() => dispatch({ type: "closeSheet", id: c.id })}
-								disabled={exporting}>{m.common_action_cancel()}</button
+								disabled={exporting}
 							>
+								{m.common_action_cancel()}
+							</button>
 							<button
 								class="btn primary"
 								onclick={() => exportGif(c)}
@@ -365,31 +372,38 @@
 					</div>
 				{:else}
 					<div class="actions">
-						<button class="btn" onclick={() => act(c.id, "copy")} disabled={c.busy}
-							><Copy size={12} aria-hidden="true" /> {m.common_action_copy()}</button
-						>
-						<button class="btn" onclick={() => act(c.id, "save")} disabled={c.busy}
-							><Download size={12} aria-hidden="true" /> {m.capture_quick_page_save_as()}</button
-						>
+						<button class="btn" onclick={() => act(c.id, "copy")} disabled={c.busy}>
+							<Copy size={12} aria-hidden="true" />
+							{m.common_action_copy()}
+						</button>
+						<button class="btn" onclick={() => act(c.id, "save")} disabled={c.busy}>
+							<Download size={12} aria-hidden="true" />
+							{m.capture_quick_page_save_as()}
+						</button>
 						{#if c.entry.kind === "screenshot"}
-							<button class="btn" onclick={() => act(c.id, "annotate")} disabled={c.busy}
-								><Pencil size={12} aria-hidden="true" /> {m.capture_quick_page_annotate()}</button
-							>
-							<button class="btn" onclick={() => act(c.id, "pin")} disabled={c.busy}
-								><Pin size={12} aria-hidden="true" /> {m.capture_quick_page_pin()}</button
-							>
-							<button class="btn" onclick={() => act(c.id, "ocr")} disabled={c.busy}
-								><TextCursorInput size={12} aria-hidden="true" /> {m.capture_quick_page_ocr()}</button
-							>
+							<button class="btn" onclick={() => act(c.id, "annotate")} disabled={c.busy}>
+								<Pencil size={12} aria-hidden="true" />
+								{m.capture_quick_page_annotate()}
+							</button>
+							<button class="btn" onclick={() => act(c.id, "pin")} disabled={c.busy}>
+								<Pin size={12} aria-hidden="true" />
+								{m.capture_quick_page_pin()}
+							</button>
+							<button class="btn" onclick={() => act(c.id, "ocr")} disabled={c.busy}>
+								<TextCursorInput size={12} aria-hidden="true" />
+								{m.capture_quick_page_ocr()}
+							</button>
 						{/if}
 						{#if c.entry.kind === "recording"}
-							<button class="btn" onclick={() => openGif(c.id)} disabled={c.busy}
-								><Film size={12} aria-hidden="true" /> {m.capture_quick_page_make_gif()}</button
-							>
+							<button class="btn" onclick={() => openGif(c.id)} disabled={c.busy}>
+								<Film size={12} aria-hidden="true" />
+								{m.capture_quick_page_make_gif()}
+							</button>
 						{/if}
-						<button class="btn primary" onclick={() => act(c.id, "send")} disabled={c.busy}
-							><Send size={12} aria-hidden="true" /> {m.capture_quick_page_send_to_agent()}</button
-						>
+						<button class="btn primary" onclick={() => act(c.id, "send")} disabled={c.busy}>
+							<Send size={12} aria-hidden="true" />
+							{m.capture_quick_page_send_to_agent()}
+						</button>
 						<div class="more">
 							<button
 								class="btn icon"
@@ -397,14 +411,15 @@
 								aria-haspopup="menu"
 								aria-expanded={menuFor === c.id}
 								onclick={() => (menuFor = menuFor === c.id ? null : c.id)}
-								><Ellipsis size={14} aria-hidden="true" /></button
 							>
+								<Ellipsis size={14} aria-hidden="true" />
+							</button>
 							{#if menuFor === c.id}
 								<div class="menu" role="menu">
-									<button role="menuitem" class="item" onclick={() => act(c.id, "reveal")}
-										><FolderOpen size={12} aria-hidden="true" />
-										{m.capture_quick_page_reveal_in_file_manager()}</button
-									>
+									<button role="menuitem" class="item" onclick={() => act(c.id, "reveal")}>
+										<FolderOpen size={12} aria-hidden="true" />
+										{m.capture_quick_page_reveal_in_file_manager()}
+									</button>
 									<button role="menuitem" class="item danger" onclick={() => act(c.id, "discard")}>
 										{c.confirmDiscard ? m.capture_quick_page_click_again_to_delete() : m.capture_discard()}
 									</button>
@@ -413,9 +428,9 @@
 						</div>
 					</div>
 					{#if c.confirmDiscard && menuFor !== c.id}
-						<button class="confirm" onclick={() => act(c.id, "discard")}
-							>{m.capture_quick_page_click_again_to_delete()}</button
-						>
+						<button class="confirm" onclick={() => act(c.id, "discard")}>
+							{m.capture_quick_page_click_again_to_delete()}
+						</button>
 					{/if}
 				{/if}
 			{/if}

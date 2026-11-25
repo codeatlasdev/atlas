@@ -39,9 +39,9 @@
 <div class="charts">
 	<div class="seg" role="tablist" aria-label={m.panel_charts_metric()}>
 		{#each TABS as t (t.id)}
-			<button role="tab" aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => (tab = t.id)}
-				>{t.label}</button
-			>
+			<button role="tab" aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => (tab = t.id)}>
+				{t.label}
+			</button>
 		{/each}
 	</div>
 	{#if tab === "errors"}

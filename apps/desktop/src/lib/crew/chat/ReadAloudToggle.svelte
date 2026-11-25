@@ -46,8 +46,10 @@
 				class="stop"
 				aria-label={m.crew_voice_speaking_stop()}
 				title={m.crew_voice_speaking_stop()}
-				onclick={() => speech.stop()}><Square size={10} aria-hidden="true" /></button
+				onclick={() => speech.stop()}
 			>
+				<Square size={10} aria-hidden="true" />
+			</button>
 		</span>
 	{/if}
 	{#if speech.error}

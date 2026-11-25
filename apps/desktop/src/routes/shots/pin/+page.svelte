@@ -128,9 +128,9 @@
 	{#if doc}
 		<img src={doc.src} alt={m.capture_pin_page_pinned_screenshot()} draggable="false" />
 	{/if}
-	<button class="x" aria-label={m.capture_pin_page_close_pin()} onclick={() => dispatch({ type: "close" })}
-		><X size={12} aria-hidden="true" /></button
-	>
+	<button class="x" aria-label={m.capture_pin_page_close_pin()} onclick={() => dispatch({ type: "close" })}>
+		<X size={12} aria-hidden="true" />
+	</button>
 	{#if badge}
 		<span class="badge" role="status">{percent(st.zoom)} · {percent(st.opacity)}</span>
 	{/if}

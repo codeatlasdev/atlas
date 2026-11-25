@@ -94,9 +94,9 @@
 		<g class="srv" transform="translate(450 62)">
 			<ServerRack state={rack} />
 		</g>
-		<text class="cap" x="525" y="266" text-anchor="middle"
-			>{m.crew_onboarding_connect_scene_your_server()}</text
-		>
+		<text class="cap" x="525" y="266" text-anchor="middle">
+			{m.crew_onboarding_connect_scene_your_server()}
+		</text>
 
 		<!-- the key lands in authorized_keys -->
 		<g class="auth" class:lit={lit("ssh")} class:go={active === "ssh"}>

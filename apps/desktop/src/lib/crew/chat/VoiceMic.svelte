@@ -60,9 +60,9 @@
 			{#if d.listening}<Square size={12} aria-hidden="true" />{:else}<Mic size={14} aria-hidden="true" />{/if}
 		</button>
 		{#if d.listening}
-			<span class="live-label" data-mic-live
-				><span class="dot" aria-hidden="true"></span>{m.crew_voice_mic_live()}</span
-			>
+			<span class="live-label" data-mic-live>
+				<span class="dot" aria-hidden="true"></span>{m.crew_voice_mic_live()}
+			</span>
 		{:else if d.phase === "starting"}
 			<span class="state">{m.crew_voice_starting()}</span>
 		{:else if d.phase === "transcribing"}
@@ -78,17 +78,17 @@
 		<span class="error" role="alert">
 			<span>{d.error.text}</span>
 			{#if d.error.action === "settings"}
-				<button type="button" class="link" onclick={() => d.openSettings()}
-					>{m.settings_capture_permission_open_settings()}</button
-				>
+				<button type="button" class="link" onclick={() => d.openSettings()}>
+					{m.settings_capture_permission_open_settings()}
+				</button>
 			{:else if d.error.action === "retry"}
-				<button type="button" class="link" onclick={() => d.retry()}
-					>{m.crew_onboarding_connect_step_action_retry()}</button
-				>
+				<button type="button" class="link" onclick={() => d.retry()}>
+					{m.crew_onboarding_connect_step_action_retry()}
+				</button>
 			{/if}
-			<button type="button" class="link" aria-label={m.crew_voice_dismiss()} onclick={() => d.clearError()}
-				><X size={11} aria-hidden="true" /></button
-			>
+			<button type="button" class="link" aria-label={m.crew_voice_dismiss()} onclick={() => d.clearError()}>
+				<X size={11} aria-hidden="true" />
+			</button>
 		</span>
 	{/if}
 	{#if session.message}

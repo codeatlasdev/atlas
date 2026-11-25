@@ -60,9 +60,9 @@
 				<TriangleAlert size={14} />
 				{m.viewers_devops_cannot_parse({ error: result.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(result.line)}
-					>{m.viewers_devops_open_as_source()}</button
-				>
+				<button class="rv-btn" onclick={() => ctx.toSource(result.line)}>
+					{m.viewers_devops_open_as_source()}
+				</button>
 			</div>
 		{:else if pkg}
 			<header class="rv-head">
@@ -78,16 +78,19 @@
 						<span class="rv-chip"><b>{f.label}</b> {f.value}</span>
 					{/each}
 					{#each pkg.links as l (l.url)}
-						<button class="rv-chip acc link" onclick={() => api.openUrl(l.url)}
-							><ExternalLink size={10} /> {l.label}</button
-						>
+						<button class="rv-chip acc link" onclick={() => api.openUrl(l.url)}>
+							<ExternalLink size={10} />
+							{l.label}
+						</button>
 					{/each}
 					{#if pkg.name && pkg.kind !== "go"}
 						<button
 							class="rv-chip acc link"
 							onclick={() => api.openUrl(url(pkg.kind, pkg.name, pkg.registry))}
-							><ExternalLink size={10} /> {m.viewers_files_package_view_registry()}</button
 						>
+							<ExternalLink size={10} />
+							{m.viewers_files_package_view_registry()}
+						</button>
 					{/if}
 				</div>
 			</header>
@@ -102,9 +105,9 @@
 								: m.viewers_files_package_view_scripts()}
 						<span class="n">{pkg.scripts.length}</span>
 						<span class="sp"></span>
-						{#if runnable}<span class="rv-note"
-								>{m.viewers_files_package_view_runs_with({ pm: pmLabel })}</span
-							>{/if}
+						{#if runnable}<span class="rv-note">
+								{m.viewers_files_package_view_runs_with({ pm: pmLabel })}
+							</span>{/if}
 					</h2>
 					<div class="rv-list">
 						{#each pkg.scripts as s (s.name)}

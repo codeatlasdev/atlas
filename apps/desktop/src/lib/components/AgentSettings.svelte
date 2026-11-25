@@ -143,8 +143,10 @@
 			<button
 				class="rm"
 				aria-label={m.settings_agents_agent_remove_label({ label: c.label })}
-				onclick={() => saveCustom(custom.filter((x) => x !== c))}><Trash2 size={14} /></button
+				onclick={() => saveCustom(custom.filter((x) => x !== c))}
 			>
+				<Trash2 size={14} />
+			</button>
 		</Row>
 	{/each}
 	<div data-setting="agent-custom" class="custom">
@@ -221,8 +223,10 @@
 				onclick={() => {
 					quick.list = quick.list.filter((x) => x.id !== q.id);
 					saveQuick();
-				}}><Trash2 size={14} /></button
+				}}
 			>
+				<Trash2 size={14} />
+			</button>
 		</div>
 	{/each}
 	<Row

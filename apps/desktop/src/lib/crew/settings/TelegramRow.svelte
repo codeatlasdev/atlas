@@ -71,9 +71,9 @@
 	{#if status?.configured}
 		<span class="state">{m.crew_settings_telegram_row_connected({ count: status.chats })}</span>
 	{:else}
-		<span class="state muted"
-			>{status ? m.crew_settings_telegram_row_not_set_up() : m.crew_settings_browsers_row_checking()}</span
-		>
+		<span class="state muted">
+			{status ? m.crew_settings_telegram_row_not_set_up() : m.crew_settings_browsers_row_checking()}
+		</span>
 	{/if}
 	{#snippet below()}
 		<div class="tg-form">
@@ -89,9 +89,9 @@
 			/>
 			<Button size="sm" onclick={save} disabled={busy || !token.trim()}>{m.common_action_save()}</Button>
 			{#if status?.configured}
-				<Button size="sm" variant="outlined" onclick={link} disabled={busy}
-					>{m.crew_settings_telegram_row_link_chat()}</Button
-				>
+				<Button size="sm" variant="outlined" onclick={link} disabled={busy}>
+					{m.crew_settings_telegram_row_link_chat()}
+				</Button>
 				<Button size="sm" variant="ghost" onclick={remove} disabled={busy}>{m.common_action_remove()}</Button>
 			{/if}
 		</div>

@@ -16,9 +16,9 @@
 	<div class="row">
 		<div class="row-text">
 			<span class="row-label">{m.crew_settings_crewmate_dialog_engine()}</span>
-			<span class="row-hint"
-				>{m.crew_settings_engine_section_the_coding_agent_that_runs({ name: crewmate.name })}</span
-			>
+			<span class="row-hint">
+				{m.crew_settings_engine_section_the_coding_agent_that_runs({ name: crewmate.name })}
+			</span>
 		</div>
 		<span class="row-value">{agentLabel}</span>
 	</div>
@@ -28,9 +28,10 @@
      explicit Save and Test instead of saving field by field. -->
 <section class="card">
 	<div class="card-head">
-		<span class="row-label"
-			><Globe size={13} aria-hidden="true" /> {m.crew_settings_engine_section_custom_provider()}</span
-		>
+		<span class="row-label">
+			<Globe size={13} aria-hidden="true" />
+			{m.crew_settings_engine_section_custom_provider()}
+		</span>
 	</div>
 	<p class="row-hint">{m.crew_settings_engine_section_optional_route_this_engine_through()}</p>
 	<div class="form-grid">

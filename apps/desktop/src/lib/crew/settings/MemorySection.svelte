@@ -13,9 +13,9 @@
 {:else}
 	<section class="card memory-card">
 		<div class="card-head">
-			<span class="row-label"
-				>{m.crew_settings_memory_section_what_name_remembers({ name: crewmate.name })}</span
-			>
+			<span class="row-label">
+				{m.crew_settings_memory_section_what_name_remembers({ name: crewmate.name })}
+			</span>
 			<SaveStatus field={settings.memoryField} />
 		</div>
 		<p class="row-hint">

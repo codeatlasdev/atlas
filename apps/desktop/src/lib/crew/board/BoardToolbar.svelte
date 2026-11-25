@@ -43,8 +43,10 @@
 					class="seg-btn"
 					class:seg-btn--on={filters.source === val}
 					onclick={() => (filters.source = val)}
-					aria-pressed={filters.source === val}>{label}</button
+					aria-pressed={filters.source === val}
 				>
+					{label}
+				</button>
 			{/each}
 		</div>
 
@@ -67,14 +69,18 @@
 					class="seg-btn"
 					class:seg-btn--on={filters.doneDays === 1}
 					onclick={() => (filters.doneDays = 1)}
-					aria-pressed={filters.doneDays === 1}>{m.crew_workspace_board_toolbar_today()}</button
+					aria-pressed={filters.doneDays === 1}
 				>
+					{m.crew_workspace_board_toolbar_today()}
+				</button>
 				<button
 					class="seg-btn"
 					class:seg-btn--on={filters.doneDays === 7}
 					onclick={() => (filters.doneDays = 7)}
-					aria-pressed={filters.doneDays === 7}>{m.crew_workspace_board_toolbar_7_days()}</button
+					aria-pressed={filters.doneDays === 7}
 				>
+					{m.crew_workspace_board_toolbar_7_days()}
+				</button>
 			</div>
 		{/if}
 	</div>

@@ -10,8 +10,8 @@
     "check": "bun src/cli.ts check"
   },
   "dependencies": {
-    "hyperframes": "0.8.149",
-    "shiki": "^4.5.0"
+    "hyperframes": "0.9.91",
+    "shiki": "^4.6.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

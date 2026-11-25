@@ -55,9 +55,10 @@
 			{m.onboarding_phases_find_my_projects()}
 		</Button>
 		<div class="secondary">
-			<button class="link" data-testid={ACTIONS.addFolder} onclick={() => void w.addFolder()}
-				><FolderPlus size={13} /> {m.onboarding_phases_add_a_folder()}</button
-			>
+			<button class="link" data-testid={ACTIONS.addFolder} onclick={() => void w.addFolder()}>
+				<FolderPlus size={13} />
+				{m.onboarding_phases_add_a_folder()}
+			</button>
 		</div>
 	</div>
 {/snippet}
@@ -99,9 +100,10 @@
 			{m.onboarding_phases_choose_a_project_folder()}
 		</Button>
 		<div class="secondary">
-			<button class="link" data-testid={ACTIONS.addFolder} onclick={() => void w.addFolder()}
-				><FolderPlus size={13} /> {m.onboarding_phases_add_a_folder()}</button
-			>
+			<button class="link" data-testid={ACTIONS.addFolder} onclick={() => void w.addFolder()}>
+				<FolderPlus size={13} />
+				{m.onboarding_phases_add_a_folder()}
+			</button>
 			<button class="link" onclick={() => void w.scan()}>{m.onboarding_phases_scan_again()}</button>
 		</div>
 	</div>

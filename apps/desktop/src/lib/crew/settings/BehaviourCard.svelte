@@ -22,9 +22,10 @@
 <section class="card rows">
 	<div class="row">
 		<div class="row-text">
-			<span class="row-label"
-				>{m.crew_permission_settings_mode()} <SaveStatus field={settings.modeField} /></span
-			>
+			<span class="row-label">
+				{m.crew_permission_settings_mode()}
+				<SaveStatus field={settings.modeField} />
+			</span>
 			<span class="row-hint">
 				{locked ? m.crew_permission_fixed_reason() : m.crew_permission_settings_mode_hint()}
 			</span>
@@ -46,10 +47,10 @@
 	</div>
 	<div class="row">
 		<div class="row-text">
-			<span class="row-label"
-				>{m.crew_settings_behaviour_card_short_replies()}
-				<SaveStatus field={settings.shortRepliesField} /></span
-			>
+			<span class="row-label">
+				{m.crew_settings_behaviour_card_short_replies()}
+				<SaveStatus field={settings.shortRepliesField} />
+			</span>
 			<span class="row-hint">{m.crew_settings_behaviour_card_summarize_long_replies_with_a()}</span>
 		</div>
 		<select

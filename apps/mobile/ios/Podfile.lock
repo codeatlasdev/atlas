@@ -14,7 +14,7 @@ EXTERNAL SOURCES:
     :path: Flutter
 
 SPEC CHECKSUMS:
-  atlas_mobile_native: b7090b2ecba9871b3b063715dd8c99f129c9b9a9
+  atlas_mobile_native: ffea3db9c7cc6fc1c3c771857648c83bbacb9a5f
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
 
 PODFILE CHECKSUM: 1cc3d02cb9a08ca752428265eae408d8ac495685

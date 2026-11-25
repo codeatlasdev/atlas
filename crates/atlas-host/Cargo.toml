@@ -27,7 +27,7 @@ base64 = { workspace = true }
 notify = { workspace = true }
 globset = "0.4"
 atlas-lsp = { path = "../atlas-lsp" }
-iroh = "1.3"
+iroh = "1.5"
 atlas-tui = { path = "../atlas-tui" }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
 sha2 = "0.11"
@@ -37,7 +37,7 @@ flate2 = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 # RS256 for the GitHub App JWT (already in the tree through rustls).
 ring = "0.17"
-croner = { version = "4", default-features = false, features = ["jiff"] }
+croner = { version = "5", default-features = false, features = ["jiff"] }
 jiff = { workspace = true }
 sha1_smol = "1"
 url = "2"

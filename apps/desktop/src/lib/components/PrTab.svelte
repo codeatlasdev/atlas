@@ -182,8 +182,9 @@
 					description={failed}
 					bare
 				>
-					{#snippet actions()}<Button size="sm" onclick={refresh}>{m.git_pr_tab_try_again()}</Button
-						>{/snippet}
+					{#snippet actions()}<Button size="sm" onclick={refresh}>
+							{m.git_pr_tab_try_again()}
+						</Button>{/snippet}
 				</EmptyState>
 			{:else if !repo || repo.kind === "pr"}
 				{#if loading}<Spinner />{/if}
@@ -216,11 +217,12 @@
 			{/if}
 			<span class="dim">{v.headRefName} → {v.baseRefName} · {v.author.login}</span>
 			<span class="spacer"></span>
-			<button class="icon" title={m.git_diff_view_refresh()} onclick={refresh}><RefreshCw size={13} /></button
-			>
-			<button class="icon" title={m.git_pr_tab_open_on_github()} onclick={() => api.openUrl(v!.url)}
-				><ExternalLink size={13} /></button
-			>
+			<button class="icon" title={m.git_diff_view_refresh()} onclick={refresh}>
+				<RefreshCw size={13} />
+			</button>
+			<button class="icon" title={m.git_pr_tab_open_on_github()} onclick={() => api.openUrl(v!.url)}>
+				<ExternalLink size={13} />
+			</button>
 			{#if v.state === "OPEN"}
 				{#if v.isDraft}
 					<Button
@@ -228,8 +230,9 @@
 						variant="ghost"
 						onclick={() =>
 							pr.run(worktreeId, ["pr", "ready", String(v!.number)], m.git_github_marked_ready())}
-						>{m.git_pr_tab_mark_ready()}</Button
 					>
+						{m.git_pr_tab_mark_ready()}
+					</Button>
 				{/if}
 				<DropdownMenu align="end">
 					{#snippet trigger()}<span class="merge">{m.git_pr_tab_merge()}</span>{/snippet}
@@ -237,8 +240,9 @@
 						<DropdownMenuItem
 							onclick={() =>
 								pr.run(worktreeId, ["pr", "merge", String(v!.number), flag], m.git_github_merged())}
-							>{label}</DropdownMenuItem
 						>
+							{label}
+						</DropdownMenuItem>
 					{/each}
 					<DropdownMenuItem
 						onclick={() =>
@@ -278,8 +282,10 @@
 								m.git_github_commented(),
 							);
 							reply = "";
-						}}>{m.git_pr_tab_comment()}</Button
+						}}
 					>
+						{m.git_pr_tab_comment()}
+					</Button>
 				</div>
 			</section>
 			<section class="checks">

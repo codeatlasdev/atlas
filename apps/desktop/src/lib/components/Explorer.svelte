@@ -394,14 +394,16 @@
 		>
 			{#if isDir}
 				{#if expanded[rel]}<ChevronDown size={11} />{:else}<ChevronRight size={11} />{/if}
-				{#if prefs.value.project_panel.folder_icons}<span class="ico" data-contrast-decorative
-						>{@html folderIcon(r.name, !!expanded[rel])}</span
-					>{/if}
+				{#if prefs.value.project_panel.folder_icons}<span class="ico" data-contrast-decorative>
+						{@html folderIcon(r.name, !!expanded[rel])}
+					</span>{/if}
 			{:else}
 				<span class="sp"></span>{#if prefs.value.project_panel.file_icons}<span
 						class="ico"
-						data-contrast-decorative>{@html fileIcon(r.name)}</span
-					>{/if}
+						data-contrast-decorative
+					>
+						{@html fileIcon(r.name)}
+					</span>{/if}
 			{/if}
 			{#if editing?.mode === "rename" && editing.rel === rel}
 				<input
@@ -427,8 +429,10 @@
 					const b = ev.currentTarget.getBoundingClientRect();
 					void openMenu(menuOf(rel, isDir), b.right, b.bottom);
 				}}
-				onkeydown={(ev) => ev.stopPropagation()}><Ellipsis size={12} /></button
+				onkeydown={(ev) => ev.stopPropagation()}
 			>
+				<Ellipsis size={12} />
+			</button>
 		</div>
 	{/if}
 {/snippet}

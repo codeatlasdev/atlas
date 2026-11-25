@@ -20,9 +20,9 @@
 {#if card && text}
 	{#snippet act()}
 		<Button size="sm" onclick={report}>{m.errors_crash_card_report()}</Button>
-		<Button size="sm" variant="glass" onclick={() => crashCards.dismiss()}
-			>{m.errors_crash_card_dismiss()}</Button
-		>
+		<Button size="sm" variant="glass" onclick={() => crashCards.dismiss()}>
+			{m.errors_crash_card_dismiss()}
+		</Button>
 	{/snippet}
 	<CornerNotice
 		id="crash-card"

@@ -82,9 +82,9 @@
 					onclick={() => (actionOutput.selected[project.id] = r.id)}
 				>
 					<span class="label">{r.label}</span>
-					<span class="time mono" title={m.panel_action_output_drawer_started_at({ time: hms(r.start) })}
-						>{hms(r.start)}</span
-					>
+					<span class="time mono" title={m.panel_action_output_drawer_started_at({ time: hms(r.start) })}>
+						{hms(r.start)}
+					</span>
 					<span class="dur mono">{duration(r, t.now)}</span>
 				</DrawerRow>
 			{/each}

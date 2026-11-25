@@ -24,6 +24,8 @@ interface ProjectMetrics {
 	/** When the stack was last seen going from stopped to up. */
 	upSince: number | null;
 	lastSlot: number;
+	/** Time of the latest sample (ms): the state timeline's right edge. */
+	lastAt: number;
 }
 
 /**
@@ -50,6 +52,7 @@ class Metrics {
 				restartTimes: [],
 				upSince: null,
 				lastSlot: -1,
+				lastAt: 0,
 			};
 			this.#projects.set(id, m);
 		}
@@ -72,6 +75,12 @@ class Metrics {
 	/** Latest slot sampled for a project (the x axis' right edge). */
 	end(id: string): number {
 		return this.#of(id).lastSlot;
+	}
+
+	/** Time of the latest sample for a project (ms), the state timeline's right edge: it moves with each sample, never
+	 * with the wall clock at render time (two renders in one millisecond would leave the bands where they were). */
+	sampledAt(id: string): number {
+		return this.#of(id).lastAt;
 	}
 
 	/** When the stack came up, for the uptime KPI (`null` while stopped). */
@@ -122,6 +131,7 @@ class Metrics {
 			if (!live) continue;
 			const m = this.#of(p.id);
 			m.lastSlot = slot;
+			m.lastAt = now;
 
 			for (const s of live.services) {
 				const h = this.service(p.id, s.name);

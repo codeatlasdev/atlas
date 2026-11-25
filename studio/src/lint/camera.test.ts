@@ -316,8 +316,12 @@ describe("text/too-small-for-target on real OCR of a real rendered image", () =>
 		expect(bad.map((x) => x.code)).toContain("text/too-small-for-target");
 		expect(bad.find((x) => x.code === "text/too-small-for-target")!.severity).toBe("error");
 		expect(await scan(big)).toEqual([]);
-		// 12 px text is below what the OCR engine can read at all: the focus reads as empty, which is flagged too
-		expect((await scan(await paint("tiny.png", 12))).map((x) => x.code)).toEqual(["text/focus-empty"]);
+		// 12 px text: Vision reads nothing that small, so the focus reads as empty; tesseract 5.5 reads it and measures it
+		// too small (both seen on macOS, 2026-11-24). Each engine has its exact finding, an error either way.
+		const tinyPng = await paint("tiny.png", 12);
+		const { engine } = await ocr(tinyPng);
+		const tiny = await scan(tinyPng);
+		expect(tiny.map((x) => [x.code, x.severity])).toEqual([[engine === "vision" ? "text/focus-empty" : "text/too-small-for-target", "error"]]);
 	}, 60_000);
 });
 describe("camera/focus-late", () => {

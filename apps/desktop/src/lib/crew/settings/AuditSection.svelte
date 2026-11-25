@@ -98,8 +98,10 @@
 						class="icon-btn"
 						aria-label={m.crew_settings_audit_section_copy_this_entry()}
 						title={m.crew_settings_audit_section_copy_this_entry()}
-						onclick={() => copy(auditCopyText(e))}><Copy size={13} /></button
+						onclick={() => copy(auditCopyText(e))}
 					>
+						<Copy size={13} />
+					</button>
 				</li>
 			{/each}
 		</ul>

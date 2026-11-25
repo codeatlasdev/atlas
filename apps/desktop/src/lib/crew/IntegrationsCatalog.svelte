@@ -231,8 +231,9 @@
 			<span
 				class="integ-pill integ-pill--soon"
 				aria-label={m.crew_workspace_integrations_catalog_coming_soon()}
-				>{m.crew_workspace_integrations_catalog_coming_soon()}</span
 			>
+				{m.crew_workspace_integrations_catalog_coming_soon()}
+			</span>
 		{/if}
 	</div>
 {/snippet}

@@ -198,31 +198,8 @@ pub(super) fn finish_task(
     // A task that came from GitHub tells its issue how it ended (done, failed or cancelled).
     reporting::finish(hub, task);
 
-    // Telegram outbound — done and failed both get a message.
-    let telegram_msg: Option<String> = match task.state {
-        TaskState::Done => {
-            let r = task.result.as_deref().unwrap_or("");
-            Some(
-                format!("{}: done\n\n{}", crewmate.name, r)
-                    .chars()
-                    .take(4000)
-                    .collect(),
-            )
-        }
-        TaskState::Failed => {
-            let e = task.error.as_deref().unwrap_or("unknown");
-            Some(
-                format!("{}: failed: {}", crewmate.name, e)
-                    .chars()
-                    .take(4000)
-                    .collect(),
-            )
-        }
-        _ => None,
-    };
-    if let Some(msg) = telegram_msg {
-        hub.crew.telegram.send_message(&msg);
-    }
+    // Telegram outbound — done and failed both get a message (the others are not announced).
+    hub.crew.telegram.send_outcome(&crewmate.name, task);
 
     // Push notification — only for task_done, skip phones already connected.
     if task.state != TaskState::Done {

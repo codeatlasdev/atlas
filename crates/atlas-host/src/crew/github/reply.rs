@@ -52,6 +52,7 @@ impl Reporter {
     /// Post "Working on it" (or take over the comment a previous run of this task already posted).
     /// `None` when there is nowhere to write or GitHub refused.
     pub(crate) async fn start(&mut self) -> Option<u64> {
+        // i18n-ignore: a GitHub comment is public and read by the whole repo, not by this server's owner; it stays English
         self.write(&render("Working on it.", &[], None)).await;
         self.last_edit = Some(Instant::now());
         self.comment_id
@@ -67,6 +68,7 @@ impl Reporter {
             return;
         }
         self.last_edit = Some(Instant::now());
+        // i18n-ignore: a GitHub comment is public and read by the whole repo; it stays English
         self.write(&render("Working on it.", steps, None)).await;
     }
 
@@ -83,6 +85,7 @@ impl Reporter {
                 .flatten(),
             None => None,
         };
+        // i18n-ignore: a GitHub comment is public and read by the whole repo; it stays English
         let head = format!("Done.\n\n{}", clip(result.trim(), MAX_RESULT_CHARS));
         self.write(&render(&head, steps, pr.as_ref().map(|p| p.url.as_str())))
             .await;
@@ -90,6 +93,7 @@ impl Reporter {
 
     /// The task failed.
     pub(crate) async fn finish_err(&mut self, error: &str) {
+        // i18n-ignore: a GitHub comment is public and read by the whole repo; it stays English
         let head = format!("Failed: {}", clip(error.trim(), MAX_RESULT_CHARS));
         self.write(&render(&head, &[], None)).await;
     }
@@ -124,6 +128,7 @@ impl Reporter {
 fn render(head: &str, steps: &[Step], pr_url: Option<&str>) -> String {
     let mut out = format!("{REPLY_MARKER}\n{head}\n");
     if let Some(url) = pr_url {
+        // i18n-ignore: a GitHub comment is public and read by the whole repo; it stays English
         out.push_str(&format!("\nPull request: {url}\n"));
     }
     if !steps.is_empty() {

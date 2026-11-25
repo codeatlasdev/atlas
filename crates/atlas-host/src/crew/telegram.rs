@@ -11,10 +11,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
+use atlas_i18n::t_in;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::crew::store::{Task, TaskState};
 use crate::paths::Loaded;
 use crate::server::Hub;
 
@@ -57,9 +59,6 @@ fn strip_ui(text: &str) -> (bool, &str) {
         None => (false, text),
     }
 }
-
-/// What a `/ui` with nothing to do says (one line).
-const UI_USAGE: &str = "Usage: /ui <message>, or /ui /task <crewmate-name> <message>";
 
 /// The agent's images of a task, `(name, bytes)`, up to [`MEDIA_GROUP_MAX`] of them: the newest, the ones
 /// the agent took last being the "after". An image whose file cannot be read is left out and logged.
@@ -160,6 +159,8 @@ pub(crate) struct TelegramBridge {
     hub_weak: OnceLock<Weak<Hub>>,
     config: Mutex<TelegramConfig>,
     link: Mutex<Option<LinkCode>>,
+    /// A language fixed for this bridge (tests); `None` follows the machine, see [`TelegramBridge::lang`].
+    lang: Option<&'static str>,
 }
 
 impl TelegramBridge {
@@ -189,12 +190,28 @@ impl TelegramBridge {
             hub_weak: OnceLock::new(),
             config: Mutex::new(config),
             link: Mutex::new(None),
+            lang: None,
         }
     }
 
     /// Set the Hub back-reference (called once from `CrewHub::start`).
     pub(crate) fn set_hub(&self, hub: Weak<Hub>) {
         let _ = self.hub_weak.set(hub);
+    }
+
+    /// The language of the machine running hostd, read at every message: hostd lives for days, and
+    /// Settings → Language writes `~/.atlas/language`, which `atlas_i18n::t!` (its language is read once
+    /// per process) would not follow until a restart. The texts go to the crew owner, who is whoever
+    /// owns this machine, never to the language of the chat or of the engine's reply.
+    fn lang(&self) -> &'static str {
+        self.lang.unwrap_or_else(atlas_core::lang::resolve)
+    }
+
+    /// This bridge speaks `tag` whatever the machine is set to.
+    #[cfg(test)]
+    pub(crate) fn with_lang(mut self, tag: &'static str) -> Self {
+        self.lang = Some(tag);
+        self
     }
 
     fn hub(&self) -> Option<Arc<Hub>> {
@@ -272,6 +289,31 @@ impl TelegramBridge {
         });
     }
 
+    /// Tell every linked chat how `task` of `crewmate_name` ended: `done` with what the engine answered, or
+    /// `failed` with why. Any other ending is not announced. What the engine said is passed as it is.
+    pub(crate) fn send_outcome(&self, crewmate_name: &str, task: &Task) {
+        let lang = self.lang();
+        let text = match task.state {
+            TaskState::Done => t_in!(
+                lang,
+                "crew_telegram_task_done",
+                name = crewmate_name,
+                result = task.result.as_deref().unwrap_or("")
+            ),
+            TaskState::Failed => t_in!(
+                lang,
+                "crew_telegram_task_failed",
+                name = crewmate_name,
+                error = task
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| t_in!(lang, "crew_telegram_error_unknown"))
+            ),
+            _ => return,
+        };
+        self.send_message(&text.chars().take(4000).collect::<String>());
+    }
+
     /// Send an approval request with Allow / Deny inline keyboard to all linked chats.
     pub(crate) fn send_approval(
         &self,
@@ -286,11 +328,19 @@ impl TelegramBridge {
             return;
         }
         let chats = self.config.lock().chats.clone();
-        let text = format!(
-            "*{crewmate_name}* wants to run `{tool_name}`\n```\n{}\n```",
-            serde_json::to_string_pretty(tool_input).unwrap_or_default()
+        let lang = self.lang();
+        let text = t_in!(
+            lang,
+            "crew_telegram_approval_prompt",
+            name = crewmate_name,
+            tool = tool_name,
+            input = serde_json::to_string_pretty(tool_input).unwrap_or_default()
         );
         let req = req.to_string();
+        let (allow, deny) = (
+            t_in!(lang, "crew_telegram_button_allow"),
+            t_in!(lang, "crew_telegram_button_deny"),
+        );
         let base = self.api_base.clone();
         let _ = pane; // pane is embedded in req → approval lookup
         tokio::spawn(async move {
@@ -299,8 +349,8 @@ impl TelegramBridge {
             };
             let keyboard = json!({
                 "inline_keyboard": [[
-                    {"text": "Allow", "callback_data": format!("a:{req}:1")},
-                    {"text": "Deny",  "callback_data": format!("a:{req}:0")}
+                    {"text": allow, "callback_data": format!("a:{req}:1")},
+                    {"text": deny,  "callback_data": format!("a:{req}:0")}
                 ]]
             });
             for chat_id in &chats {
@@ -336,9 +386,12 @@ impl TelegramBridge {
         let images = self
             .hub()
             .map(|hub| card_images_of(&hub.crew.store, crewmate_id, task_id));
-        let text = format!(
-            "{crewmate_name}: this work needs you\n\n{}",
-            reasons
+        let lang = self.lang();
+        let text = t_in!(
+            lang,
+            "crew_telegram_card_needs_you",
+            name = crewmate_name,
+            reasons = reasons
                 .iter()
                 .map(|r| format!("- {r}"))
                 .collect::<Vec<_>>()
@@ -348,8 +401,8 @@ impl TelegramBridge {
         .take(4000)
         .collect::<String>();
         let keyboard = json!({"inline_keyboard": [[
-            {"text": "Override", "callback_data": format!("r:{task_id}:o")},
-            {"text": "Retry with reasons", "callback_data": format!("r:{task_id}:r")}
+            {"text": t_in!(lang, "crew_telegram_button_override"), "callback_data": format!("r:{task_id}:o")},
+            {"text": t_in!(lang, "crew_telegram_button_retry"), "callback_data": format!("r:{task_id}:r")}
         ]]});
         let base = self.api_base.clone();
         tokio::spawn(async move {
@@ -489,7 +542,14 @@ impl TelegramBridge {
             let req = parts[1];
             let allow = parts[2] == "1";
 
-            let answer_text = if allow { "✅ Allowed" } else { "❌ Denied" };
+            let answer_text = if allow {
+                format!(
+                    "✅ {}",
+                    t_in!(self.lang(), "crew_telegram_approval_allowed")
+                )
+            } else {
+                format!("❌ {}", t_in!(self.lang(), "crew_telegram_approval_denied"))
+            };
 
             if let Some(hub) = self.hub() {
                 // Find the pane from pending approvals.
@@ -536,9 +596,9 @@ impl TelegramBridge {
             .hub()
             .is_some_and(|hub| hub.crew.answer_action(task_id, answer.to_string()));
         let text = match (delivered, override_it) {
-            (false, _) => "This task is no longer waiting.",
-            (true, true) => "Overridden: the work is accepted.",
-            (true, false) => "Retrying with the reasons.",
+            (false, _) => t_in!(self.lang(), "crew_telegram_refusal_gone"),
+            (true, true) => t_in!(self.lang(), "crew_telegram_refusal_overridden"),
+            (true, false) => t_in!(self.lang(), "crew_telegram_refusal_retrying"),
         };
         let token = self.config.lock().token.clone();
         if token.is_empty() {
@@ -582,12 +642,23 @@ impl TelegramBridge {
             if let LinkAttempt::Linked = outcome {
                 let hostname = crate::server::hostname();
                 let _ = self.add_chat(chat_id);
-                self.reply(chat_id, &format!("Linked to {hostname}.")).await;
+                self.reply(
+                    chat_id,
+                    &t_in!(self.lang(), "crew_telegram_linked", hostname = hostname),
+                )
+                .await;
             } else if code.is_empty() {
-                self.reply(chat_id, "Send your link code: /start <code>")
-                    .await;
+                self.reply(
+                    chat_id,
+                    &t_in!(self.lang(), "crew_telegram_link_code_missing"),
+                )
+                .await;
             } else {
-                self.reply(chat_id, "Invalid or expired code.").await;
+                self.reply(
+                    chat_id,
+                    &t_in!(self.lang(), "crew_telegram_link_code_invalid"),
+                )
+                .await;
             }
             return;
         }
@@ -607,7 +678,8 @@ impl TelegramBridge {
         let (ui, text) = strip_ui(text);
         // A UI task needs its message: a task with an empty prompt is never useful, so say how and queue nothing.
         if ui && text.is_empty() {
-            self.reply(chat_id, UI_USAGE).await;
+            self.reply(chat_id, &t_in!(self.lang(), "crew_telegram_ui_usage"))
+                .await;
             return;
         }
 
@@ -616,7 +688,8 @@ impl TelegramBridge {
             if let Some(hub) = self.hub() {
                 let crewmates = hub.crew.store.list_crewmates();
                 if crewmates.is_empty() {
-                    self.reply(chat_id, "No crewmates configured.").await;
+                    self.reply(chat_id, &t_in!(self.lang(), "crew_telegram_no_crewmates"))
+                        .await;
                 } else {
                     let lines: Vec<String> = crewmates
                         .iter()
@@ -635,7 +708,7 @@ impl TelegramBridge {
                 None => (rest.trim(), ""),
             };
             if prompt.is_empty() {
-                self.reply(chat_id, "Usage: /task <crewmate-name> <prompt>")
+                self.reply(chat_id, &t_in!(self.lang(), "crew_telegram_task_usage"))
                     .await;
                 return;
             }
@@ -650,7 +723,7 @@ impl TelegramBridge {
                 let name = crewmates[0].name.clone();
                 self.create_task(chat_id, &name, text, &[], ui).await;
             } else {
-                self.reply(chat_id, "Which crewmate? Use /task <name> <text>")
+                self.reply(chat_id, &t_in!(self.lang(), "crew_telegram_which_crewmate"))
                     .await;
             }
         }
@@ -683,7 +756,7 @@ impl TelegramBridge {
                 if crewmates.len() != 1 {
                     self.reply(
                         chat_id,
-                        "Which crewmate? Send the photo with the caption /task <name> <text>",
+                        &t_in!(self.lang(), "crew_telegram_which_crewmate_photo"),
                     )
                     .await;
                     return;
@@ -713,7 +786,7 @@ impl TelegramBridge {
             Err(e) => {
                 self.reply(
                     chat_id,
-                    &format!("Not queued: the photo could not be fetched ({e})"),
+                    &t_in!(self.lang(), "crew_telegram_photo_fetch_failed", reason = e),
                 )
                 .await;
             }
@@ -789,14 +862,24 @@ impl TelegramBridge {
             .iter()
             .find(|b| b.name.eq_ignore_ascii_case(crewmate_name))
         else {
-            self.reply(chat_id, &format!("Crewmate '{}' not found.", crewmate_name))
-                .await;
+            self.reply(
+                chat_id,
+                &t_in!(
+                    self.lang(),
+                    "crew_telegram_crewmate_not_found",
+                    name = crewmate_name
+                ),
+            )
+            .await;
             return;
         };
         let max = crate::crew::handlers::tasks::MAX_PROMPT_CHARS;
         if prompt.chars().count() > max {
-            self.reply(chat_id, &format!("The prompt is over {max} characters."))
-                .await;
+            self.reply(
+                chat_id,
+                &t_in!(self.lang(), "crew_telegram_prompt_too_long", max = max),
+            )
+            .await;
             return;
         }
         let mut task = crate::crew::store::Task::new("telegram", prompt);
@@ -805,7 +888,15 @@ impl TelegramBridge {
         if let Err(e) =
             crate::crew::attachments::attach(&hub.crew.store, &crewmate.id, &mut task, images)
         {
-            self.reply(chat_id, &format!("Not queued: {e}")).await;
+            self.reply(
+                chat_id,
+                &t_in!(
+                    self.lang(),
+                    "crew_telegram_not_queued",
+                    reason = e.to_string()
+                ),
+            )
+            .await;
             return;
         }
         if let Err(e) = hub.crew.store.append_task(&crewmate.id, &task) {
@@ -815,13 +906,24 @@ impl TelegramBridge {
                 &crewmate.id,
                 &task.id,
             ));
-            self.reply(chat_id, &format!("Error: {e}")).await;
+            self.reply(
+                chat_id,
+                &t_in!(
+                    self.lang(),
+                    "crew_telegram_task_error",
+                    error = e.to_string()
+                ),
+            )
+            .await;
             return;
         }
         crate::crew::runner::enqueue(&hub, &hub.crew.store, crewmate, task);
         hub.broadcast(super::events::task(&crewmate.id, None));
-        self.reply(chat_id, &format!("Task {task_id} queued."))
-            .await;
+        self.reply(
+            chat_id,
+            &t_in!(self.lang(), "crew_telegram_task_queued", id = task_id),
+        )
+        .await;
     }
 
     async fn reply(&self, chat_id: i64, text: &str) {
@@ -842,6 +944,8 @@ impl TelegramBridge {
 #[cfg(test)]
 mod tests {
     use super::TelegramBridge;
+    use crate::crew::store::{Task, TaskState};
+    use serde_json::{Value, json};
     use std::time::Duration;
 
     #[test]
@@ -1043,6 +1147,289 @@ mod tests {
             .unwrap_or("")
             .to_string();
         assert_eq!(request_line, "POST /bot123:abc/sendMessage HTTP/1.1");
+    }
+
+    /// One request a bridge made to the fake Telegram on `api`: `(request line, JSON body)`.
+    async fn telegram_call(api: &tokio::net::TcpListener) -> (String, Value) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (mut s, _) = tokio::time::timeout(atlas_core::scaling::HANG, api.accept())
+            .await
+            .expect("the bridge never called the Telegram API")
+            .unwrap();
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let (head, body) = loop {
+            let n = s.read(&mut chunk).await.unwrap();
+            assert!(n > 0, "the request ended before its body");
+            buf.extend_from_slice(&chunk[..n]);
+            let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
+                continue;
+            };
+            let head = String::from_utf8_lossy(&buf[..end]).to_string();
+            let len = head
+                .to_lowercase()
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length: ").map(str::to_string))
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .unwrap_or(0);
+            if buf.len() >= end + 4 + len {
+                break (head, buf[end + 4..end + 4 + len].to_vec());
+            }
+        };
+        let _ = s
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nconnection: close\r\ncontent-length: 11\r\n\r\n{\"ok\":true}",
+            )
+            .await;
+        let request_line = head.lines().next().unwrap_or("").to_string();
+        (request_line, serde_json::from_slice(&body).unwrap())
+    }
+
+    /// A bridge linked to chat 42 that talks to a fake Telegram, and speaks `lang` whatever the machine is set to.
+    async fn bridge_speaking(
+        lang: &'static str,
+    ) -> (TelegramBridge, tokio::net::TcpListener, tempfile::TempDir) {
+        let api = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let b = TelegramBridge::new_with_api(
+            tmp.path().to_path_buf(),
+            format!("http://{}", api.local_addr().unwrap()),
+        )
+        .with_lang(lang);
+        {
+            let mut cfg = b.config.lock();
+            cfg.token = "123:abc".to_string();
+            cfg.chats = vec![42];
+        }
+        (b, api, tmp)
+    }
+
+    // The crew owner reads `done` / `failed` in the language of the machine running hostd; the words the engine
+    // wrote (the result, the error) reach the chat exactly as they came, in whatever language they are.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn done_and_failed_are_sent_in_the_server_language_and_the_engines_text_is_untouched() {
+        let result = "Tudo verde: 12 tests ✅ <b>ok</b> {name}";
+        let error = "exit status 1: {error} não compilou";
+        let cases = [
+            ("en", TaskState::Done, format!("Ana: done\n\n{result}")),
+            ("en", TaskState::Failed, format!("Ana: failed: {error}")),
+            (
+                "pt-BR",
+                TaskState::Done,
+                format!("Ana: tarefa concluída\n\n{result}"),
+            ),
+            (
+                "pt-BR",
+                TaskState::Failed,
+                format!("Ana: tarefa com falha: {error}"),
+            ),
+        ];
+        for (lang, state, want) in cases {
+            let (b, api, _tmp) = bridge_speaking(lang).await;
+            let mut task = Task::new("test", "x");
+            task.state = state;
+            task.result = Some(result.to_string());
+            task.error = Some(error.to_string());
+            b.send_outcome("Ana", &task);
+            let (line, body) = telegram_call(&api).await;
+            assert_eq!(line, "POST /bot123:abc/sendMessage HTTP/1.1");
+            assert_eq!(body["text"], want.as_str(), "{lang} {:?}", task.state);
+        }
+
+        // No error text at all: the missing reason is said in the same language.
+        for (lang, want) in [
+            ("en", "Ana: failed: unknown"),
+            ("pt-BR", "Ana: tarefa com falha: desconhecido"),
+        ] {
+            let (b, api, _tmp) = bridge_speaking(lang).await;
+            let mut task = Task::new("test", "x");
+            task.state = TaskState::Failed;
+            b.send_outcome("Ana", &task);
+            assert_eq!(telegram_call(&api).await.1["text"], want, "{lang}");
+        }
+    }
+
+    // A task that is still running (or was cancelled) is not announced: no call reaches Telegram.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn only_done_and_failed_are_announced() {
+        for state in [
+            TaskState::Queued,
+            TaskState::Running,
+            TaskState::Cancelled,
+            TaskState::WaitingAction,
+        ] {
+            let (b, api, _tmp) = bridge_speaking("pt-BR").await;
+            let mut task = Task::new("test", "x");
+            task.state = state;
+            b.send_outcome("Ana", &task);
+            let call = tokio::time::timeout(Duration::from_millis(300), api.accept()).await;
+            assert!(call.is_err(), "{state:?} must not be sent to Telegram");
+        }
+    }
+
+    // The approval request and the labels of its buttons follow the server language; the tool id, its input
+    // and the `callback_data` the poll loop parses stay as they are.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_approval_request_and_its_buttons_speak_the_server_language() {
+        for (lang, text, allow, deny) in [
+            (
+                "en",
+                "*Ana* wants to run `Bash`\n```\n{\n  \"cmd\": \"ls\"\n}\n```",
+                "Allow",
+                "Deny",
+            ),
+            (
+                "pt-BR",
+                "*Ana* quer executar `Bash`\n```\n{\n  \"cmd\": \"ls\"\n}\n```",
+                "Permitir",
+                "Negar",
+            ),
+        ] {
+            let (b, api, _tmp) = bridge_speaking(lang).await;
+            b.send_approval("Ana", "Bash", &json!({"cmd": "ls"}), "req1", "pane");
+            let (_, body) = telegram_call(&api).await;
+            assert_eq!(body["text"], text, "{lang}");
+            let row = &body["reply_markup"]["inline_keyboard"][0];
+            assert_eq!(row[0]["text"], allow, "{lang}");
+            assert_eq!(row[1]["text"], deny, "{lang}");
+            assert_eq!(row[0]["callback_data"], "a:req1:1");
+            assert_eq!(row[1]["callback_data"], "a:req1:0");
+        }
+    }
+
+    // The "needs you" message and its Override / Retry buttons follow the server language; the guards'
+    // reasons come as the guards wrote them.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_card_message_and_its_buttons_speak_the_server_language() {
+        let reasons = vec!["no tests ran".to_string(), "sem capturas".to_string()];
+        for (lang, text, over, retry) in [
+            (
+                "en",
+                "Ana: this work needs you\n\n- no tests ran\n- sem capturas",
+                "Override",
+                "Retry with reasons",
+            ),
+            (
+                "pt-BR",
+                "Ana: este trabalho precisa de você\n\n- no tests ran\n- sem capturas",
+                "Aceitar mesmo assim",
+                "Tentar novamente com os motivos",
+            ),
+        ] {
+            let (b, api, _tmp) = bridge_speaking(lang).await;
+            b.send_card("Ana", "crewmate-id", "t1", &reasons);
+            let (_, body) = telegram_call(&api).await;
+            assert_eq!(body["text"], text, "{lang}");
+            let row = &body["reply_markup"]["inline_keyboard"][0];
+            assert_eq!(row[0]["text"], over, "{lang}");
+            assert_eq!(row[1]["text"], retry, "{lang}");
+            assert_eq!(row[0]["callback_data"], "r:t1:o");
+            assert_eq!(row[1]["callback_data"], "r:t1:r");
+        }
+    }
+
+    // What the owner types is answered in the server language, and the words he types (`/start`, `/task`,
+    // `/ui`) stay as they are inside the sentence.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn replies_to_the_owners_messages_speak_the_server_language() {
+        let hostname = crate::server::hostname();
+        let message = |text: &str| json!({"message_id": 1, "chat": {"id": 42}, "text": text});
+        for (lang, replies) in [
+            (
+                "en",
+                [
+                    (
+                        "/task Ana",
+                        "Usage: /task <crewmate-name> <prompt>".to_string(),
+                    ),
+                    (
+                        "/ui",
+                        "Usage: /ui <message>, or /ui /task <crewmate-name> <message>".to_string(),
+                    ),
+                    ("/start", "Send your link code: /start <code>".to_string()),
+                    (
+                        "/start 999999",
+                        "Code not accepted: it is wrong or has expired.".to_string(),
+                    ),
+                ],
+            ),
+            (
+                "pt-BR",
+                [
+                    (
+                        "/task Ana",
+                        "Uso: /task <nome-do-crewmate> <prompt>".to_string(),
+                    ),
+                    (
+                        "/ui",
+                        "Uso: /ui <mensagem> ou /ui /task <nome-do-crewmate> <mensagem>"
+                            .to_string(),
+                    ),
+                    (
+                        "/start",
+                        "Envie seu código de vinculação: /start <código>".to_string(),
+                    ),
+                    (
+                        "/start 999999",
+                        "Código não aceito: está errado ou expirou.".to_string(),
+                    ),
+                ],
+            ),
+        ] {
+            let (b, api, _tmp) = bridge_speaking(lang).await;
+            for (text, want) in replies {
+                let msg = message(text);
+                let (_, call) = tokio::join!(b.handle_message(&msg), telegram_call(&api));
+                assert_eq!(call.1["text"], want.as_str(), "{lang} {text}");
+            }
+        }
+
+        // A correct link code: the name of this computer goes in as it is.
+        for (lang, want) in [
+            ("en", format!("Linked to {hostname}.")),
+            ("pt-BR", format!("Vinculado a {hostname}.")),
+        ] {
+            let (b, api, _tmp) = bridge_speaking(lang).await;
+            let code = b.start_link();
+            let msg = message(&format!("/start {code}"));
+            let (_, call) = tokio::join!(b.handle_message(&msg), telegram_call(&api));
+            assert_eq!(call.1["text"], want.as_str(), "{lang}");
+        }
+    }
+
+    // A tap on a button edits the message it was under, in the server language: the decision of an approval
+    // (a mark before it) and the end of a refused task's card.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_edit_after_a_button_tap_speaks_the_server_language() {
+        let tap =
+            |data: &str| json!({"message": {"chat": {"id": 42}, "message_id": 7}, "data": data});
+        for (lang, allowed, denied, gone) in [
+            (
+                "en",
+                "✅ Allowed",
+                "❌ Denied",
+                "This task is no longer waiting.",
+            ),
+            (
+                "pt-BR",
+                "✅ Permitido",
+                "❌ Negado",
+                "Esta tarefa não está mais esperando.",
+            ),
+        ] {
+            for (data, want) in [
+                ("a:req1:1", allowed),
+                ("a:req1:0", denied),
+                ("r:t1:o", gone),
+            ] {
+                let (b, api, _tmp) = bridge_speaking(lang).await;
+                let cb = tap(data);
+                let (_, call) = tokio::join!(b.handle_callback(&cb), telegram_call(&api));
+                assert_eq!(call.0, "POST /bot123:abc/editMessageText HTTP/1.1");
+                assert_eq!(call.1["text"], want, "{lang} {data}");
+                assert_eq!(call.1["message_id"], 7);
+            }
+        }
     }
 
     // `/ui` marks a UI task and is not part of the prompt; only a leading `/ui ` counts.

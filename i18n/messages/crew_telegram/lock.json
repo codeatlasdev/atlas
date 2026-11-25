@@ -1,0 +1,32 @@
+{
+  "pt-BR": {
+    "crew_telegram_approval_allowed": "3e811fd5d175",
+    "crew_telegram_approval_denied": "4b4a83794e5a",
+    "crew_telegram_approval_prompt": "3b667491701a",
+    "crew_telegram_button_allow": "4fe21c7d5710",
+    "crew_telegram_button_deny": "c0456fee0bc0",
+    "crew_telegram_button_override": "4464271e43df",
+    "crew_telegram_button_retry": "643260a86532",
+    "crew_telegram_card_needs_you": "9fc3cfb54197",
+    "crew_telegram_crewmate_not_found": "2b75c1eac75f",
+    "crew_telegram_error_unknown": "eb8bf0d80db3",
+    "crew_telegram_link_code_invalid": "5052cfd7dddb",
+    "crew_telegram_link_code_missing": "a132a17e4f53",
+    "crew_telegram_linked": "1b340a966970",
+    "crew_telegram_no_crewmates": "170027b9ce55",
+    "crew_telegram_not_queued": "77ec11d05c76",
+    "crew_telegram_photo_fetch_failed": "3616bf3f0b62",
+    "crew_telegram_prompt_too_long": "0fb119cc02e6",
+    "crew_telegram_refusal_gone": "499f8a4883c2",
+    "crew_telegram_refusal_overridden": "e37bd9440deb",
+    "crew_telegram_refusal_retrying": "3d0e0f6e2f49",
+    "crew_telegram_task_done": "08ba9ba34b36",
+    "crew_telegram_task_error": "ecf7f122ca8d",
+    "crew_telegram_task_failed": "06ad37edf11c",
+    "crew_telegram_task_queued": "0e19770860fe",
+    "crew_telegram_task_usage": "9d48c95bfa54",
+    "crew_telegram_ui_usage": "be3765b70731",
+    "crew_telegram_which_crewmate": "4c408cff66ad",
+    "crew_telegram_which_crewmate_photo": "14ec74368529"
+  }
+}

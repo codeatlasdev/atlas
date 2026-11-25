@@ -33,6 +33,6 @@
     "@inlang/paraglide-js": "3.2.2",
     "@inlang/plugin-message-format": "4.6.2",
     "@types/bun": "^1.4.5",
-    "typescript": "^6"
+    "typescript": "^7"
   }
 }

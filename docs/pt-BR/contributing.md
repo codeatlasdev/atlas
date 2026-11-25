@@ -1,7 +1,7 @@
 ---
 title: "Contribuir"
 source: contributing.md
-source_sha: "896d6de7c351b2dabf985170941094b27902bebf"
+source_sha: "36c3de6d565ded522a49051d602feac6a6d2e7d0"
 translation: machine
 ---
 
@@ -107,8 +107,9 @@ Todo comando é um script do `package.json` da raiz, então `bun run <nome>` a p
 | `bun run icons` / `icons:check` | regenera os ícones do app a partir de `assets/*.svg`; falha quando algo derivado está desatualizado |
 | `bun run i18n:extract <path-or-glob>` | move o texto fixo dos componentes Svelte para o catálogo (`--dry-run`, `--json`, `--area`; `--plan` imprime os lotes de migração do [`i18n/MIGRATION.md`](https://github.com/codeatlasdev/atlas/blob/main/i18n/MIGRATION.md); um caminho `.rs` imprime uma lista de trabalho e nunca escreve) |
 | `bun run i18n:check` / `i18n:translate` / `i18n:fix` / `i18n:add-locale` | traduções: verifica todos os catálogos (também parte do `bun run check`), rascunha com um modelo as chaves ausentes ou desatualizadas, ordena e refaz o lock, adiciona um idioma (veja [Traduzir o Atlas](#traduzir-o-atlas)) |
-| `bun run deps:outdated` / `deps:update` | o que está atrás da versão mais nova em cada ecossistema / leva tudo para a mais nova (veja [Atualizar dependências](#atualizar-dependências)) |
+| `bun run deps:outdated` / `deps:update` | o que está atrás da versão mais nova em Cargo, bun, Go, Dart e Ruby / leva tudo para a mais nova (veja [Atualizar dependências](#atualizar-dependências)) |
 | `bun run release <alpha\|beta\|rc\|stable\|patch>` / `release:dry` / `release:publish vX.Y.Z` / `release:test` | só para mantenedores: publica uma versão, ensaia a publicação, (re)publica uma tag existente, roda os testes das ferramentas de release (veja [Publicar uma versão](release.md)) |
+| `bun run release:notify vX.Y.Z [--dry-run]` | só para mantenedores: comenta "Fixed in" em toda issue que a versão fechou (o último passo do `release`; pode rodar de novo; veja [Publicar uma versão](release.md)) |
 | `cargo test -p atlas-cli --test mcp` | a suíte de integração do MCP (binário real, execução headless ao vivo; precisa de `python3`) |
 | `cargo test -p atlas-tui --release -- --ignored --nocapture bench_one_million` | o benchmark do pipeline de logs |
 | `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench` | o benchmark do renderizador do terminal |
@@ -131,15 +132,15 @@ As regras de egress (`nft`) são uma string pura, testada aqui quanto à ordem e
 
 Todo manifesto do repositório, num lugar só: Cargo (o workspace e `apps/mobile/native`), os projetos bun (raiz, `apps/desktop`, `site`, `studio`, `scripts/i18n`), os pacotes Dart e o Gemfile do Atlas Mobile, e o módulo Go do push relay. O Dependabot (`.github/dependabot.yml`) acompanha o mesmo conjunto, mais a imagem de build do push relay e os pins das GitHub Actions.
 
-- O `bun run deps:outdated` só lê: por ecossistema, o que tem versão mais nova, majors incluídas, e as toolchains fixadas (Rust, Go, Flutter, `tauri-cli`) contra a estável mais nova.
-- O `bun run deps:update` (`scripts/deps.sh`) leva tudo para a versão mais nova, majors incluídas: `cargo upgrade --incompatible` e depois `cargo update`, `npm-check-updates -u` em cada projeto bun (configuração: `.ncurc.json`), `go get -u`, `flutter pub upgrade --major-versions`, `bundle update`. Uma ferramenta ausente pula o seu ecossistema com um aviso. Depois rode `bun run check:changed` e corrija o que uma major quebrou.
+- O `bun run deps:outdated` só lê: para cada gerenciador de pacotes, o que tem versão mais nova, majors incluídas, e as toolchains fixadas (Rust, Go, Flutter, `tauri-cli`) contra a estável mais nova.
+- O `bun run deps:update` (`scripts/deps.sh`) leva tudo para a versão mais nova, majors incluídas: `cargo upgrade --incompatible` e depois `cargo update`, `npm-check-updates -u` em cada projeto bun (configuração: `.ncurc.json`), `go get -u`, `flutter pub upgrade --major-versions`, `bundle update`. Sem a ferramenta, aquela parte é pulada com um aviso. Depois rode `bun run check:changed` e corrija o que uma major quebrou.
 - As toolchains mudam à mão, cada uma num lugar: `rust-toolchain.toml`, `flutter:` em `apps/mobile/pubspec.yaml` (o CI lê dali), a linha `go` de `services/push-relay/go.mod` com a mesma minor no `Dockerfile` dele, e `TAURI_CLI_VERSION` em `scripts/setup.sh` (mesma minor do crate `tauri`).
 
 Versões retidas, cada uma com o motivo onde é definida:
 
 - `windows` e `windows-core` (Cargo) ficam nas versões exatas sobre as quais o `webview2-com` é construído: os traits COM deles são por versão, então subir só um quebra o build do Windows (#156). `CARGO_HOLDS` em `scripts/deps.sh` e o `ignore` em `.github/dependabot.yml`.
-- `webkit2gtk`, `gtk` e `gdkwayland-sys` (Cargo, Linux) ficam nas versões que o runtime wry do tauri usa (o `wry` fixa `webkit2gtk =2.0.2`, o `tao` 0.37 usa `gdkwayland-sys` 0.18): uma mais nova traz um segundo conjunto de tipos GTK e o build do Linux não compila. Elas mudam quando o tauri mudar. `CARGO_HOLDS` em `scripts/deps.sh`, motivos em `crates/atlas-desktop/Cargo.toml`.
-- O `typescript` é rejeitado no `.ncurc.json`: ele fica na 6.x porque o compilador nativo do TypeScript 7 abandona a API JS da qual `svelte-kit sync`, `svelte-check` e `astro check` dependem. Atualize-o manualmente quando essas ferramentas funcionarem com a 7.
+- `webkit2gtk`, `gtk` e `gdkwayland-sys` (Cargo, Linux) ficam nas versões que o runtime wry do tauri usa (o `wry` fixa `webkit2gtk =2.0.2`, o `tao` 0.37 usa `gdkwayland-sys` 0.18): uma mais nova traz um segundo conjunto de tipos GTK e o build do Linux não compila. Elas mudam quando o tauri mudar. `CARGO_HOLDS` em `scripts/deps.sh` e o `ignore` em `.github/dependabot.yml`; motivos em `crates/atlas-desktop/Cargo.toml`.
+- O `typescript` é rejeitado no `.ncurc.json` e as majors dele são ignoradas no `.github/dependabot.yml`: ele fica na 6.x porque o compilador nativo do TypeScript 7 abandona a API JS da qual `svelte-kit sync`, `svelte-check` e `astro check` dependem. Atualize-o manualmente quando essas ferramentas funcionarem com a 7.
 - O `studio` fixa o `hyperframes` em uma versão exata; depois de uma atualização, rode `bun run studio:check` e mantenha a versão antiga se ele falhar.
 
 ## Compilar e rodar suas alterações

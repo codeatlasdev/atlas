@@ -107,6 +107,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run i18n:check` / `i18n:translate` / `i18n:fix` / `i18n:add-locale` | translations: check every catalog (also part of `bun run check`), draft missing or outdated keys with a model, sort and relock, add a language (see [Translating Atlas](#translating-atlas)) |
 | `bun run deps:outdated` / `deps:update` | what is behind its latest release in every ecosystem / move all of it to latest (see [Updating dependencies](#updating-dependencies)) |
 | `bun run release <alpha\|beta\|rc\|stable\|patch>` / `release:dry` / `release:publish vX.Y.Z` / `release:test` | maintainers only: cut a release, rehearse it, (re)publish an existing tag, run the release tooling's tests (see [Releasing](release.md)) |
+| `bun run release:notify vX.Y.Z [--dry-run]` | maintainers only: comment "Fixed in" on every issue the release closed (the last step of `release`, safe to run again; see [Releasing](release.md)) |
 | `cargo test -p atlas-cli --test mcp` | the MCP integration suite (real binary, live headless run; needs `python3`) |
 | `cargo test -p atlas-tui --release -- --ignored --nocapture bench_one_million` | the log pipeline benchmark |
 | `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench` | the terminal renderer benchmark |
@@ -136,8 +137,8 @@ Every manifest of the repo, in one place: Cargo (the workspace and `apps/mobile/
 Holds, each with its reason where it is set:
 
 - `windows` and `windows-core` (Cargo) stay on the exact versions `webview2-com` builds on: their COM traits are per-version, so a lone bump breaks the Windows build (#156). `CARGO_HOLDS` in `scripts/deps.sh` and the `ignore` in `.github/dependabot.yml`.
-- `webkit2gtk`, `gtk` and `gdkwayland-sys` (Cargo, Linux) stay on the versions tauri's wry runtime links (`wry` pins `webkit2gtk =2.0.2`, `tao` 0.37 uses `gdkwayland-sys` 0.18): a newer one links a second set of GTK types and the Linux build does not compile. They move when tauri does. `CARGO_HOLDS` in `scripts/deps.sh`, reasons in `crates/atlas-desktop/Cargo.toml`.
-- `typescript` is rejected in `.ncurc.json`: it stays on 6.x because TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` rely on. Move it by hand once those tools support 7.
+- `webkit2gtk`, `gtk` and `gdkwayland-sys` (Cargo, Linux) stay on the versions tauri's wry runtime links (`wry` pins `webkit2gtk =2.0.2`, `tao` 0.37 uses `gdkwayland-sys` 0.18): a newer one links a second set of GTK types and the Linux build does not compile. They move when tauri does. `CARGO_HOLDS` in `scripts/deps.sh` and the `ignore` in `.github/dependabot.yml`; reasons in `crates/atlas-desktop/Cargo.toml`.
+- `typescript` is rejected in `.ncurc.json` and its majors are ignored in `.github/dependabot.yml`: it stays on 6.x because TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` rely on. Move it by hand once those tools support 7.
 - `studio` pins `hyperframes` exactly; after an update run `bun run studio:check` and keep the old pin if it fails.
 
 ## Build and run your changes

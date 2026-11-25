@@ -4,6 +4,8 @@ version: 2
 # one PR per major (a major usually needs code changes and its own review).
 # cooldown: a new version waits 7 days before a PR, so a compromised or yanked release is usually caught
 # upstream before it reaches us (zizmor dependabot-cooldown).
+# Holds: the `ignore` lists below are the same holds as `CARGO_HOLDS` in scripts/deps.sh and `reject` in .ncurc.json;
+# change them together. labels: only `dependencies` (without it Dependabot adds a label per language: rust, javascript…).
 updates:
   # The workspace and the phone app's native crate (its own cargo workspace, apps/mobile/native).
   - package-ecosystem: cargo
@@ -14,13 +16,22 @@ updates:
       cargo-minor-patch:
         update-types: [minor, patch]
     open-pull-requests-limit: 10
+    labels: ["dependencies"]
     commit-message: { prefix: "chore(deps)" }
-    # windows/windows-core must be the exact versions webview2-com (via tauri/wry) builds on: their COM traits
-    # (`Interface::cast`) are per-version, so a lone bump breaks the Windows build (#156). They move with webview2-com.
     ignore:
+      # windows/windows-core must be the exact versions webview2-com (via tauri/wry) builds on: their COM traits
+      # (`Interface::cast`) are per-version, so a lone bump breaks the Windows build (#156). They move with webview2-com.
       - dependency-name: "windows"
         update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: "windows-core"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      # The versions tauri's wry runtime links (wry pins webkit2gtk =2.0.2, tao 0.37 uses gdkwayland-sys 0.18): a newer
+      # one links a second set of GTK types and the Linux build does not compile. They move when tauri does.
+      - dependency-name: "webkit2gtk"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "gtk"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "gdkwayland-sys"
         update-types: [version-update:semver-major, version-update:semver-minor]
   # Every bun project (bun.lock): the root, the desktop frontend, the website, the film studio, the i18n tooling.
   - package-ecosystem: bun
@@ -31,7 +42,13 @@ updates:
       bun-minor-patch:
         update-types: [minor, patch]
     open-pull-requests-limit: 10
+    labels: ["dependencies"]
     commit-message: { prefix: "chore(deps)" }
+    ignore:
+      # TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` use
+      # (each refuses 7.0 with an explicit error). Moved by hand once those tools support it.
+      - dependency-name: "typescript"
+        update-types: [version-update:semver-major]
   # Atlas Mobile: Dart packages and the store tooling (fastlane, cocoapods).
   - package-ecosystem: pub
     directory: /apps/mobile
@@ -40,6 +57,7 @@ updates:
     groups:
       pub-minor-patch:
         update-types: [minor, patch]
+    labels: ["dependencies"]
     commit-message: { prefix: "chore(deps)" }
   - package-ecosystem: bundler
     directory: /apps/mobile
@@ -48,6 +66,7 @@ updates:
     groups:
       bundler-minor-patch:
         update-types: [minor, patch]
+    labels: ["dependencies"]
     commit-message: { prefix: "chore(deps)" }
   # The push relay: its Go module and its builder image (the image's Go minor must match go.mod's `go` line).
   - package-ecosystem: gomod
@@ -57,11 +76,13 @@ updates:
     groups:
       gomod-minor-patch:
         update-types: [minor, patch]
+    labels: ["dependencies"]
     commit-message: { prefix: "chore(deps)" }
   - package-ecosystem: docker
     directory: /services/push-relay
     schedule: { interval: weekly }
     cooldown: { default-days: 7 }
+    labels: ["dependencies"]
     commit-message: { prefix: "chore(deps)" }
   # Workflows and the composite actions under .github/actions (`/` alone covers only .github/workflows, which left the
   # composite actions' pins behind the workflows' ones).
@@ -72,4 +93,5 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    labels: ["dependencies"]
     commit-message: { prefix: "chore(ci)" }

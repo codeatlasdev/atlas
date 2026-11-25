@@ -29,6 +29,8 @@ body:
         - TUI
         - MCP / agents
         - Atlas Desktop
+        - Atlas Mobile (phone app)
+        - Atlas Crew (crewmates, crew server)
         - GPU terminal
         - atlas deploy
         - docs

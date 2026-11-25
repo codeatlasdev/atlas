@@ -32,6 +32,8 @@ body:
         - atlas dev --detach / --headless / --ci
         - atlas mcp / agent setup
         - Atlas Desktop
+        - Atlas Mobile (phone app)
+        - Atlas Crew (crewmates, crew server)
         - GPU terminal
         - atlas deploy
         - installer / atlas update
